@@ -42,6 +42,7 @@ Scheduled date (date)
 Scheduled time (optional, time)
 Completed (bool)
 Completed date and time (captured on completion)
+
 ### Approval Flow
 When a child marks a job as complete, it needs to be approved by an adult before the points are awarded. When a job is completed it goes into an approval queue that is accessible by all adult users. 
 

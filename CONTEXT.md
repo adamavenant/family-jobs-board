@@ -19,7 +19,7 @@ A user who is a minor within the family system. Children can view assigned jobs 
 
 #### Characteristics
 - All User characteristics
-- Points accumulated from completed jobs and good behaviours
+- Points accumulated from completed jobs and good behaviours (integer, positive only)
 
 ### Adult  
 A user with administrative privileges within the family system. Adults can manage users, jobs, and good behaviours, and approve job completions.
