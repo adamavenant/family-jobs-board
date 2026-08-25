@@ -11,3 +11,8 @@ The repository uses the default triage label vocabulary. See `docs/agents/triage
 ### Domain docs
 
 This repository uses a single-context structure with root `CONTEXT.md` and `docs/adr/` directory. See `docs/agents/domain.md`.
+
+### Developer Rules
+
+Before modifying any code, read and follow `docs/agents/developer-rules.md`.
+Do not begin implementation until you have done so.
