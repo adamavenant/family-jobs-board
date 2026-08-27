@@ -6,7 +6,7 @@ This document defines the technical baseline and architecture for the Family Job
 ## Technology Stack
 
 ### Backend (.NET)
-- **Framework**: .NET 8.0
+- **Framework**: .NET 10
 - **Database**: PostgreSQL 18
 - **ORM**: Entity Framework Core with Npgsql provider
 - **API Documentation**: Swagger/OpenAPI
@@ -15,7 +15,7 @@ This document defines the technical baseline and architecture for the Family Job
 
 ### Frontend (React)
 - **Framework**: React 19
-- **Build Tool**: Create React App 5.0.1
+- **Build Tool**: Vite
 - **TypeScript**: Enabled by default
 - **Package Manager**: npm
 
