@@ -74,8 +74,20 @@ src/
 All services are configured to run within a containerized environment through Docker Compose. Container definitions include:
 
 1. **api**: Main application service
+   - Port: 8080 (exposed)
+   - Health check endpoint: `/health`
+   - Depends on: db service
+
 2. **db**: PostgreSQL database service  
+   - Port: 5432 (exposed)
+   - Environment variables for credentials
+   - Data persistence using volumes
+   - Standard PostgreSQL health checks
+
 3. **web**: Web application build and serving
+   - Port: 3000 (exposed for development)
+   - Development server health monitoring
+   - Build process integrated with Docker
 
 ### Health Checks
 Each service includes appropriate health check endpoints:
@@ -97,26 +109,6 @@ Each service includes appropriate health check endpoints:
 │   └── workflows/             # CI/CD pipelines
 └── docker-compose.yml         # Container orchestration
 ```
-
-## Docker Compose Services
-
-The following services are defined in `docker-compose.yml`:
-
-1. **api**: Main application service
-   - Port: 8080 (exposed)
-   - Health check endpoint: `/health`
-   - Depends on: db service
-
-2. **db**: PostgreSQL database service  
-   - Port: 5432 (exposed)
-   - Environment variables for credentials
-   - Data persistence using volumes
-   - Standard PostgreSQL health checks
-
-3. **web**: Web application build and serving
-   - Port: 3000 (exposed for development)
-   - Development server health monitoring
-   - Build process integrated with Docker
 
 ## Technical Requirements
 
