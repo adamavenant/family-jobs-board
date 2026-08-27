@@ -11,11 +11,13 @@ This document defines the technical baseline and architecture for the Family Job
 - **ORM**: Entity Framework Core with Npgsql provider
 - **API Documentation**: Swagger/OpenAPI
 - **Logging**: Serilog
+- **Testing**: xUnit, FluentAssertions
 
 ### Frontend (React)
 - **Framework**: React 19
 - **Build Tool**: Create React App 5.0.1
 - **TypeScript**: Enabled by default
+- **Package Manager**: npm
 
 ## Architecture
 
@@ -44,8 +46,8 @@ src/
 
 ### Dependency Management
 - Centralized package versions via `Directory.Packages.props`
-- Package version pinning for consistent builds
-- Dependencies managed through NuGet and npm
+- Package version pinning for consistent builds using centralized version management
+- Dependencies managed through NuGet (for .NET) and npm (for JavaScript)
 
 ### Build Properties  
 - `Directory.Build.props` containing common build configurations
@@ -95,6 +97,26 @@ Each service includes appropriate health check endpoints:
 │   └── workflows/             # CI/CD pipelines
 └── docker-compose.yml         # Container orchestration
 ```
+
+## Docker Compose Services
+
+The following services are defined in `docker-compose.yml`:
+
+1. **api**: Main application service
+   - Port: 8080 (exposed)
+   - Health check endpoint: `/health`
+   - Depends on: db service
+
+2. **db**: PostgreSQL database service  
+   - Port: 5432 (exposed)
+   - Environment variables for credentials
+   - Data persistence using volumes
+   - Standard PostgreSQL health checks
+
+3. **web**: Web application build and serving
+   - Port: 3000 (exposed for development)
+   - Development server health monitoring
+   - Build process integrated with Docker
 
 ## Technical Requirements
 
