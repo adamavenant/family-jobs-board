@@ -3,9 +3,14 @@
 ## Before work
 
 - Coding requires a GitHub issue. Before edits, state issue and acceptance criteria; none: stop.
-- Use current clone. Inspect branch/worktree; preserve changes. One issue branch from `main`; never commit to `main`.
+- Preserve worktree. Fetch origin; fast-forward `main`; branch `issue-<number>-<kebab-case-title>` from it. Never commit to `main`.
 - Read `CONTEXT.md`, issue, relevant ADRs.
+- Assigned issue blocked: stop; ask user for next steps.
 - Limit changes to acceptance criteria plus required tests, docs, config. Ask before dependencies, restructuring, architectural changes.
+
+## During work
+
+- As each acceptance criterion passes, check it off on the GitHub issue.
 
 ## Safety
 
@@ -20,7 +25,13 @@
 - All relevant build, test, lint, type-check commands pass.
 - Images build; required Compose services healthy.
 - Diff contains intended changes only.
+- Push issue branch; open PR when review-ready.
 - Report verification commands and results.
+
+## PR review
+
+- Read every conversation comment, review summary, inline comment. Inaccessible: notify user; do not claim review complete.
+- Valid and safe: implement, verify, push. Otherwise reply with rationale.
 
 ## Back-end
 
