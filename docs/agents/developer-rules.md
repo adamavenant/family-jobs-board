@@ -35,7 +35,7 @@
 
 ## Back-end
 
-- Baseline: .NET 10 LTS, C# 14, Minimal APIs, EF Core 10/Npgsql. Follow pinned versions; no unrelated upgrades.
+- Baseline: .NET 10 LTS, C# 12 language mode, Minimal APIs, EF Core 10/Npgsql. Newer C# requires approval. Follow pinned versions; no unrelated upgrades.
 - Feature-first slices. `Domain`: invariants; `Application`: use cases/ports; `Infrastructure`: adapters; `Api`: HTTP/composition. Domain/Application never reference ASP.NET Core or EF Core.
 - Business rules in Domain/Application, not endpoints or persistence mappings. Nullable references enabled.
 - Records for DTOs/value objects; classes for entities/aggregates. Async I/O takes `CancellationToken`; no `.Result`, `.Wait()`, sync wrappers.
