@@ -3,9 +3,14 @@
 ## Before work
 
 - Coding requires a GitHub issue. Before edits, state issue and acceptance criteria; none: stop.
-- Use current clone. Inspect branch/worktree; preserve changes. One issue branch from `main`; never commit to `main`.
+- Preserve worktree. Fetch origin; fast-forward `main`; branch `issue-<number>-<kebab-case-title>` from it. Never commit to `main`.
 - Read `CONTEXT.md`, issue, relevant ADRs.
+- Assigned issue blocked: stop; ask user for next steps.
 - Limit changes to acceptance criteria plus required tests, docs, config. Ask before dependencies, restructuring, architectural changes.
+
+## During work
+
+- As each acceptance criterion passes, check it off on the GitHub issue.
 
 ## Safety
 
@@ -20,11 +25,17 @@
 - All relevant build, test, lint, type-check commands pass.
 - Images build; required Compose services healthy.
 - Diff contains intended changes only.
+- Push issue branch; open PR when review-ready.
 - Report verification commands and results.
+
+## PR review
+
+- Read every conversation comment, review summary, inline comment. Inaccessible: notify user; do not claim review complete.
+- Valid and safe: implement, verify, push. Otherwise reply with rationale.
 
 ## Back-end
 
-- Baseline: .NET 10 LTS, C# 14, Minimal APIs, EF Core 10/Npgsql. Follow pinned versions; no unrelated upgrades.
+- Baseline: .NET 10 LTS, C# 12 language mode, Minimal APIs, EF Core 10/Npgsql. Newer C# requires approval. Follow pinned versions; no unrelated upgrades.
 - Feature-first slices. `Domain`: invariants; `Application`: use cases/ports; `Infrastructure`: adapters; `Api`: HTTP/composition. Domain/Application never reference ASP.NET Core or EF Core.
 - Business rules in Domain/Application, not endpoints or persistence mappings. Nullable references enabled.
 - Records for DTOs/value objects; classes for entities/aggregates. Async I/O takes `CancellationToken`; no `.Result`, `.Wait()`, sync wrappers.
