@@ -1,0 +1,94 @@
+name: family-jobs-board
+
+x-database-environment: &database-environment
+  ConnectionStrings__Database: Host=db;Port=5432;Database=family_jobs_board;Username=family_jobs_board;Password=family_jobs_board
+  Household__TimeZone: Africa/Johannesburg
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: family_jobs_board
+      POSTGRES_USER: family_jobs_board
+      POSTGRES_PASSWORD: family_jobs_board
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U family_jobs_board -d family_jobs_board"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    image: familyjobsboard/migrate:local
+    build:
+      context: .
+      dockerfile: src/backend/Dockerfile
+      target: migrate
+    environment: *database-environment
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: familyjobsboard/api:local
+    build:
+      context: .
+      dockerfile: src/backend/Dockerfile
+      target: api
+    environment:
+      <<: *database-environment
+      ASPNETCORE_ENVIRONMENT: Production
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${API_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/health/ready"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  web:
+    image: familyjobsboard/web:local
+    build:
+      context: .
+      dockerfile: src/web/Dockerfile
+      target: web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  app-links:
+    image: alpine:3.23
+    user: "65534:65534"
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -c
+      - |
+        echo "Family Jobs Board is ready"
+        echo "Web: http://localhost:${WEB_PORT:-3000}"
+        echo "API: http://localhost:${API_PORT:-8080}/api/today"
+        exec tail -f /dev/null
+
+volumes:
+  postgres-data:
