@@ -1,32 +1,26 @@
-using FamilyJobsBoard.Api.Extensions;
-using FamilyJobsBoard.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
+using FamilyJobsBoard.Api.Composition;
+using FamilyJobsBoard.Api.Features.Health;
+using FamilyJobsBoard.Api.Features.Today;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-
-// Add database context
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-// Register application services
-builder.Services.AddApplicationServices();
+builder.Services.AddProblemDetails();
+builder.Services.AddOpenApi();
+builder.Services.AddApplication();
+builder.Services.AddInfrastructure(builder.Configuration);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+app.UseExceptionHandler();
+
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
-app.UseAuthorization();
-app.MapControllers();
+app.MapHealthEndpoints();
+app.MapTodayEndpoints();
 
 app.Run();
+
+public partial class Program;

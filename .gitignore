@@ -56,3 +56,7 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 .DS_Store
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
