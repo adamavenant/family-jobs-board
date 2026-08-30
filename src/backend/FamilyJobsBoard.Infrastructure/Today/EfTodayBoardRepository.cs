@@ -43,7 +43,7 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
     {
         return _database.SaveChangesAsync(cancellationToken);
     }
-    
+
     public async Task AddJobAsync(Job job, CancellationToken cancellationToken)
     {
         await _database.Jobs.AddAsync(job, cancellationToken);
