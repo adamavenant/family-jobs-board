@@ -15,4 +15,6 @@ public interface ITodayBoardRepository
     Task<Job?> GetJobAsync(Guid jobId, CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
+    
+    Task AddJobAsync(Guid childId, Job job, CancellationToken cancellationToken);
 }

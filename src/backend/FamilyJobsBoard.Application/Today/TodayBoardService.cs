@@ -38,6 +38,35 @@ public sealed class TodayBoardService
         return MapJob(job);
     }
 
+    public async Task<TodayJob> AddJobAsync(string name, string description, int points, CancellationToken cancellationToken)
+    {
+        // Validate input parameters
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Job name is required.", nameof(name));
+            
+        if (string.IsNullOrWhiteSpace(description))
+            throw new ArgumentException("Job description is required.", nameof(description));
+            
+        if (points < 0)
+            throw new ArgumentException("Job points cannot be negative.", nameof(points));
+
+        var child = await _repository.GetDemoChildAsync(cancellationToken)
+            ?? throw new TodayBoardNotAvailableException();
+            
+        var job = new Job(
+            Guid.NewGuid(),
+            child.Id,
+            name,
+            description,
+            points,
+            _clock.Today);
+        
+        await _repository.AddJobAsync(child.Id, job, cancellationToken);
+        await _repository.SaveChangesAsync(cancellationToken);
+
+        return MapJob(job);
+    }
+
     private static TodayJob MapJob(Job job)
     {
         return new TodayJob(

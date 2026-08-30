@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from "react-router";
 import type { RouteObject } from "react-router";
 
-import { ApiError, completeJob, getToday } from "../api/today";
+import { ApiError, completeJob, getToday, addJob } from "../api/today";
 import { LoadingPage } from "./LoadingPage";
 import { TodayPage } from "../features/today/TodayPage";
 
@@ -33,6 +33,30 @@ async function completeAction({
         error instanceof ApiError
           ? error.message
           : "That job couldn't be completed.",
+    };
+  }
+}
+
+async function addJobAction({
+  request,
+}: ActionFunctionArgs): Promise<{ success?: boolean; error?: string }> {
+  const form = await request.formData();
+  const name = form.get("name") as string;
+  const description = form.get("description") as string;
+  const points = Number(form.get("points"));
+  
+  if (!name || !description || isNaN(points)) {
+    return { 
+      error: "Please fill in all fields with valid values." 
+    };
+  }
+
+  try {
+    await addJob({ name, description, points });
+    return { success: true };
+  } catch (error) {
+    return { 
+      error: "Failed to add job. Please check the details and try again." 
     };
   }
 }

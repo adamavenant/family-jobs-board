@@ -2,6 +2,7 @@ import { useFetcher, useLoaderData } from "react-router";
 
 import type { TodayBoard, TodayJob } from "../../api/today";
 import type { CompleteActionResult } from "../../app/routes";
+import { AddJobForm } from "./AddJobForm";
 
 export function TodayPage() {
   const board = useLoaderData() as TodayBoard;
@@ -29,6 +30,8 @@ export function TodayPage() {
           </div>
         </div>
       </header>
+
+      <AddJobForm />
 
       <section className="board" aria-labelledby="today-heading">
         <div className="board__heading">

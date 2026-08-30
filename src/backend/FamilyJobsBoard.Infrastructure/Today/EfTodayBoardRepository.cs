@@ -43,4 +43,23 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
     {
         return _database.SaveChangesAsync(cancellationToken);
     }
+    
+    public async Task AddJobAsync(Guid childId, Job job, CancellationToken cancellationToken)
+    {
+        // Make sure child exists
+        var child = await _database.HouseholdMembers
+            .SingleOrDefaultAsync(m => m.Id == childId, cancellationToken)
+            ?? throw new InvalidOperationException("Child not found for adding job.");
+        
+        // Create a new job entity with all properties set correctly
+        var jobEntity = new Job(
+            job.Id,
+            childId,
+            job.Name,
+            job.Description,
+            job.Points,
+            DateOnly.FromDateTime(DateTime.Today));
+            
+        _database.Jobs.Add(jobEntity);
+    }
 }

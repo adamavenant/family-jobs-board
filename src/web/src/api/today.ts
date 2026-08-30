@@ -52,6 +52,20 @@ export async function completeJob(id: string): Promise<TodayJob> {
   return mapJob(data);
 }
 
+export async function addJob(request: { name: string; description: string; points: number }): Promise<TodayJob> {
+  const client = apiClient();
+  const { data, error } = await client.POST("/api/today/jobs", {
+    body: request,
+  });
+  if (!data) {
+    throw new ApiError(
+      problemMessage(error, "That job couldn't be added."),
+    );
+  }
+
+  return mapJob(data);
+}
+
 function apiClient() {
   return createClient<paths>({
     baseUrl: window.location.origin,
