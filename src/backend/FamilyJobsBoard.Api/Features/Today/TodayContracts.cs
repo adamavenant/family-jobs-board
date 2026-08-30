@@ -7,6 +7,8 @@ public sealed record TodayResponse(
 
 public sealed record ChildResponse(Guid Id, string Name);
 
+public sealed record AddJobRequest(string? Name, string? Description, int Points);
+
 public sealed record JobResponse(
     Guid Id,
     string Name,

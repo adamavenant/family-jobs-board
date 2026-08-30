@@ -2,7 +2,6 @@ using FamilyJobsBoard.Application.Today;
 using FamilyJobsBoard.Domain.Jobs;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
-using FamilyJobsBoard.Application.Today.Requests;
 
 namespace FamilyJobsBoard.Api.Features.Today;
 
@@ -48,22 +47,30 @@ internal static class TodayEndpoints
         }
     }
 
-    private static async Task<Results<Ok<JobResponse>, ProblemHttpResult>> AddJobAsync(
+    private static async Task<Results<Created<JobResponse>, ValidationProblem, ProblemHttpResult>> AddJobAsync(
         AddJobRequest request,
         TodayBoardService service,
         CancellationToken cancellationToken)
     {
         try
         {
-            var job = await service.AddJobAsync(request.Name, request.Description, request.Points, cancellationToken);
-            return TypedResults.Ok(MapJob(job));
+            var job = await service.AddJobAsync(
+                new AddTodayJob(request.Name, request.Description, request.Points),
+                cancellationToken);
+            return TypedResults.Created("/api/today", MapJob(job));
         }
-        catch (Exception exception) when (exception is not TodayBoardNotAvailableException)
+        catch (InvalidTodayJobException exception)
+        {
+            return TypedResults.ValidationProblem(
+                exception.Errors,
+                title: "Invalid job data");
+        }
+        catch (TodayBoardNotAvailableException exception)
         {
             return TypedResults.Problem(
                 detail: exception.Message,
-                statusCode: StatusCodes.Status400BadRequest,
-                title: "Invalid job data");
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Today board unavailable");
         }
     }
 

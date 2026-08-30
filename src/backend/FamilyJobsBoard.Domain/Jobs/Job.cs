@@ -2,6 +2,9 @@ namespace FamilyJobsBoard.Domain.Jobs;
 
 public sealed class Job
 {
+    public const int MaximumNameLength = 160;
+    public const int MaximumDescriptionLength = 1000;
+
     private Job()
     {
     }
@@ -29,6 +32,22 @@ public sealed class Job
             throw new ArgumentException("A job needs a name.", nameof(name));
         }
 
+        var trimmedName = name.Trim();
+        if (trimmedName.Length > MaximumNameLength)
+        {
+            throw new ArgumentException(
+                $"A job name cannot exceed {MaximumNameLength} characters.",
+                nameof(name));
+        }
+
+        var trimmedDescription = description.Trim();
+        if (trimmedDescription.Length > MaximumDescriptionLength)
+        {
+            throw new ArgumentException(
+                $"A job description cannot exceed {MaximumDescriptionLength} characters.",
+                nameof(description));
+        }
+
         if (points < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(points), "Points cannot be negative.");
@@ -36,8 +55,8 @@ public sealed class Job
 
         Id = id;
         ChildId = childId;
-        Name = name.Trim();
-        Description = description.Trim();
+        Name = trimmedName;
+        Description = trimmedDescription;
         Points = points;
         ScheduledDate = scheduledDate;
         Status = JobStatus.Open;

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using FamilyJobsBoard.Application.Clock;
 using FamilyJobsBoard.Infrastructure.Data;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -78,6 +79,88 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.Equal(
             "pendingApproval",
             refreshed.Jobs.Single(job => job.Id == target.Id).Status);
+    }
+
+    [Fact]
+    public async Task Added_job_is_trimmed_listed_persisted_and_can_be_completed()
+    {
+        var client = Client;
+        using var createResponse = await client.PostAsJsonAsync(
+            "/api/today/jobs",
+            new
+            {
+                name = "  Put toys away  ",
+                description = "  Return every toy to its box.  ",
+                points = 4,
+            });
+        var created = await createResponse.Content.ReadFromJsonAsync<JobResponse>();
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        Assert.NotNull(created);
+        Assert.NotEqual(Guid.Empty, created.Id);
+        Assert.Equal("Put toys away", created.Name);
+        Assert.Equal("Return every toy to its box.", created.Description);
+        Assert.Equal(4, created.Points);
+        Assert.Equal("open", created.Status);
+        Assert.Null(created.CompletedAtUtc);
+
+        var listed = await client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.Contains(listed!.Jobs, job => job.Id == created.Id);
+
+        await RestartApplicationAsync();
+
+        var persisted = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.Contains(persisted!.Jobs, job => job.Id == created.Id);
+
+        using var completeResponse = await Client.PostAsync(
+            $"/api/jobs/{created.Id}/complete",
+            null);
+        var completed = await completeResponse.Content.ReadFromJsonAsync<JobResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
+        Assert.Equal("pendingApproval", completed!.Status);
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidJobs))]
+    public async Task Invalid_job_is_rejected_with_problem_details(
+        string name,
+        string description,
+        int points,
+        string expectedField)
+    {
+        using var response = await Client.PostAsJsonAsync(
+            "/api/today/jobs",
+            new { name, description, points });
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.NotNull(problem);
+        Assert.Equal("Invalid job data", problem.Title);
+        Assert.Contains(expectedField, problem.Errors.Keys);
+    }
+
+    public static TheoryData<string, string, int, string> InvalidJobs => new()
+    {
+        { "   ", "Description", 1, "Name" },
+        { new string('n', 161), "Description", 1, "Name" },
+        { "Valid name", new string('d', 1001), 1, "Description" },
+        { "Valid name", "Description", -1, "Points" },
+    };
+
+    private HttpClient Client =>
+        _client ?? throw new InvalidOperationException("Test client was not initialised.");
+
+    private async Task RestartApplicationAsync()
+    {
+        _client?.Dispose();
+        if (_factory is not null)
+        {
+            await _factory.DisposeAsync();
+        }
+
+        _factory = new TestApiFactory(_postgres.GetConnectionString());
+        _client = _factory.CreateClient();
     }
 
     private sealed record TodayResponse(ChildResponse Child, DateOnly Date, IReadOnlyList<JobResponse> Jobs);

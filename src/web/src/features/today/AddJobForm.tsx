@@ -1,24 +1,32 @@
-import { Form, useActionData } from "react-router";
-import type { ActionFunctionArgs } from "react-router";
+import { useEffect, useRef } from "react";
+import { useFetcher } from "react-router";
 
-import { addJob } from "../../api/today";
+import type { TodayActionResult } from "../../app/routes";
 
 export function AddJobForm() {
-  const actionData = useActionData<{ error?: string }>();
-  
+  const fetcher = useFetcher<TodayActionResult>();
+  const formRef = useRef<HTMLFormElement>(null);
+  const result = fetcher.data?.intent === "add" ? fetcher.data : undefined;
+  const isSubmitting = fetcher.state !== "idle";
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && result?.success) {
+      formRef.current?.reset();
+    }
+  }, [fetcher.state, result?.success]);
+
   return (
-    <section className="add-job">
-      <h2>Add a new job</h2>
-      <Form method="post" className="add-job__form" action="/api/today/jobs">
+    <section className="add-job" aria-labelledby="add-job-heading">
+      <div className="add-job__heading">
+        <p className="eyebrow">Grown-up tools</p>
+        <h2 id="add-job-heading">Add today’s job</h2>
+        <p>Create another job for this board.</p>
+      </div>
+      <fetcher.Form method="post" className="add-job__form" ref={formRef}>
+        <input type="hidden" name="intent" value="add" />
         <div className="form-group">
           <label htmlFor="name">Job name</label>
-          <input
-            type="text"
-            id="name"
-            name="name"
-            required
-            aria-describedby={actionData?.error ? "name-error" : undefined}
-          />
+          <input type="text" id="name" name="name" required maxLength={160} />
         </div>
 
         <div className="form-group">
@@ -26,9 +34,8 @@ export function AddJobForm() {
           <textarea
             id="description"
             name="description"
-            required
             rows={3}
-            aria-describedby={actionData?.error ? "description-error" : undefined}
+            maxLength={1000}
           />
         </div>
 
@@ -39,37 +46,27 @@ export function AddJobForm() {
             id="points"
             name="points"
             min="0"
+            step="1"
             required
-            aria-describedby={actionData?.error ? "points-error" : undefined}
           />
         </div>
 
-        {actionData?.error && (
+        {result?.error ? (
           <p role="alert" className="error-message" id="add-job-error">
-            {actionData.error}
+            {result.error}
           </p>
-        )}
+        ) : null}
 
-        <button type="submit">Add job</button>
-      </Form>
+        {result?.success && !isSubmitting ? (
+          <p role="status" className="success-message">
+            Job added to today’s board.
+          </p>
+        ) : null}
+
+        <button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Adding…" : "Add job"}
+        </button>
+      </fetcher.Form>
     </section>
   );
-}
-
-export async function action({ request }: ActionFunctionArgs) {
-  const formData = await request.formData();
-  const name = formData.get("name") as string;
-  const description = formData.get("description") as string;
-  const points = Number(formData.get("points"));
-
-  try {
-    // Call the API to add the job
-    await addJob({ name, description, points });
-    
-    // Return success - this will cause revalidation of the loader
-    return { success: true };
-  } catch (error) {
-    console.error("Failed to add job", error);
-    return { error: "Failed to add job. Please check the details and try again." };
-  }
 }
