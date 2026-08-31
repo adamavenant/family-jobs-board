@@ -21,6 +21,11 @@ internal static class TodayEndpoints
             .WithSummary("Mark an open job complete and pending approval.")
             .WithDescription("Returns 409 when the job has already been completed.");
 
+        group.MapPost("/today/jobs", AddJobAsync)
+            .WithName("AddJob")
+            .WithSummary("Add a new job for the demo child.")
+            .WithDescription("Adds a new job to the demo child's board for today.");
+
         return endpoints;
     }
 
@@ -32,6 +37,33 @@ internal static class TodayEndpoints
         {
             var board = await service.GetAsync(cancellationToken);
             return TypedResults.Ok(MapBoard(board));
+        }
+        catch (TodayBoardNotAvailableException exception)
+        {
+            return TypedResults.Problem(
+                detail: exception.Message,
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Today board unavailable");
+        }
+    }
+
+    private static async Task<Results<Created<JobResponse>, ValidationProblem, ProblemHttpResult>> AddJobAsync(
+        AddJobRequest request,
+        TodayBoardService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var job = await service.AddJobAsync(
+                new AddTodayJob(request.Name, request.Description, request.Points),
+                cancellationToken);
+            return TypedResults.Created("/api/today", MapJob(job));
+        }
+        catch (InvalidTodayJobException exception)
+        {
+            return TypedResults.ValidationProblem(
+                exception.Errors,
+                title: "Invalid job data");
         }
         catch (TodayBoardNotAvailableException exception)
         {

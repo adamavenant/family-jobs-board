@@ -1,7 +1,8 @@
 import { useFetcher, useLoaderData } from "react-router";
 
 import type { TodayBoard, TodayJob } from "../../api/today";
-import type { CompleteActionResult } from "../../app/routes";
+import type { TodayActionResult } from "../../app/routes";
+import { AddJobForm } from "./AddJobForm";
 
 export function TodayPage() {
   const board = useLoaderData() as TodayBoard;
@@ -30,6 +31,8 @@ export function TodayPage() {
         </div>
       </header>
 
+      <AddJobForm />
+
       <section className="board" aria-labelledby="today-heading">
         <div className="board__heading">
           <div>
@@ -50,9 +53,12 @@ export function TodayPage() {
 }
 
 function JobCard({ job, index }: { job: TodayJob; index: number }) {
-  const fetcher = useFetcher<CompleteActionResult>();
+  const fetcher = useFetcher<TodayActionResult>();
   const isSubmitting = fetcher.state !== "idle";
-  const error = fetcher.data?.jobId === job.id ? fetcher.data.error : undefined;
+  const error =
+    fetcher.data?.intent === "complete" && fetcher.data.jobId === job.id
+      ? fetcher.data.error
+      : undefined;
   const isPending = job.status === "pendingApproval";
 
   return (
@@ -75,6 +81,7 @@ function JobCard({ job, index }: { job: TodayJob; index: number }) {
         </div>
       ) : (
         <fetcher.Form method="post">
+          <input type="hidden" name="intent" value="complete" />
           <input type="hidden" name="jobId" value={job.id} />
           <button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Sending…" : "Mark as done"}

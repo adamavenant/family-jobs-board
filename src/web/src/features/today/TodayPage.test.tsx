@@ -70,6 +70,98 @@ describe("Today page", () => {
     ).toBeInTheDocument();
   });
 
+  it("adds a job to the board and allows it to be completed", async () => {
+    const addedJob = {
+      id: "f75612ce-4253-4ca7-8d13-52636e825d98",
+      name: "Put toys away",
+      description: "Return every toy to its box.",
+      points: 4,
+      status: "open",
+      completedAtUtc: null,
+    };
+    const boardWithAddedJob = { ...board, jobs: [...board.jobs, addedJob] };
+    const completedJob = {
+      ...addedJob,
+      status: "pendingApproval",
+      completedAtUtc: "2026-08-29T10:00:00Z",
+    };
+    const completedBoard = {
+      ...board,
+      jobs: [...board.jobs, completedJob],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(board))
+        .mockResolvedValueOnce(jsonResponse(addedJob, { status: 201 }))
+        .mockResolvedValueOnce(jsonResponse(boardWithAddedJob))
+        .mockResolvedValueOnce(jsonResponse(completedJob))
+        .mockResolvedValueOnce(jsonResponse(completedBoard)),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Alex!" });
+    await user.type(screen.getByLabelText("Job name"), "Put toys away");
+    await user.type(
+      screen.getByLabelText("Description"),
+      "Return every toy to its box.",
+    );
+    await user.type(screen.getByLabelText("Points"), "4");
+    await user.click(screen.getByRole("button", { name: "Add job" }));
+
+    const addedHeading = await screen.findByRole("heading", {
+      name: "Put toys away",
+    });
+    expect(screen.getByText("Job added to today’s board.")).toHaveAttribute(
+      "role",
+      "status",
+    );
+    const addedCard = addedHeading.closest("article");
+    expect(addedCard).not.toBeNull();
+
+    await user.click(
+      within(addedCard as HTMLElement).getByRole("button", {
+        name: "Mark as done",
+      }),
+    );
+
+    expect(
+      await within(addedCard as HTMLElement).findByText(
+        "Nice work — sent for approval",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("reports creation failures without removing the entered job", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(board))
+        .mockResolvedValueOnce(
+          jsonResponse(
+            { detail: "The database is unavailable." },
+            { status: 503 },
+          ),
+        ),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Alex!" });
+    const name = screen.getByLabelText("Job name");
+    await user.type(name, "Put toys away");
+    await user.type(screen.getByLabelText("Points"), "4");
+    await user.click(screen.getByRole("button", { name: "Add job" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The database is unavailable.",
+    );
+    expect(name).toHaveValue("Put toys away");
+  });
+
   it("reports completion failures through the job card", async () => {
     const fetchMock = vi
       .fn()
