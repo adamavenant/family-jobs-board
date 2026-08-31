@@ -41,6 +41,35 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         return _database.Jobs.SingleOrDefaultAsync(job => job.Id == jobId, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(
+        Guid childId,
+        DateOnly scheduledDate,
+        CancellationToken cancellationToken)
+    {
+        var rejections = await _database.JobReviewDecisions
+            .AsNoTracking()
+            .Where(decision => decision.Outcome == JobReviewOutcome.Rejected)
+            .Join(
+                _database.Jobs.AsNoTracking().Where(job =>
+                    job.ChildId == childId && job.ScheduledDate == scheduledDate),
+                decision => decision.JobId,
+                job => job.Id,
+                (decision, _) => decision)
+            .OrderByDescending(decision => decision.DecidedAtUtc)
+            .ThenByDescending(decision => decision.Id)
+            .Select(decision => new TodayJobRejection(
+                decision.Id,
+                decision.JobId,
+                decision.Reason,
+                decision.DecidedAtUtc))
+            .ToListAsync(cancellationToken);
+
+        return rejections
+            .GroupBy(rejection => rejection.JobId)
+            .Select(group => group.First())
+            .ToArray();
+    }
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         try
@@ -95,5 +124,12 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         CancellationToken cancellationToken)
     {
         await _database.PointsLedgerEntries.AddAsync(entry, cancellationToken);
+    }
+
+    public async Task AddReviewDecisionAsync(
+        JobReviewDecision decision,
+        CancellationToken cancellationToken)
+    {
+        await _database.JobReviewDecisions.AddAsync(decision, cancellationToken);
     }
 }

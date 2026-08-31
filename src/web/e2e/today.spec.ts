@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-test("adds, completes, and approves a job exactly once", async ({ page }) => {
+test("rejects a completed job, retries it, and then awards points", async ({
+  page,
+}) => {
   const jobName = `Playwright job ${Date.now()}`;
 
   await page.goto("/");
@@ -35,6 +37,20 @@ test("adds, completes, and approves a job exactly once", async ({ page }) => {
 
   const card = page.getByRole("article").filter({ has: heading });
   await card.getByRole("button", { name: "Mark as done" }).click();
+
+  await card
+    .getByRole("textbox", { name: "Rejection reason (optional)" })
+    .fill("Please clean underneath it too.");
+  await card.getByRole("button", { name: "Reject job" }).click();
+
+  await expect(card.getByText("Needs another go")).toBeVisible();
+  await expect(card.getByText("Please clean underneath it too.")).toBeVisible();
+  await expect(
+    page.getByLabel(`${initialBalance} points earned`),
+  ).toBeVisible();
+
+  await card.getByRole("button", { name: "Mark as done" }).click();
+  await expect(card.getByText("Needs another go")).not.toBeVisible();
 
   await card.getByRole("button", { name: "Approve +3 points" }).click();
 

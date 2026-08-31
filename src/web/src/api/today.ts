@@ -10,6 +10,13 @@ export interface TodayJob {
   status: "open" | "pendingApproval" | "approved";
   completedAtUtc: string | null;
   approvedAtUtc: string | null;
+  latestRejection: JobRejection | null;
+}
+
+export interface JobRejection {
+  decisionId: string;
+  reason: string | null;
+  rejectedAtUtc: string;
 }
 
 export interface TodayBoard {
@@ -95,6 +102,22 @@ export async function approveJob(id: string): Promise<JobApproval> {
   };
 }
 
+export async function rejectJob(
+  id: string,
+  reason: string | null,
+): Promise<TodayJob> {
+  const client = apiClient();
+  const { data, error } = await client.POST("/api/jobs/{id}/reject", {
+    params: { path: { id } },
+    body: { reason },
+  });
+  if (!data) {
+    throw new ApiError(problemMessage(error, "That job couldn't be rejected."));
+  }
+
+  return mapJob(data);
+}
+
 export async function addJob(request: {
   name: string;
   description: string;
@@ -126,6 +149,11 @@ function mapJob(job: {
   status: string;
   completedAtUtc: string | null;
   approvedAtUtc: string | null;
+  latestRejection: {
+    decisionId: string;
+    reason: string | null;
+    rejectedAtUtc: string;
+  } | null;
 }): TodayJob {
   return {
     ...job,
