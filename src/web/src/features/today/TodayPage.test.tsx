@@ -348,9 +348,9 @@ describe("Today page", () => {
       within(card as HTMLElement).getByRole("button", { name: "Reject job" }),
     );
 
-    expect(await within(card as HTMLElement).findByRole("alert")).toHaveTextContent(
-      "This job is no longer pending approval.",
-    );
+    expect(
+      await within(card as HTMLElement).findByRole("alert"),
+    ).toHaveTextContent("This job is no longer pending approval.");
     expect(reason).toHaveValue("Please try again.");
   });
 

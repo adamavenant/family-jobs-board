@@ -179,6 +179,79 @@
           }
         }
       }
+    },
+    "/api/jobs/{id}/reject": {
+      "post": {
+        "tags": [
+          "Today"
+        ],
+        "summary": "Reject a pending job and return it for another try.",
+        "description": "Records optional feedback and returns 409 unless the job is pending approval.",
+        "operationId": "RejectJob",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -316,6 +389,30 @@
           }
         }
       },
+      "JobRejectionResponse": {
+        "required": [
+          "decisionId",
+          "reason",
+          "rejectedAtUtc"
+        ],
+        "type": "object",
+        "properties": {
+          "decisionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rejectedAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "JobResponse": {
         "required": [
           "id",
@@ -324,7 +421,8 @@
           "points",
           "status",
           "completedAtUtc",
-          "approvedAtUtc"
+          "approvedAtUtc",
+          "latestRejection"
         ],
         "type": "object",
         "properties": {
@@ -362,6 +460,16 @@
               "string"
             ],
             "format": "date-time"
+          },
+          "latestRejection": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobRejectionResponse"
+              }
+            ]
           }
         }
       },
@@ -431,6 +539,20 @@
             ]
           },
           "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "RejectJobRequest": {
+        "required": [
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "reason": {
             "type": [
               "null",
               "string"

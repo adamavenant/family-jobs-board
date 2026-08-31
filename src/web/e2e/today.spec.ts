@@ -45,7 +45,9 @@ test("rejects a completed job, retries it, and then awards points", async ({
 
   await expect(card.getByText("Needs another go")).toBeVisible();
   await expect(card.getByText("Please clean underneath it too.")).toBeVisible();
-  await expect(page.getByLabel(`${initialBalance} points earned`)).toBeVisible();
+  await expect(
+    page.getByLabel(`${initialBalance} points earned`),
+  ).toBeVisible();
 
   await card.getByRole("button", { name: "Mark as done" }).click();
   await expect(card.getByText("Needs another go")).not.toBeVisible();
