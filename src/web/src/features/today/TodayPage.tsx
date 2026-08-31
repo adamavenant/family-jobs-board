@@ -123,9 +123,11 @@ function formatAwardTime(value: string) {
 function JobCard({ job, index }: { job: TodayJob; index: number }) {
   const fetcher = useFetcher<TodayActionResult>();
   const isSubmitting = fetcher.state !== "idle";
+  const submittingIntent = fetcher.formData?.get("intent");
   const error =
     (fetcher.data?.intent === "complete" ||
-      fetcher.data?.intent === "approve") &&
+      fetcher.data?.intent === "approve" ||
+      fetcher.data?.intent === "reject") &&
     fetcher.data.jobId === job.id
       ? fetcher.data.error
       : undefined;
@@ -158,21 +160,60 @@ function JobCard({ job, index }: { job: TodayJob; index: number }) {
         </div>
       ) : isPending ? (
         <fetcher.Form method="post" className="approval-form">
-          <input type="hidden" name="intent" value="approve" />
           <input type="hidden" name="jobId" value={job.id} />
           <p>Nice work — ready for a grown-up.</p>
-          <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Approving…" : `Approve +${job.points} points`}
-          </button>
+          <label htmlFor={`rejection-reason-${job.id}`}>
+            Rejection reason <span>(optional)</span>
+          </label>
+          <textarea
+            id={`rejection-reason-${job.id}`}
+            name="reason"
+            maxLength={500}
+            rows={2}
+          />
+          <div className="review-actions">
+            <button
+              type="submit"
+              name="intent"
+              value="reject"
+              className="button--secondary"
+              disabled={isSubmitting}
+            >
+              {isSubmitting && submittingIntent === "reject"
+                ? "Rejecting…"
+                : "Reject job"}
+            </button>
+            <button
+              type="submit"
+              name="intent"
+              value="approve"
+              disabled={isSubmitting}
+            >
+              {isSubmitting && submittingIntent === "approve"
+                ? "Approving…"
+                : `Approve +${job.points} points`}
+            </button>
+          </div>
         </fetcher.Form>
       ) : (
-        <fetcher.Form method="post">
-          <input type="hidden" name="intent" value="complete" />
-          <input type="hidden" name="jobId" value={job.id} />
-          <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Sending…" : "Mark as done"}
-          </button>
-        </fetcher.Form>
+        <div className="open-job-actions">
+          {job.latestRejection ? (
+            <div className="rejection-feedback" role="status">
+              <strong>Needs another go</strong>
+              <p>
+                {job.latestRejection.reason ??
+                  "A grown-up asked you to try this job again."}
+              </p>
+            </div>
+          ) : null}
+          <fetcher.Form method="post">
+            <input type="hidden" name="intent" value="complete" />
+            <input type="hidden" name="jobId" value={job.id} />
+            <button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Sending…" : "Mark as done"}
+            </button>
+          </fetcher.Form>
+        </div>
       )}
 
       {error ? (

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using FamilyJobsBoard.Application.Clock;
+using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Infrastructure.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
@@ -231,6 +232,160 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Pending_job_can_be_rejected_with_feedback_and_submitted_again()
+    {
+        var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.NotNull(initial);
+        var target = initial.Jobs.Single(job => job.Id == DemoDataIds.FeedDog);
+
+        using var rejectOpenResponse = await Client.PostAsJsonAsync(
+            $"/api/jobs/{target.Id}/reject",
+            new { reason = "Not finished." });
+        Assert.Equal(HttpStatusCode.Conflict, rejectOpenResponse.StatusCode);
+
+        using var completeResponse = await Client.PostAsync(
+            $"/api/jobs/{target.Id}/complete",
+            null);
+        Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
+
+        using var rejectResponse = await Client.PostAsJsonAsync(
+            $"/api/jobs/{target.Id}/reject",
+            new { reason = "  Please wipe underneath the bowl.  " });
+        var rejected = await rejectResponse.Content.ReadFromJsonAsync<JobResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, rejectResponse.StatusCode);
+        Assert.NotNull(rejected);
+        Assert.Equal("open", rejected.Status);
+        Assert.Null(rejected.CompletedAtUtc);
+        Assert.Null(rejected.ApprovedAtUtc);
+        Assert.NotNull(rejected.LatestRejection);
+        Assert.Equal("Please wipe underneath the bowl.", rejected.LatestRejection.Reason);
+        Assert.NotEqual(default, rejected.LatestRejection.RejectedAtUtc);
+
+        using var repeatRejectResponse = await Client.PostAsJsonAsync(
+            $"/api/jobs/{target.Id}/reject",
+            new { reason = "Try again." });
+        Assert.Equal(HttpStatusCode.Conflict, repeatRejectResponse.StatusCode);
+
+        await RestartApplicationAsync();
+
+        var persisted = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.NotNull(persisted);
+        Assert.Equal(0, persisted.Child.PointsBalance);
+        Assert.Empty(persisted.PointEarnings);
+        var reopened = persisted.Jobs.Single(job => job.Id == target.Id);
+        Assert.Equal("open", reopened.Status);
+        Assert.Equal(
+            "Please wipe underneath the bowl.",
+            reopened.LatestRejection?.Reason);
+
+        using var resubmitResponse = await Client.PostAsync(
+            $"/api/jobs/{target.Id}/complete",
+            null);
+        var resubmitted = await resubmitResponse.Content.ReadFromJsonAsync<JobResponse>();
+        Assert.Equal(HttpStatusCode.OK, resubmitResponse.StatusCode);
+        Assert.Equal("pendingApproval", resubmitted?.Status);
+        Assert.Null(resubmitted?.LatestRejection);
+
+        using var approveResponse = await Client.PostAsync(
+            $"/api/jobs/{target.Id}/approve",
+            null);
+        Assert.Equal(HttpStatusCode.OK, approveResponse.StatusCode);
+
+        var finalBoard = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.NotNull(finalBoard);
+        Assert.Equal(target.Points, finalBoard.Child.PointsBalance);
+        Assert.Single(finalBoard.PointEarnings);
+
+        var factory = _factory ?? throw new InvalidOperationException("Test API was not initialised.");
+        await using var scope = factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var decisions = await database.JobReviewDecisions
+            .AsNoTracking()
+            .Where(decision => decision.JobId == target.Id)
+            .OrderBy(decision => decision.DecidedAtUtc)
+            .ToListAsync();
+        Assert.Collection(
+            decisions,
+            decision =>
+            {
+                Assert.Equal(JobReviewOutcome.Rejected, decision.Outcome);
+                Assert.Equal("Please wipe underneath the bowl.", decision.Reason);
+            },
+            decision =>
+            {
+                Assert.Equal(JobReviewOutcome.Approved, decision.Outcome);
+                Assert.Null(decision.Reason);
+            });
+    }
+
+    [Fact]
+    public async Task Rejection_accepts_no_reason_and_rejects_an_overlong_reason()
+    {
+        var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.NotNull(initial);
+        var noReasonJob = initial.Jobs.Single(job => job.Id == DemoDataIds.FeedDog);
+        var invalidReasonJob = initial.Jobs.Single(job => job.Id == DemoDataIds.PackBag);
+        await CompleteAsync(noReasonJob.Id);
+        await CompleteAsync(invalidReasonJob.Id);
+
+        using var noReasonResponse = await Client.PostAsJsonAsync(
+            $"/api/jobs/{noReasonJob.Id}/reject",
+            new { reason = "   " });
+        var noReason = await noReasonResponse.Content.ReadFromJsonAsync<JobResponse>();
+        Assert.Equal(HttpStatusCode.OK, noReasonResponse.StatusCode);
+        Assert.NotNull(noReason?.LatestRejection);
+        Assert.Null(noReason.LatestRejection.Reason);
+
+        using var invalidResponse = await Client.PostAsJsonAsync(
+            $"/api/jobs/{invalidReasonJob.Id}/reject",
+            new { reason = new string('r', JobReviewDecision.MaximumReasonLength + 1) });
+        var problem = await invalidResponse.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        Assert.Equal(HttpStatusCode.BadRequest, invalidResponse.StatusCode);
+        Assert.Equal("Invalid rejection data", problem?.Title);
+        Assert.Contains("Reason", problem?.Errors.Keys ?? []);
+
+        var board = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.Equal(
+            "pendingApproval",
+            board?.Jobs.Single(job => job.Id == invalidReasonJob.Id).Status);
+        Assert.Equal(0, board?.Child.PointsBalance);
+    }
+
+    [Fact]
+    public async Task Review_decision_migration_backfills_existing_approvals()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:18-alpine")
+            .WithDatabase("family_jobs_board_review_upgrade_tests")
+            .WithUsername("family_jobs_board")
+            .WithPassword("family_jobs_board")
+            .Build();
+        await postgres.StartAsync();
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(postgres.GetConnectionString())
+            .Options;
+        await using var database = new AppDbContext(options);
+        var migrator = database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260831113745_AddHouseholdMemberNickname");
+        var jobId = Guid.NewGuid();
+        var approvedAtUtc = new DateTimeOffset(2026, 8, 31, 10, 30, 0, TimeSpan.Zero);
+        await database.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO household_members (id, first_name, nickname, is_adult) VALUES ({DemoDataIds.Child}, 'Addie', NULL, FALSE);");
+        await database.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO jobs (id, child_id, name, description, points, scheduled_date, status, completed_at_utc, approved_at_utc) VALUES ({jobId}, {DemoDataIds.Child}, 'Existing job', 'Already approved.', 4, DATE '2026-08-31', 'Approved', {approvedAtUtc}, {approvedAtUtc});");
+
+        await migrator.MigrateAsync();
+        database.ChangeTracker.Clear();
+        var decision = await database.JobReviewDecisions.SingleAsync();
+
+        Assert.Equal(jobId, decision.JobId);
+        Assert.Equal(JobReviewOutcome.Approved, decision.Outcome);
+        Assert.Null(decision.Reason);
+        Assert.Equal(approvedAtUtc, decision.DecidedAtUtc);
+    }
+
+    [Fact]
     public async Task Point_earnings_are_newest_first_and_sum_to_the_balance()
     {
         var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
@@ -325,6 +480,12 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         approveResponse.EnsureSuccessStatusCode();
     }
 
+    private async Task CompleteAsync(Guid jobId)
+    {
+        using var response = await Client.PostAsync($"/api/jobs/{jobId}/complete", null);
+        response.EnsureSuccessStatusCode();
+    }
+
     private async Task RestartApplicationAsync()
     {
         _client?.Dispose();
@@ -357,7 +518,13 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         int Points,
         string Status,
         DateTimeOffset? CompletedAtUtc,
-        DateTimeOffset? ApprovedAtUtc);
+        DateTimeOffset? ApprovedAtUtc,
+        JobRejectionResponse? LatestRejection);
+
+    private sealed record JobRejectionResponse(
+        Guid DecisionId,
+        string? Reason,
+        DateTimeOffset RejectedAtUtc);
 
     private sealed record JobApprovalResponse(JobResponse Job, int PointsBalance);
 

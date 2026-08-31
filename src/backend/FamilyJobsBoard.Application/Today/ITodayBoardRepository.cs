@@ -15,6 +15,11 @@ public interface ITodayBoardRepository
 
     Task<Job?> GetJobAsync(Guid jobId, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(
+        Guid childId,
+        DateOnly scheduledDate,
+        CancellationToken cancellationToken);
+
     Task AddJobAsync(Job job, CancellationToken cancellationToken);
 
     Task<TodayPointsSummary> GetPointsSummaryAsync(
@@ -22,6 +27,10 @@ public interface ITodayBoardRepository
         CancellationToken cancellationToken);
 
     Task AddPointsAwardAsync(PointsLedgerEntry entry, CancellationToken cancellationToken);
+
+    Task AddReviewDecisionAsync(
+        JobReviewDecision decision,
+        CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

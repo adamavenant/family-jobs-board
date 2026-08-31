@@ -25,6 +25,7 @@ const board = {
       status: "open",
       completedAtUtc: null,
       approvedAtUtc: null,
+      latestRejection: null,
     },
     {
       id: "b9d6a90c-58e4-4606-bf65-61de33c2573d",
@@ -34,6 +35,7 @@ const board = {
       status: "open",
       completedAtUtc: null,
       approvedAtUtc: null,
+      latestRejection: null,
     },
     {
       id: "ea64b5d3-ab18-4c75-bc33-eb3cbf7524f6",
@@ -43,6 +45,7 @@ const board = {
       status: "pendingApproval",
       completedAtUtc: "2026-08-29T09:00:00Z",
       approvedAtUtc: null,
+      latestRejection: null,
     },
   ],
 };
@@ -114,6 +117,7 @@ describe("Today page", () => {
       status: "open",
       completedAtUtc: null,
       approvedAtUtc: null,
+      latestRejection: null,
     };
     const boardWithAddedJob = { ...board, jobs: [...board.jobs, addedJob] };
     const completedJob = {
@@ -234,6 +238,120 @@ describe("Today page", () => {
     expect(
       within(history as HTMLElement).getByText("Clear the table"),
     ).toBeInTheDocument();
+  });
+
+  it("rejects a pending job with feedback and allows another try", async () => {
+    const pendingJob = board.jobs[2];
+    if (!pendingJob) {
+      throw new Error("The pending-job fixture was missing.");
+    }
+    const rejectedJob = {
+      ...pendingJob,
+      status: "open",
+      completedAtUtc: null,
+      latestRejection: {
+        decisionId: "c01e1d57-826e-4eb6-978a-72dcfe2bbc8a",
+        reason: "Please wipe underneath the table.",
+        rejectedAtUtc: "2026-08-29T10:15:00Z",
+      },
+    };
+    const rejectedBoard = {
+      ...board,
+      jobs: [board.jobs[0], board.jobs[1], rejectedJob],
+    };
+    const resubmittedJob = {
+      ...rejectedJob,
+      status: "pendingApproval",
+      completedAtUtc: "2026-08-29T10:30:00Z",
+      latestRejection: null,
+    };
+    const resubmittedBoard = {
+      ...board,
+      jobs: [board.jobs[0], board.jobs[1], resubmittedJob],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(board))
+        .mockResolvedValueOnce(jsonResponse(rejectedJob))
+        .mockResolvedValueOnce(jsonResponse(rejectedBoard))
+        .mockResolvedValueOnce(jsonResponse(resubmittedJob))
+        .mockResolvedValueOnce(jsonResponse(resubmittedBoard)),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    const heading = await screen.findByRole("heading", {
+      name: "Clear the table",
+    });
+    const card = heading.closest("article");
+    expect(card).not.toBeNull();
+    const reason = within(card as HTMLElement).getByRole("textbox", {
+      name: "Rejection reason (optional)",
+    });
+    await user.type(reason, "Please wipe underneath the table.");
+    await user.click(
+      within(card as HTMLElement).getByRole("button", { name: "Reject job" }),
+    );
+
+    expect(
+      await within(card as HTMLElement).findByText("Needs another go"),
+    ).toBeInTheDocument();
+    expect(
+      within(card as HTMLElement).getByText(
+        "Please wipe underneath the table.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("0 points earned")).toBeInTheDocument();
+
+    await user.click(
+      within(card as HTMLElement).getByRole("button", { name: "Mark as done" }),
+    );
+
+    expect(
+      await within(card as HTMLElement).findByText(
+        "Nice work — ready for a grown-up.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(card as HTMLElement).queryByText("Needs another go"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reports rejection failures without clearing the reason", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(board))
+        .mockResolvedValueOnce(
+          jsonResponse(
+            { detail: "This job is no longer pending approval." },
+            { status: 409 },
+          ),
+        ),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    const heading = await screen.findByRole("heading", {
+      name: "Clear the table",
+    });
+    const card = heading.closest("article");
+    expect(card).not.toBeNull();
+    const reason = within(card as HTMLElement).getByRole("textbox", {
+      name: "Rejection reason (optional)",
+    });
+    await user.type(reason, "Please try again.");
+    await user.click(
+      within(card as HTMLElement).getByRole("button", { name: "Reject job" }),
+    );
+
+    expect(await within(card as HTMLElement).findByRole("alert")).toHaveTextContent(
+      "This job is no longer pending approval.",
+    );
+    expect(reason).toHaveValue("Please try again.");
   });
 
   it("persists an explicit dark theme selection", async () => {

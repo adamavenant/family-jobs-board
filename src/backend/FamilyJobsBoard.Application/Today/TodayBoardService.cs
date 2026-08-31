@@ -20,6 +20,11 @@ public sealed class TodayBoardService
         var child = await _repository.GetDemoChildAsync(cancellationToken)
             ?? throw new TodayBoardNotAvailableException();
         var jobs = await _repository.GetJobsAsync(child.Id, _clock.Today, cancellationToken);
+        var latestRejections = await _repository.GetLatestRejectionsAsync(
+            child.Id,
+            _clock.Today,
+            cancellationToken);
+        var rejectionByJobId = latestRejections.ToDictionary(rejection => rejection.JobId);
         var points = await _repository.GetPointsSummaryAsync(child.Id, cancellationToken);
 
         return new TodayBoard(
@@ -29,7 +34,9 @@ public sealed class TodayBoardService
             child.DisplayName,
             points.Balance,
             _clock.Today,
-            jobs.Select(MapJob).ToArray(),
+            jobs.Select(job => MapJob(
+                job,
+                rejectionByJobId.GetValueOrDefault(job.Id))).ToArray(),
             points.Earnings);
     }
 
@@ -41,7 +48,7 @@ public sealed class TodayBoardService
         job.MarkComplete(_clock.UtcNow);
         await _repository.SaveChangesAsync(cancellationToken);
 
-        return MapJob(job);
+        return MapJob(job, null);
     }
 
     public async Task<TodayJob> AddJobAsync(
@@ -70,7 +77,7 @@ public sealed class TodayBoardService
         await _repository.AddJobAsync(job, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
 
-        return MapJob(job);
+        return MapJob(job, null);
     }
 
     public async Task<TodayJobApproval> ApproveAsync(
@@ -80,21 +87,65 @@ public sealed class TodayBoardService
         var job = await _repository.GetJobAsync(jobId, cancellationToken)
             ?? throw new JobNotFoundException(jobId);
 
-        job.Approve(_clock.UtcNow);
+        var decidedAtUtc = _clock.UtcNow;
+        job.Approve(decidedAtUtc);
+        var decision = new JobReviewDecision(
+            Guid.NewGuid(),
+            job.Id,
+            JobReviewOutcome.Approved,
+            null,
+            decidedAtUtc);
         var award = new PointsLedgerEntry(
             Guid.NewGuid(),
             job.ChildId,
             job.Id,
             job.Points,
-            _clock.UtcNow);
+            decidedAtUtc);
 
+        await _repository.AddReviewDecisionAsync(decision, cancellationToken);
         await _repository.AddPointsAwardAsync(award, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
         var points = await _repository.GetPointsSummaryAsync(
             job.ChildId,
             cancellationToken);
 
-        return new TodayJobApproval(MapJob(job), points.Balance);
+        return new TodayJobApproval(MapJob(job, null), points.Balance);
+    }
+
+    public async Task<TodayJob> RejectAsync(
+        Guid jobId,
+        string? reason,
+        CancellationToken cancellationToken)
+    {
+        var trimmedReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        if (trimmedReason?.Length > JobReviewDecision.MaximumReasonLength)
+        {
+            throw new InvalidJobRejectionException(new Dictionary<string, string[]>
+            {
+                ["Reason"] =
+                    [$"A rejection reason cannot exceed {JobReviewDecision.MaximumReasonLength} characters."],
+            });
+        }
+
+        var job = await _repository.GetJobAsync(jobId, cancellationToken)
+            ?? throw new JobNotFoundException(jobId);
+        var decidedAtUtc = _clock.UtcNow;
+        job.Reject();
+        var decision = new JobReviewDecision(
+            Guid.NewGuid(),
+            job.Id,
+            JobReviewOutcome.Rejected,
+            trimmedReason,
+            decidedAtUtc);
+
+        await _repository.AddReviewDecisionAsync(decision, cancellationToken);
+        await _repository.SaveChangesAsync(cancellationToken);
+
+        return MapJob(job, new TodayJobRejection(
+            decision.Id,
+            decision.JobId,
+            decision.Reason,
+            decision.DecidedAtUtc));
     }
 
     private static Dictionary<string, string[]> ValidateNewJob(
@@ -128,7 +179,7 @@ public sealed class TodayBoardService
         return errors;
     }
 
-    private static TodayJob MapJob(Job job)
+    private static TodayJob MapJob(Job job, TodayJobRejection? latestRejection)
     {
         var status = job.Status switch
         {
@@ -145,6 +196,7 @@ public sealed class TodayBoardService
             job.Points,
             status,
             job.CompletedAtUtc,
-            job.ApprovedAtUtc);
+            job.ApprovedAtUtc,
+            job.Status == JobStatus.Open ? latestRejection : null);
     }
 }

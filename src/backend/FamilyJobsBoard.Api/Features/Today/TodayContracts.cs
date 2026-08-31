@@ -15,6 +15,8 @@ public sealed record ChildResponse(
 
 public sealed record AddJobRequest(string? Name, string? Description, int Points);
 
+public sealed record RejectJobRequest(string? Reason);
+
 public sealed record JobResponse(
     Guid Id,
     string Name,
@@ -22,7 +24,13 @@ public sealed record JobResponse(
     int Points,
     string Status,
     DateTimeOffset? CompletedAtUtc,
-    DateTimeOffset? ApprovedAtUtc);
+    DateTimeOffset? ApprovedAtUtc,
+    JobRejectionResponse? LatestRejection);
+
+public sealed record JobRejectionResponse(
+    Guid DecisionId,
+    string? Reason,
+    DateTimeOffset RejectedAtUtc);
 
 public sealed record JobApprovalResponse(JobResponse Job, int PointsBalance);
 

@@ -16,6 +16,8 @@ public sealed class AppDbContext : DbContext
 
     public DbSet<Job> Jobs => Set<Job>();
 
+    public DbSet<JobReviewDecision> JobReviewDecisions => Set<JobReviewDecision>();
+
     public DbSet<PointsLedgerEntry> PointsLedgerEntries => Set<PointsLedgerEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

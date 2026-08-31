@@ -102,6 +102,17 @@ public sealed class Job
         ApprovedAtUtc = approvedAtUtc.ToUniversalTime();
     }
 
+    public void Reject()
+    {
+        if (Status != JobStatus.PendingApproval)
+        {
+            throw new JobRejectionRejectedException(Id);
+        }
+
+        Status = JobStatus.Open;
+        CompletedAtUtc = null;
+    }
+
     public void ScheduleFor(DateOnly date)
     {
         ScheduledDate = date;

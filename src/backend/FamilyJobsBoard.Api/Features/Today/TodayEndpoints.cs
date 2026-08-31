@@ -32,6 +32,11 @@ internal static class TodayEndpoints
             .WithSummary("Approve a pending job and award its points.")
             .WithDescription("Returns 409 unless the job is pending approval or its points were already awarded.");
 
+        group.MapPost("/jobs/{id:guid}/reject", RejectJobAsync)
+            .WithName("RejectJob")
+            .WithSummary("Reject a pending job and return it for another try.")
+            .WithDescription("Records optional feedback and returns 409 unless the job is pending approval.");
+
         return endpoints;
     }
 
@@ -145,6 +150,44 @@ internal static class TodayEndpoints
         }
     }
 
+    private static async Task<Results<Ok<JobResponse>, ValidationProblem, NotFound<ProblemDetails>, Conflict<ProblemDetails>>>
+        RejectJobAsync(
+            Guid id,
+            RejectJobRequest request,
+            TodayBoardService service,
+            CancellationToken cancellationToken)
+    {
+        try
+        {
+            var job = await service.RejectAsync(id, request.Reason, cancellationToken);
+            return TypedResults.Ok(MapJob(job));
+        }
+        catch (InvalidJobRejectionException exception)
+        {
+            return TypedResults.ValidationProblem(
+                exception.Errors,
+                title: "Invalid rejection data");
+        }
+        catch (JobNotFoundException exception)
+        {
+            return TypedResults.NotFound(new ProblemDetails
+            {
+                Title = "Job not found",
+                Detail = exception.Message,
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+        catch (JobRejectionRejectedException exception)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Job cannot be rejected",
+                Detail = exception.Message,
+                Status = StatusCodes.Status409Conflict,
+            });
+        }
+    }
+
     private static TodayResponse MapBoard(TodayBoard board)
     {
         return new TodayResponse(
@@ -178,6 +221,12 @@ internal static class TodayEndpoints
             job.Points,
             job.Status,
             job.CompletedAtUtc,
-            job.ApprovedAtUtc);
+            job.ApprovedAtUtc,
+            job.LatestRejection is null
+                ? null
+                : new JobRejectionResponse(
+                    job.LatestRejection.DecisionId,
+                    job.LatestRejection.Reason,
+                    job.LatestRejection.RejectedAtUtc));
     }
 }

@@ -444,6 +444,56 @@ h1 {
   color: var(--pending-text);
   font-weight: 700;
 }
+.approval-form label {
+  color: var(--card-text);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.approval-form label span {
+  font-weight: 500;
+}
+.approval-form textarea {
+  width: 100%;
+  padding: 10px 11px;
+  resize: vertical;
+  color: var(--text);
+  background: var(--input);
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+}
+.review-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
+  gap: 8px;
+}
+.job-card .button--secondary {
+  color: var(--error-text);
+  background: var(--error-bg);
+  border: 1px solid var(--error-text);
+}
+.job-card .button--secondary:hover {
+  color: var(--error-bg);
+  background: var(--error-text);
+}
+.open-job-actions {
+  display: grid;
+  gap: 12px;
+}
+.rejection-feedback {
+  padding: 12px 14px;
+  color: var(--error-text);
+  background: var(--error-bg);
+  border-left: 4px solid var(--error-text);
+  border-radius: 10px;
+}
+.rejection-feedback strong {
+  display: block;
+  margin-bottom: 3px;
+}
+.rejection-feedback p {
+  color: inherit;
+  font-size: 0.9rem;
+}
 .complete-state--approved {
   color: var(--approved-text);
 }
@@ -600,6 +650,9 @@ h1 {
   }
   .job-card {
     min-height: 300px;
+  }
+  .review-actions {
+    grid-template-columns: 1fr;
   }
 }
 

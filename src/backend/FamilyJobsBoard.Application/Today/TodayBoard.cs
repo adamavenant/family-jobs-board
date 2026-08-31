@@ -17,7 +17,14 @@ public sealed record TodayJob(
     int Points,
     string Status,
     DateTimeOffset? CompletedAtUtc,
-    DateTimeOffset? ApprovedAtUtc);
+    DateTimeOffset? ApprovedAtUtc,
+    TodayJobRejection? LatestRejection);
+
+public sealed record TodayJobRejection(
+    Guid DecisionId,
+    Guid JobId,
+    string? Reason,
+    DateTimeOffset RejectedAtUtc);
 
 public sealed record TodayJobApproval(TodayJob Job, int PointsBalance);
 

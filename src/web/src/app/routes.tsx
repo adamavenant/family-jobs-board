@@ -7,6 +7,7 @@ import {
   approveJob,
   completeJob,
   getToday,
+  rejectJob,
 } from "../api/today";
 import { LoadingPage } from "./LoadingPage";
 import { TodayPage } from "../features/today/TodayPage";
@@ -29,8 +30,17 @@ export interface ApproveActionResult {
   error?: string;
 }
 
+export interface RejectActionResult {
+  intent: "reject";
+  jobId: string;
+  error?: string;
+}
+
 export type TodayActionResult =
-  CompleteActionResult | AddJobActionResult | ApproveActionResult;
+  | CompleteActionResult
+  | AddJobActionResult
+  | ApproveActionResult
+  | RejectActionResult;
 
 async function todayLoader() {
   return getToday();
@@ -46,8 +56,37 @@ async function todayAction({
   if (form.get("intent") === "approve") {
     return approveAction(form);
   }
+  if (form.get("intent") === "reject") {
+    return rejectAction(form);
+  }
 
   return completeAction(form);
+}
+
+async function rejectAction(form: FormData): Promise<RejectActionResult> {
+  const jobId = form.get("jobId");
+  const reason = form.get("reason");
+  if (typeof jobId !== "string") {
+    return {
+      intent: "reject",
+      jobId: "",
+      error: "The selected job was missing.",
+    };
+  }
+
+  try {
+    await rejectJob(jobId, typeof reason === "string" ? reason : null);
+    return { intent: "reject", jobId };
+  } catch (error) {
+    return {
+      intent: "reject",
+      jobId,
+      error:
+        error instanceof ApiError
+          ? error.message
+          : "That job couldn't be rejected.",
+    };
+  }
 }
 
 async function approveAction(form: FormData): Promise<ApproveActionResult> {
