@@ -1,17 +1,25 @@
 namespace FamilyJobsBoard.Application.Today;
 
 public sealed record TodayBoard(
-    Guid ChildId,
-    string ChildFirstName,
-    string? ChildNickname,
-    string ChildDisplayName,
-    int PointsBalance,
+    TodayMember Viewer,
+    IReadOnlyList<TodayMember> Members,
     DateOnly Date,
     IReadOnlyList<TodayJob> Jobs,
-    IReadOnlyList<TodayPointEarning> PointEarnings);
+    int? PointsBalance,
+    IReadOnlyList<TodayPointEarning> PointEarnings,
+    int PendingApprovalCount);
+
+public sealed record TodayMember(
+    Guid Id,
+    string FirstName,
+    string? Nickname,
+    string DisplayName,
+    bool IsAdult);
 
 public sealed record TodayJob(
     Guid Id,
+    Guid ChildId,
+    string ChildDisplayName,
     string Name,
     string Description,
     int Points,

@@ -82,12 +82,14 @@ body {
 }
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
+select:focus-visible,
 summary:focus-visible {
   outline: 4px solid var(--focus);
   outline-offset: 3px;
@@ -111,6 +113,36 @@ main {
 }
 .hero__toolbar .eyebrow {
   margin: 0;
+}
+.hero__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.member-picker {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.member-picker__label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.member-picker select {
+  min-height: 30px;
+  max-width: 190px;
+  color: var(--text);
+  background: var(--input);
+  border: 0;
+  border-radius: 999px;
+  font-weight: 700;
 }
 .theme-toggle {
   min-height: 44px;
@@ -265,7 +297,7 @@ h1 {
   gap: 7px;
 }
 .form-group:first-of-type,
-.form-group:nth-of-type(2),
+.form-group:nth-of-type(3),
 .add-job__form > .error-message,
 .add-job__form > .success-message {
   grid-column: 1 / -1;
@@ -275,7 +307,8 @@ h1 {
   font-weight: 700;
 }
 .form-group input,
-.form-group textarea {
+.form-group textarea,
+.form-group select {
   width: 100%;
   padding: 11px 12px;
   color: var(--text);
@@ -395,6 +428,14 @@ h1 {
   margin: 0 0 12px;
   font-size: 1.8rem;
   line-height: 1.08;
+}
+.job-card .job-card__assignee {
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .job-card p {
   margin: 0;
@@ -613,6 +654,23 @@ h1 {
     align-items: start;
     flex-direction: column;
   }
+  .hero__toolbar {
+    align-items: start;
+    flex-direction: column;
+  }
+  .hero__actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .member-picker {
+    min-width: 0;
+  }
+  .member-picker__label {
+    display: none;
+  }
+  .member-picker select {
+    max-width: 160px;
+  }
   .hero__count {
     width: 98px;
     min-width: 98px;
@@ -643,7 +701,7 @@ h1 {
     grid-template-columns: 1fr;
   }
   .form-group:first-of-type,
-  .form-group:nth-of-type(2),
+  .form-group:nth-of-type(3),
   .add-job__form > .error-message,
   .add-job__form > .success-message {
     grid-column: auto;

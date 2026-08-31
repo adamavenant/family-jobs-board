@@ -6,17 +6,19 @@ namespace FamilyJobsBoard.Application.Today;
 
 public interface ITodayBoardRepository
 {
-    Task<HouseholdMember?> GetDemoChildAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<HouseholdMember>> GetMembersAsync(CancellationToken cancellationToken);
+
+    Task<HouseholdMember?> GetMemberAsync(Guid memberId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<Job>> GetJobsAsync(
-        Guid childId,
+        IReadOnlyCollection<Guid> childIds,
         DateOnly scheduledDate,
         CancellationToken cancellationToken);
 
     Task<Job?> GetJobAsync(Guid jobId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(
-        Guid childId,
+        IReadOnlyCollection<Guid> childIds,
         DateOnly scheduledDate,
         CancellationToken cancellationToken);
 
