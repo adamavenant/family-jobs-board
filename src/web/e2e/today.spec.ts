@@ -4,14 +4,12 @@ test("rejects a completed job, retries it, and then awards points", async ({
   page,
 }) => {
   const jobName = `Playwright job ${Date.now()}`;
+  const addieId = "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c";
 
-  await page.goto("/");
+  await page.goto(`/?member=${addieId}`);
   await expect(
     page.getByRole("heading", { name: /Good day, Addie!/ }),
   ).toBeVisible();
-  const initialBalance = Number(
-    await page.locator(".hero__balance strong").innerText(),
-  );
   const grownUpTools = page.locator("details.grown-up-tools");
   await expect(grownUpTools).not.toHaveAttribute("open", "");
   await grownUpTools.locator("summary").click();
@@ -21,6 +19,7 @@ test("rejects a completed job, retries it, and then awards points", async ({
     exact: true,
   });
   await expect(points).toHaveValue("1");
+  await page.getByLabel("Assign to").selectOption({ label: "Fredster" });
 
   await page.getByLabel("Job name").fill(jobName);
   await page
@@ -36,8 +35,17 @@ test("rejects a completed job, retries it, and then awards points", async ({
   await expect(points).toHaveValue("1");
 
   const card = page.getByRole("article").filter({ has: heading });
+  await expect(card.getByText("For Fredster")).toBeVisible();
+  await page.getByLabel("Viewing as").selectOption({ label: "Fredster — Child" });
+  await expect(
+    page.getByRole("heading", { name: /Good day, Fredster!/ }),
+  ).toBeVisible();
+  const initialBalance = Number(
+    await page.locator(".hero__balance strong").innerText(),
+  );
   await card.getByRole("button", { name: "Mark as done" }).click();
 
+  await page.getByLabel("Viewing as").selectOption({ label: "Addie — Adult" });
   await card
     .getByRole("textbox", { name: "Rejection reason (optional)" })
     .fill("Please clean underneath it too.");
@@ -45,16 +53,15 @@ test("rejects a completed job, retries it, and then awards points", async ({
 
   await expect(card.getByText("Needs another go")).toBeVisible();
   await expect(card.getByText("Please clean underneath it too.")).toBeVisible();
-  await expect(
-    page.getByLabel(`${initialBalance} points earned`),
-  ).toBeVisible();
-
+  await page.getByLabel("Viewing as").selectOption({ label: "Fredster — Child" });
   await card.getByRole("button", { name: "Mark as done" }).click();
   await expect(card.getByText("Needs another go")).not.toBeVisible();
 
+  await page.getByLabel("Viewing as").selectOption({ label: "Addie — Adult" });
   await card.getByRole("button", { name: "Approve +3 points" }).click();
 
   await expect(card.getByText("Approved — 3 points awarded")).toBeVisible();
+  await page.getByLabel("Viewing as").selectOption({ label: "Fredster — Child" });
   await expect(
     page.getByLabel(`${initialBalance + 3} points earned`),
   ).toBeVisible();
@@ -75,7 +82,7 @@ test("shows a server failure and preserves the entered job", async ({
     });
   });
 
-  await page.goto("/");
+  await page.goto("/?member=22eb0cc1-058e-4b2e-bb18-d7aaad564a6c");
   await page.locator("details.grown-up-tools summary").click();
   await page.getByLabel("Job name").fill("Keep this job");
   await page.getByRole("spinbutton", { name: "Points", exact: true }).fill("4");
@@ -101,4 +108,21 @@ test("persists the selected dark theme after reload", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Light mode" }),
   ).toHaveAttribute("aria-pressed", "true");
+});
+
+test("persists the selected family member in the URL and local storage", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Viewing as").selectOption({ label: "Harrie — Child" });
+
+  await expect(page).toHaveURL(/member=e22facf5-69ce-45ce-9dad-306eef1852c9/);
+  await expect(
+    page.getByRole("heading", { name: /Good day, Harrie!/ }),
+  ).toBeVisible();
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: /Good day, Harrie!/ }),
+  ).toBeVisible();
 });
