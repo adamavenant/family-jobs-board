@@ -1,5 +1,6 @@
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Jobs;
+using FamilyJobsBoard.Domain.Points;
 using Microsoft.EntityFrameworkCore;
 
 namespace FamilyJobsBoard.Infrastructure.Data;
@@ -14,6 +15,8 @@ public sealed class AppDbContext : DbContext
     public DbSet<HouseholdMember> HouseholdMembers => Set<HouseholdMember>();
 
     public DbSet<Job> Jobs => Set<Job>();
+
+    public DbSet<PointsLedgerEntry> PointsLedgerEntries => Set<PointsLedgerEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

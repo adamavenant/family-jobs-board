@@ -7,7 +7,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { routes } from "../../app/routes";
 
 const board = {
-  child: { id: "c7b3309f-c84c-4b90-b923-305597484642", name: "Alex" },
+  child: {
+    id: "c7b3309f-c84c-4b90-b923-305597484642",
+    name: "Alex",
+    pointsBalance: 0,
+  },
   date: "2026-08-29",
   jobs: [
     {
@@ -17,6 +21,7 @@ const board = {
       points: 5,
       status: "open",
       completedAtUtc: null,
+      approvedAtUtc: null,
     },
     {
       id: "b9d6a90c-58e4-4606-bf65-61de33c2573d",
@@ -25,6 +30,7 @@ const board = {
       points: 8,
       status: "open",
       completedAtUtc: null,
+      approvedAtUtc: null,
     },
     {
       id: "ea64b5d3-ab18-4c75-bc33-eb3cbf7524f6",
@@ -33,11 +39,16 @@ const board = {
       points: 5,
       status: "pendingApproval",
       completedAtUtc: "2026-08-29T09:00:00Z",
+      approvedAtUtc: null,
     },
   ],
 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  window.localStorage.clear();
+  delete document.documentElement.dataset.theme;
+});
 
 describe("Today page", () => {
   it("shows a loading state while today's board is requested", () => {
@@ -66,7 +77,7 @@ describe("Today page", () => {
       screen.getByRole("heading", { name: "Pack school bag" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Nice work — sent for approval"),
+      screen.getByText("Nice work — ready for a grown-up."),
     ).toBeInTheDocument();
   });
 
@@ -78,12 +89,14 @@ describe("Today page", () => {
       points: 4,
       status: "open",
       completedAtUtc: null,
+      approvedAtUtc: null,
     };
     const boardWithAddedJob = { ...board, jobs: [...board.jobs, addedJob] };
     const completedJob = {
       ...addedJob,
       status: "pendingApproval",
       completedAtUtc: "2026-08-29T10:00:00Z",
+      approvedAtUtc: null,
     };
     const completedBoard = {
       ...board,
@@ -129,9 +142,75 @@ describe("Today page", () => {
 
     expect(
       await within(addedCard as HTMLElement).findByText(
-        "Nice work — sent for approval",
+        "Nice work — ready for a grown-up.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("approves a pending job and updates the points balance", async () => {
+    const pendingJob = board.jobs[2];
+    const approvedJob = {
+      ...pendingJob,
+      status: "approved",
+      approvedAtUtc: "2026-08-29T10:30:00Z",
+    };
+    const approvedBoard = {
+      ...board,
+      child: { ...board.child, pointsBalance: 5 },
+      jobs: [board.jobs[0], board.jobs[1], approvedJob],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(board))
+        .mockResolvedValueOnce(
+          jsonResponse({ job: approvedJob, pointsBalance: 5 }),
+        )
+        .mockResolvedValueOnce(jsonResponse(approvedBoard)),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    const heading = await screen.findByRole("heading", {
+      name: "Clear the table",
+    });
+    const card = heading.closest("article");
+    expect(card).not.toBeNull();
+    await user.click(
+      within(card as HTMLElement).getByRole("button", {
+        name: "Approve +5 points",
+      }),
+    );
+
+    expect(await screen.findByLabelText("5 points earned")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Approved — 5 points awarded"),
+    ).toBeInTheDocument();
+  });
+
+  it("persists an explicit dark theme selection", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => Promise.resolve(jsonResponse(board))),
+    );
+    const user = userEvent.setup();
+    const rendered = renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Alex!" });
+    await user.click(screen.getByRole("button", { name: "Dark mode" }));
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(window.localStorage.getItem("family-jobs-board-theme")).toBe("dark");
+
+    rendered.unmount();
+    document.documentElement.dataset.theme =
+      window.localStorage.getItem("family-jobs-board-theme") ?? "light";
+    renderApp();
+
+    expect(
+      await screen.findByRole("button", { name: "Light mode" }),
+    ).toBePressed();
   });
 
   it("reports creation failures without removing the entered job", async () => {

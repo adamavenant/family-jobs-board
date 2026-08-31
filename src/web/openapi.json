@@ -126,6 +126,59 @@
           }
         }
       }
+    },
+    "/api/jobs/{id}/approve": {
+      "post": {
+        "tags": [
+          "Today"
+        ],
+        "summary": "Approve a pending job and award its points.",
+        "description": "Returns 409 unless the job is pending approval or its points were already awarded.",
+        "operationId": "ApproveJob",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobApprovalResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -163,7 +216,8 @@
       "ChildResponse": {
         "required": [
           "id",
-          "name"
+          "name",
+          "pointsBalance"
         ],
         "type": "object",
         "properties": {
@@ -173,6 +227,14 @@
           },
           "name": {
             "type": "string"
+          },
+          "pointsBalance": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -223,6 +285,26 @@
           }
         }
       },
+      "JobApprovalResponse": {
+        "required": [
+          "job",
+          "pointsBalance"
+        ],
+        "type": "object",
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/JobResponse"
+          },
+          "pointsBalance": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "JobResponse": {
         "required": [
           "id",
@@ -230,7 +312,8 @@
           "description",
           "points",
           "status",
-          "completedAtUtc"
+          "completedAtUtc",
+          "approvedAtUtc"
         ],
         "type": "object",
         "properties": {
@@ -256,6 +339,13 @@
             "type": "string"
           },
           "completedAtUtc": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "approvedAtUtc": {
             "type": [
               "null",
               "string"

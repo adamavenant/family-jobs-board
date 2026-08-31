@@ -1,18 +1,21 @@
 import { expect, test } from "@playwright/test";
 
-test("adds a job to today's board and completes it", async ({ page }) => {
+test("adds, completes, and approves a job exactly once", async ({ page }) => {
   const jobName = `Playwright job ${Date.now()}`;
 
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: /Good day, Alex!/ }),
   ).toBeVisible();
+  const initialBalance = Number(
+    await page.locator(".hero__balance strong").innerText(),
+  );
 
   await page.getByLabel("Job name").fill(jobName);
   await page
     .getByLabel("Description")
     .fill("Created through the public browser interface.");
-  await page.getByLabel("Points").fill("3");
+  await page.getByRole("spinbutton", { name: "Points", exact: true }).fill("3");
   await page.getByRole("button", { name: "Add job" }).click();
 
   const heading = page.getByRole("heading", { name: jobName, exact: true });
@@ -23,7 +26,12 @@ test("adds a job to today's board and completes it", async ({ page }) => {
   const card = page.getByRole("article").filter({ has: heading });
   await card.getByRole("button", { name: "Mark as done" }).click();
 
-  await expect(card.getByText("Nice work — sent for approval")).toBeVisible();
+  await card.getByRole("button", { name: "Approve +3 points" }).click();
+
+  await expect(card.getByText("Approved — 3 points awarded")).toBeVisible();
+  await expect(
+    page.getByLabel(`${initialBalance + 3} points earned`),
+  ).toBeVisible();
 });
 
 test("shows a server failure and preserves the entered job", async ({
@@ -40,7 +48,7 @@ test("shows a server failure and preserves the entered job", async ({
 
   await page.goto("/");
   await page.getByLabel("Job name").fill("Keep this job");
-  await page.getByLabel("Points").fill("4");
+  await page.getByRole("spinbutton", { name: "Points", exact: true }).fill("4");
 
   const addButton = page.getByRole("button", { name: "Add job" });
   await addButton.click();
@@ -49,4 +57,18 @@ test("shows a server failure and preserves the entered job", async ({
     "The database is unavailable.",
   );
   await expect(page.getByLabel("Job name")).toHaveValue("Keep this job");
+});
+
+test("persists the selected dark theme after reload", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Dark mode" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+
+  await page.reload();
+
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(
+    page.getByRole("button", { name: "Light mode" }),
+  ).toHaveAttribute("aria-pressed", "true");
 });

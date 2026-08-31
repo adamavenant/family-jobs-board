@@ -78,6 +78,8 @@ public sealed class Job
 
     public DateTimeOffset? CompletedAtUtc { get; private set; }
 
+    public DateTimeOffset? ApprovedAtUtc { get; private set; }
+
     public void MarkComplete(DateTimeOffset completedAtUtc)
     {
         if (Status != JobStatus.Open)
@@ -87,6 +89,17 @@ public sealed class Job
 
         Status = JobStatus.PendingApproval;
         CompletedAtUtc = completedAtUtc.ToUniversalTime();
+    }
+
+    public void Approve(DateTimeOffset approvedAtUtc)
+    {
+        if (Status != JobStatus.PendingApproval)
+        {
+            throw new JobApprovalRejectedException(Id);
+        }
+
+        Status = JobStatus.Approved;
+        ApprovedAtUtc = approvedAtUtc.ToUniversalTime();
     }
 
     public void ScheduleFor(DateOnly date)
