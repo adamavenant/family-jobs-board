@@ -63,12 +63,31 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         await _database.Jobs.AddAsync(job, cancellationToken);
     }
 
-    public Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken)
+    public async Task<TodayPointsSummary> GetPointsSummaryAsync(
+        Guid childId,
+        CancellationToken cancellationToken)
     {
-        return _database.PointsLedgerEntries
+        var earnings = await _database.PointsLedgerEntries
             .AsNoTracking()
             .Where(entry => entry.ChildId == childId)
-            .SumAsync(entry => entry.Amount, cancellationToken);
+            .Join(
+                _database.Jobs.AsNoTracking(),
+                entry => entry.JobId,
+                job => job.Id,
+                (entry, job) => new { Entry = entry, JobName = job.Name })
+            .OrderByDescending(result => result.Entry.AwardedAtUtc)
+            .ThenByDescending(result => result.Entry.Id)
+            .Select(result => new TodayPointEarning(
+                result.Entry.Id,
+                result.Entry.JobId,
+                result.JobName,
+                result.Entry.Amount,
+                result.Entry.AwardedAtUtc))
+            .ToListAsync(cancellationToken);
+
+        return new TodayPointsSummary(
+            earnings.Sum(earning => earning.Points),
+            earnings);
     }
 
     public async Task AddPointsAwardAsync(

@@ -17,7 +17,9 @@ public interface ITodayBoardRepository
 
     Task AddJobAsync(Job job, CancellationToken cancellationToken);
 
-    Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken);
+    Task<TodayPointsSummary> GetPointsSummaryAsync(
+        Guid childId,
+        CancellationToken cancellationToken);
 
     Task AddPointsAwardAsync(PointsLedgerEntry entry, CancellationToken cancellationToken);
 

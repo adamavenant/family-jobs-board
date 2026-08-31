@@ -26,7 +26,7 @@ public sealed class DemoDataSeeder
                 member => member.Id == DemoDataIds.Child,
                 cancellationToken))
         {
-            _database.HouseholdMembers.Add(new HouseholdMember(DemoDataIds.Child, "Alex", false));
+            _database.HouseholdMembers.Add(new HouseholdMember(DemoDataIds.Child, "Addie", false));
         }
 
         await UpsertJobAsync(

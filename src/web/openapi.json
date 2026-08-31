@@ -216,7 +216,9 @@
       "ChildResponse": {
         "required": [
           "id",
-          "name",
+          "firstName",
+          "nickname",
+          "displayName",
           "pointsBalance"
         ],
         "type": "object",
@@ -225,7 +227,16 @@
             "type": "string",
             "format": "uuid"
           },
-          "name": {
+          "firstName": {
+            "type": "string"
+          },
+          "nickname": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "displayName": {
             "type": "string"
           },
           "pointsBalance": {
@@ -354,6 +365,41 @@
           }
         }
       },
+      "PointEarningResponse": {
+        "required": [
+          "id",
+          "jobId",
+          "jobName",
+          "points",
+          "awardedAtUtc"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobName": {
+            "type": "string"
+          },
+          "points": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "awardedAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "ProblemDetails": {
         "type": "object",
         "properties": {
@@ -396,7 +442,8 @@
         "required": [
           "child",
           "date",
-          "jobs"
+          "jobs",
+          "pointEarnings"
         ],
         "type": "object",
         "properties": {
@@ -411,6 +458,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/JobResponse"
+            }
+          },
+          "pointEarnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PointEarningResponse"
             }
           }
         }

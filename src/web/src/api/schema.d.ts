@@ -97,7 +97,9 @@ export interface components {
         ChildResponse: {
             /** Format: uuid */
             id: string;
-            name: string;
+            firstName: string;
+            nickname: null | string;
+            displayName: string;
             /** Format: int32 */
             pointsBalance: number | string;
         };
@@ -130,6 +132,17 @@ export interface components {
             /** Format: date-time */
             approvedAtUtc: null | string;
         };
+        PointEarningResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            jobId: string;
+            jobName: string;
+            /** Format: int32 */
+            points: number | string;
+            /** Format: date-time */
+            awardedAtUtc: string;
+        };
         ProblemDetails: {
             type?: null | string;
             title?: null | string;
@@ -143,6 +156,7 @@ export interface components {
             /** Format: date */
             date: string;
             jobs: components["schemas"]["JobResponse"][];
+            pointEarnings: components["schemas"]["PointEarningResponse"][];
         };
     };
     responses: never;

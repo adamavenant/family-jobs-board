@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -58,8 +60,11 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
         Assert.NotNull(initial);
         Assert.Equal(DemoDataIds.Child, initial.Child.Id);
-        Assert.Equal("Alex", initial.Child.Name);
+        Assert.Equal("Addie", initial.Child.FirstName);
+        Assert.Null(initial.Child.Nickname);
+        Assert.Equal("Addie", initial.Child.DisplayName);
         Assert.Equal(3, initial.Jobs.Count);
+        Assert.Empty(initial.PointEarnings);
         Assert.All(initial.Jobs, job => Assert.Equal("open", job.Status));
 
         var target = initial.Jobs.Single(job => job.Id == DemoDataIds.FeedDog);
@@ -79,6 +84,55 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.Equal(
             "pendingApproval",
             refreshed.Jobs.Single(job => job.Id == target.Id).Status);
+    }
+
+    [Fact]
+    public async Task Today_board_prefers_a_persisted_nickname_for_the_display_name()
+    {
+        var factory = _factory ?? throw new InvalidOperationException("Test API was not initialised.");
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            const string nickname = "Ads";
+            await database.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE household_members SET nickname = {nickname} WHERE id = {DemoDataIds.Child}");
+        }
+
+        var board = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+
+        Assert.NotNull(board);
+        Assert.Equal("Addie", board.Child.FirstName);
+        Assert.Equal("Ads", board.Child.Nickname);
+        Assert.Equal("Ads", board.Child.DisplayName);
+    }
+
+    [Fact]
+    public async Task Nickname_migration_upgrades_the_existing_demo_child_name()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:18-alpine")
+            .WithDatabase("family_jobs_board_upgrade_tests")
+            .WithUsername("family_jobs_board")
+            .WithPassword("family_jobs_board")
+            .Build();
+        await postgres.StartAsync();
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(postgres.GetConnectionString())
+            .Options;
+        await using var database = new AppDbContext(options);
+        var migrator = database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260831101140_AddJobApprovalsAndPointsLedger");
+        await database.Database.ExecuteSqlRawAsync(
+            "INSERT INTO household_members (id, first_name, is_adult) " +
+            "VALUES ('22eb0cc1-058e-4b2e-bb18-d7aaad564a6c', 'Alex', FALSE);");
+
+        await migrator.MigrateAsync();
+        database.ChangeTracker.Clear();
+        var child = await database.HouseholdMembers.SingleAsync(
+            member => member.Id == DemoDataIds.Child);
+
+        Assert.Equal("Addie", child.FirstName);
+        Assert.Null(child.Nickname);
     }
 
     [Fact]
@@ -165,9 +219,45 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var persisted = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
         Assert.NotNull(persisted);
         Assert.Equal(target.Points, persisted.Child.PointsBalance);
+        var earning = Assert.Single(persisted.PointEarnings);
+        Assert.NotEqual(Guid.Empty, earning.Id);
+        Assert.Equal(target.Id, earning.JobId);
+        Assert.Equal(target.Name, earning.JobName);
+        Assert.Equal(target.Points, earning.Points);
+        Assert.NotEqual(default, earning.AwardedAtUtc);
         Assert.Equal(
             "approved",
             persisted.Jobs.Single(job => job.Id == target.Id).Status);
+    }
+
+    [Fact]
+    public async Task Point_earnings_are_newest_first_and_sum_to_the_balance()
+    {
+        var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.NotNull(initial);
+        var first = initial.Jobs.Single(job => job.Id == DemoDataIds.FeedDog);
+        var second = initial.Jobs.Single(job => job.Id == DemoDataIds.PackBag);
+
+        await CompleteAndApproveAsync(first.Id);
+        await CompleteAndApproveAsync(second.Id);
+
+        var board = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+
+        Assert.NotNull(board);
+        Assert.Equal(first.Points + second.Points, board.Child.PointsBalance);
+        Assert.Equal(board.Child.PointsBalance, board.PointEarnings.Sum(earning => earning.Points));
+        Assert.Collection(
+            board.PointEarnings,
+            earning =>
+            {
+                Assert.Equal(second.Id, earning.JobId);
+                Assert.Equal(second.Name, earning.JobName);
+            },
+            earning =>
+            {
+                Assert.Equal(first.Id, earning.JobId);
+                Assert.Equal(first.Name, earning.JobName);
+            });
     }
 
     [Fact]
@@ -227,6 +317,14 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     private HttpClient Client =>
         _client ?? throw new InvalidOperationException("Test client was not initialised.");
 
+    private async Task CompleteAndApproveAsync(Guid jobId)
+    {
+        using var completeResponse = await Client.PostAsync($"/api/jobs/{jobId}/complete", null);
+        completeResponse.EnsureSuccessStatusCode();
+        using var approveResponse = await Client.PostAsync($"/api/jobs/{jobId}/approve", null);
+        approveResponse.EnsureSuccessStatusCode();
+    }
+
     private async Task RestartApplicationAsync()
     {
         _client?.Dispose();
@@ -239,9 +337,18 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         _client = _factory.CreateClient();
     }
 
-    private sealed record TodayResponse(ChildResponse Child, DateOnly Date, IReadOnlyList<JobResponse> Jobs);
+    private sealed record TodayResponse(
+        ChildResponse Child,
+        DateOnly Date,
+        IReadOnlyList<JobResponse> Jobs,
+        IReadOnlyList<PointEarningResponse> PointEarnings);
 
-    private sealed record ChildResponse(Guid Id, string Name, int PointsBalance);
+    private sealed record ChildResponse(
+        Guid Id,
+        string FirstName,
+        string? Nickname,
+        string DisplayName,
+        int PointsBalance);
 
     private sealed record JobResponse(
         Guid Id,
@@ -253,6 +360,13 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         DateTimeOffset? ApprovedAtUtc);
 
     private sealed record JobApprovalResponse(JobResponse Job, int PointsBalance);
+
+    private sealed record PointEarningResponse(
+        Guid Id,
+        Guid JobId,
+        string JobName,
+        int Points,
+        DateTimeOffset AwardedAtUtc);
 
     private sealed class TestApiFactory : WebApplicationFactory<Program>
     {

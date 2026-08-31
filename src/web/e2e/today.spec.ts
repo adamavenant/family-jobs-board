@@ -5,23 +5,33 @@ test("adds, completes, and approves a job exactly once", async ({ page }) => {
 
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: /Good day, Alex!/ }),
+    page.getByRole("heading", { name: /Good day, Addie!/ }),
   ).toBeVisible();
   const initialBalance = Number(
     await page.locator(".hero__balance strong").innerText(),
   );
+  const grownUpTools = page.locator("details.grown-up-tools");
+  await expect(grownUpTools).not.toHaveAttribute("open", "");
+  await grownUpTools.locator("summary").click();
+  await expect(grownUpTools).toHaveAttribute("open", "");
+  const points = page.getByRole("spinbutton", {
+    name: "Points",
+    exact: true,
+  });
+  await expect(points).toHaveValue("1");
 
   await page.getByLabel("Job name").fill(jobName);
   await page
     .getByLabel("Description")
     .fill("Created through the public browser interface.");
-  await page.getByRole("spinbutton", { name: "Points", exact: true }).fill("3");
+  await points.fill("3");
   await page.getByRole("button", { name: "Add job" }).click();
 
   const heading = page.getByRole("heading", { name: jobName, exact: true });
   await expect(heading).toBeVisible();
   await expect(page.getByText("Job added to today’s board.")).toBeVisible();
   await expect(page.getByLabel("Job name")).toHaveValue("");
+  await expect(points).toHaveValue("1");
 
   const card = page.getByRole("article").filter({ has: heading });
   await card.getByRole("button", { name: "Mark as done" }).click();
@@ -32,6 +42,9 @@ test("adds, completes, and approves a job exactly once", async ({ page }) => {
   await expect(
     page.getByLabel(`${initialBalance + 3} points earned`),
   ).toBeVisible();
+  const history = page.locator("section.points-history");
+  await expect(history.getByText(jobName, { exact: true })).toBeVisible();
+  await expect(history.getByText("+3", { exact: true })).toBeVisible();
 });
 
 test("shows a server failure and preserves the entered job", async ({
@@ -47,6 +60,7 @@ test("shows a server failure and preserves the entered job", async ({
   });
 
   await page.goto("/");
+  await page.locator("details.grown-up-tools summary").click();
   await page.getByLabel("Job name").fill("Keep this job");
   await page.getByRole("spinbutton", { name: "Points", exact: true }).fill("4");
 
