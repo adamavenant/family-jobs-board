@@ -5,7 +5,7 @@ public sealed record TodayResponse(
     DateOnly Date,
     IReadOnlyList<JobResponse> Jobs);
 
-public sealed record ChildResponse(Guid Id, string Name);
+public sealed record ChildResponse(Guid Id, string Name, int PointsBalance);
 
 public sealed record AddJobRequest(string? Name, string? Description, int Points);
 
@@ -15,4 +15,7 @@ public sealed record JobResponse(
     string Description,
     int Points,
     string Status,
-    DateTimeOffset? CompletedAtUtc);
+    DateTimeOffset? CompletedAtUtc,
+    DateTimeOffset? ApprovedAtUtc);
+
+public sealed record JobApprovalResponse(JobResponse Job, int PointsBalance);

@@ -1,5 +1,6 @@
 using FamilyJobsBoard.Application.Clock;
 using FamilyJobsBoard.Domain.Jobs;
+using FamilyJobsBoard.Domain.Points;
 
 namespace FamilyJobsBoard.Application.Today;
 
@@ -19,10 +20,12 @@ public sealed class TodayBoardService
         var child = await _repository.GetDemoChildAsync(cancellationToken)
             ?? throw new TodayBoardNotAvailableException();
         var jobs = await _repository.GetJobsAsync(child.Id, _clock.Today, cancellationToken);
+        var pointsBalance = await _repository.GetPointsBalanceAsync(child.Id, cancellationToken);
 
         return new TodayBoard(
             child.Id,
             child.FirstName,
+            pointsBalance,
             _clock.Today,
             jobs.Select(MapJob).ToArray());
     }
@@ -67,6 +70,30 @@ public sealed class TodayBoardService
         return MapJob(job);
     }
 
+    public async Task<TodayJobApproval> ApproveAsync(
+        Guid jobId,
+        CancellationToken cancellationToken)
+    {
+        var job = await _repository.GetJobAsync(jobId, cancellationToken)
+            ?? throw new JobNotFoundException(jobId);
+
+        job.Approve(_clock.UtcNow);
+        var award = new PointsLedgerEntry(
+            Guid.NewGuid(),
+            job.ChildId,
+            job.Id,
+            job.Points,
+            _clock.UtcNow);
+
+        await _repository.AddPointsAwardAsync(award, cancellationToken);
+        await _repository.SaveChangesAsync(cancellationToken);
+        var pointsBalance = await _repository.GetPointsBalanceAsync(
+            job.ChildId,
+            cancellationToken);
+
+        return new TodayJobApproval(MapJob(job), pointsBalance);
+    }
+
     private static Dictionary<string, string[]> ValidateNewJob(
         string name,
         string description,
@@ -100,12 +127,21 @@ public sealed class TodayBoardService
 
     private static TodayJob MapJob(Job job)
     {
+        var status = job.Status switch
+        {
+            JobStatus.Open => "open",
+            JobStatus.PendingApproval => "pendingApproval",
+            JobStatus.Approved => "approved",
+            _ => throw new InvalidOperationException($"Unknown job status '{job.Status}'."),
+        };
+
         return new TodayJob(
             job.Id,
             job.Name,
             job.Description,
             job.Points,
-            job.Status == JobStatus.Open ? "open" : "pendingApproval",
-            job.CompletedAtUtc);
+            status,
+            job.CompletedAtUtc,
+            job.ApprovedAtUtc);
     }
 }

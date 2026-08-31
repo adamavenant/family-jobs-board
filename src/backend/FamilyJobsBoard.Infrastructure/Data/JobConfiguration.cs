@@ -22,6 +22,7 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
             .HasConversion<string>()
             .HasMaxLength(32);
         builder.Property(job => job.CompletedAtUtc).HasColumnName("completed_at_utc");
+        builder.Property(job => job.ApprovedAtUtc).HasColumnName("approved_at_utc");
         builder.HasIndex(job => new { job.ChildId, job.ScheduledDate });
         builder.HasOne<HouseholdMember>()
             .WithMany()

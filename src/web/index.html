@@ -5,6 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#fbf7ed" />
     <title>Family Jobs Board</title>
+    <script>
+      (() => {
+        const key = "family-jobs-board-theme";
+        let saved = null;
+        try {
+          saved = localStorage.getItem(key);
+        } catch {
+          // Continue with the system preference when storage is unavailable.
+        }
+        const prefersDark =
+          typeof matchMedia === "function" &&
+          matchMedia("(prefers-color-scheme: dark)").matches;
+        const theme =
+          saved === "light" || saved === "dark"
+            ? saved
+            : prefersDark
+              ? "dark"
+              : "light";
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

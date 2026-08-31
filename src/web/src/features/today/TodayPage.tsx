@@ -3,6 +3,7 @@ import { useFetcher, useLoaderData } from "react-router";
 import type { TodayBoard, TodayJob } from "../../api/today";
 import type { TodayActionResult } from "../../app/routes";
 import { AddJobForm } from "./AddJobForm";
+import { ThemeToggle } from "../theme/ThemeToggle";
 
 export function TodayPage() {
   const board = useLoaderData() as TodayBoard;
@@ -15,18 +16,30 @@ export function TodayPage() {
   return (
     <main>
       <header className="hero">
-        <p className="eyebrow">Family Jobs Board</p>
+        <div className="hero__toolbar">
+          <p className="eyebrow">Family Jobs Board</p>
+          <ThemeToggle />
+        </div>
         <div className="hero__content">
           <div>
             <h1>Good day, {board.child.name}!</h1>
             <p className="hero__date">{formattedDate}</p>
           </div>
-          <div
-            className="hero__count"
-            aria-label={`${board.jobs.length} jobs today`}
-          >
-            <strong>{board.jobs.length}</strong>
-            <span>jobs today</span>
+          <div className="hero__stats">
+            <div
+              className="hero__balance"
+              aria-label={`${board.child.pointsBalance} points earned`}
+            >
+              <strong>{board.child.pointsBalance}</strong>
+              <span>points earned</span>
+            </div>
+            <div
+              className="hero__count"
+              aria-label={`${board.jobs.length} jobs today`}
+            >
+              <strong>{board.jobs.length}</strong>
+              <span>jobs today</span>
+            </div>
           </div>
         </div>
       </header>
@@ -56,16 +69,25 @@ function JobCard({ job, index }: { job: TodayJob; index: number }) {
   const fetcher = useFetcher<TodayActionResult>();
   const isSubmitting = fetcher.state !== "idle";
   const error =
-    fetcher.data?.intent === "complete" && fetcher.data.jobId === job.id
+    (fetcher.data?.intent === "complete" ||
+      fetcher.data?.intent === "approve") &&
+    fetcher.data.jobId === job.id
       ? fetcher.data.error
       : undefined;
   const isPending = job.status === "pendingApproval";
+  const isApproved = job.status === "approved";
 
   return (
     <article className={`job-card job-card--${(index % 3) + 1}`}>
       <div className="job-card__topline">
-        <span className={`status status--${isPending ? "pending" : "open"}`}>
-          {isPending ? "Waiting for approval" : "Ready to do"}
+        <span
+          className={`status status--${isApproved ? "approved" : isPending ? "pending" : "open"}`}
+        >
+          {isApproved
+            ? "Points awarded"
+            : isPending
+              ? "Waiting for approval"
+              : "Ready to do"}
         </span>
         <span className="points">{job.points} pts</span>
       </div>
@@ -74,11 +96,20 @@ function JobCard({ job, index }: { job: TodayJob; index: number }) {
         <p>{job.description}</p>
       </div>
 
-      {isPending ? (
-        <div className="complete-state" role="status">
-          <span aria-hidden="true">✓</span>
-          Nice work — sent for approval
+      {isApproved ? (
+        <div className="complete-state complete-state--approved" role="status">
+          <span aria-hidden="true">★</span>
+          Approved — {job.points} points awarded
         </div>
+      ) : isPending ? (
+        <fetcher.Form method="post" className="approval-form">
+          <input type="hidden" name="intent" value="approve" />
+          <input type="hidden" name="jobId" value={job.id} />
+          <p>Nice work — ready for a grown-up.</p>
+          <button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Approving…" : `Approve +${job.points} points`}
+          </button>
+        </fetcher.Form>
       ) : (
         <fetcher.Form method="post">
           <input type="hidden" name="intent" value="complete" />

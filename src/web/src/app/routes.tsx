@@ -1,7 +1,13 @@
 import type { ActionFunctionArgs } from "react-router";
 import type { RouteObject } from "react-router";
 
-import { ApiError, addJob, completeJob, getToday } from "../api/today";
+import {
+  ApiError,
+  addJob,
+  approveJob,
+  completeJob,
+  getToday,
+} from "../api/today";
 import { LoadingPage } from "./LoadingPage";
 import { TodayPage } from "../features/today/TodayPage";
 
@@ -17,7 +23,14 @@ export interface AddJobActionResult {
   error?: string;
 }
 
-export type TodayActionResult = CompleteActionResult | AddJobActionResult;
+export interface ApproveActionResult {
+  intent: "approve";
+  jobId: string;
+  error?: string;
+}
+
+export type TodayActionResult =
+  CompleteActionResult | AddJobActionResult | ApproveActionResult;
 
 async function todayLoader() {
   return getToday();
@@ -30,8 +43,36 @@ async function todayAction({
   if (form.get("intent") === "add") {
     return addJobAction(form);
   }
+  if (form.get("intent") === "approve") {
+    return approveAction(form);
+  }
 
   return completeAction(form);
+}
+
+async function approveAction(form: FormData): Promise<ApproveActionResult> {
+  const jobId = form.get("jobId");
+  if (typeof jobId !== "string") {
+    return {
+      intent: "approve",
+      jobId: "",
+      error: "The selected job was missing.",
+    };
+  }
+
+  try {
+    await approveJob(jobId);
+    return { intent: "approve", jobId };
+  } catch (error) {
+    return {
+      intent: "approve",
+      jobId,
+      error:
+        error instanceof ApiError
+          ? error.message
+          : "That job couldn't be approved.",
+    };
+  }
 }
 
 async function completeAction(form: FormData): Promise<CompleteActionResult> {

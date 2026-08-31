@@ -1,5 +1,6 @@
 using FamilyJobsBoard.Application.Today;
 using FamilyJobsBoard.Domain.Jobs;
+using FamilyJobsBoard.Domain.Points;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 
@@ -25,6 +26,11 @@ internal static class TodayEndpoints
             .WithName("AddJob")
             .WithSummary("Add a new job for the demo child.")
             .WithDescription("Adds a new job to the demo child's board for today.");
+
+        group.MapPost("/jobs/{id:guid}/approve", ApproveJobAsync)
+            .WithName("ApproveJob")
+            .WithSummary("Approve a pending job and award its points.")
+            .WithDescription("Returns 409 unless the job is pending approval or its points were already awarded.");
 
         return endpoints;
     }
@@ -105,10 +111,44 @@ internal static class TodayEndpoints
         }
     }
 
+    private static async Task<Results<Ok<JobApprovalResponse>, NotFound<ProblemDetails>, Conflict<ProblemDetails>>>
+        ApproveJobAsync(
+            Guid id,
+            TodayBoardService service,
+            CancellationToken cancellationToken)
+    {
+        try
+        {
+            var approval = await service.ApproveAsync(id, cancellationToken);
+            return TypedResults.Ok(new JobApprovalResponse(
+                MapJob(approval.Job),
+                approval.PointsBalance));
+        }
+        catch (JobNotFoundException exception)
+        {
+            return TypedResults.NotFound(new ProblemDetails
+            {
+                Title = "Job not found",
+                Detail = exception.Message,
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+        catch (Exception exception) when (
+            exception is JobApprovalRejectedException or DuplicateJobPointsAwardException)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Job cannot be approved",
+                Detail = exception.Message,
+                Status = StatusCodes.Status409Conflict,
+            });
+        }
+    }
+
     private static TodayResponse MapBoard(TodayBoard board)
     {
         return new TodayResponse(
-            new ChildResponse(board.ChildId, board.ChildName),
+            new ChildResponse(board.ChildId, board.ChildName, board.PointsBalance),
             board.Date,
             board.Jobs.Select(MapJob).ToArray());
     }
@@ -121,6 +161,7 @@ internal static class TodayEndpoints
             job.Description,
             job.Points,
             job.Status,
-            job.CompletedAtUtc);
+            job.CompletedAtUtc,
+            job.ApprovedAtUtc);
     }
 }

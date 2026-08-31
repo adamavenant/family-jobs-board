@@ -1,8 +1,10 @@
 using FamilyJobsBoard.Application.Today;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Jobs;
+using FamilyJobsBoard.Domain.Points;
 using FamilyJobsBoard.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace FamilyJobsBoard.Infrastructure.Today;
 
@@ -39,13 +41,40 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         return _database.Jobs.SingleOrDefaultAsync(job => job.Id == jobId, cancellationToken);
     }
 
-    public Task SaveChangesAsync(CancellationToken cancellationToken)
+    public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
-        return _database.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _database.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception)
+            when (exception.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation,
+                ConstraintName: "ux_points_ledger_entries_job_id",
+            })
+        {
+            throw new DuplicateJobPointsAwardException();
+        }
     }
 
     public async Task AddJobAsync(Job job, CancellationToken cancellationToken)
     {
         await _database.Jobs.AddAsync(job, cancellationToken);
+    }
+
+    public Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken)
+    {
+        return _database.PointsLedgerEntries
+            .AsNoTracking()
+            .Where(entry => entry.ChildId == childId)
+            .SumAsync(entry => entry.Amount, cancellationToken);
+    }
+
+    public async Task AddPointsAwardAsync(
+        PointsLedgerEntry entry,
+        CancellationToken cancellationToken)
+    {
+        await _database.PointsLedgerEntries.AddAsync(entry, cancellationToken);
     }
 }

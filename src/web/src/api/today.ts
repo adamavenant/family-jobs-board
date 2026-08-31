@@ -7,14 +7,20 @@ export interface TodayJob {
   name: string;
   description: string;
   points: number;
-  status: "open" | "pendingApproval";
+  status: "open" | "pendingApproval" | "approved";
   completedAtUtc: string | null;
+  approvedAtUtc: string | null;
 }
 
 export interface TodayBoard {
-  child: { id: string; name: string };
+  child: { id: string; name: string; pointsBalance: number };
   date: string;
   jobs: TodayJob[];
+}
+
+export interface JobApproval {
+  job: TodayJob;
+  pointsBalance: number;
 }
 
 export class ApiError extends Error {
@@ -32,7 +38,10 @@ export async function getToday(): Promise<TodayBoard> {
   }
 
   return {
-    child: data.child,
+    child: {
+      ...data.child,
+      pointsBalance: Number(data.child.pointsBalance),
+    },
     date: data.date,
     jobs: data.jobs.map(mapJob),
   };
@@ -50,6 +59,21 @@ export async function completeJob(id: string): Promise<TodayJob> {
   }
 
   return mapJob(data);
+}
+
+export async function approveJob(id: string): Promise<JobApproval> {
+  const client = apiClient();
+  const { data, error } = await client.POST("/api/jobs/{id}/approve", {
+    params: { path: { id } },
+  });
+  if (!data) {
+    throw new ApiError(problemMessage(error, "That job couldn't be approved."));
+  }
+
+  return {
+    job: mapJob(data.job),
+    pointsBalance: Number(data.pointsBalance),
+  };
 }
 
 export async function addJob(request: {
@@ -82,11 +106,15 @@ function mapJob(job: {
   points: number | string;
   status: string;
   completedAtUtc: string | null;
+  approvedAtUtc: string | null;
 }): TodayJob {
   return {
     ...job,
     points: Number(job.points),
-    status: job.status === "pendingApproval" ? "pendingApproval" : "open",
+    status:
+      job.status === "pendingApproval" || job.status === "approved"
+        ? job.status
+        : "open",
   };
 }
 

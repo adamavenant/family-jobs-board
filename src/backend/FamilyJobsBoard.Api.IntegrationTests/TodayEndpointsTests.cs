@@ -121,6 +121,82 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.Equal("pendingApproval", completed!.Status);
     }
 
+    [Fact]
+    public async Task Pending_job_can_be_approved_once_and_award_persists_after_restart()
+    {
+        var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.NotNull(initial);
+        Assert.Equal(0, initial.Child.PointsBalance);
+        var target = initial.Jobs.Single(job => job.Id == DemoDataIds.FeedDog);
+
+        using var missingResponse = await Client.PostAsync(
+            $"/api/jobs/{Guid.NewGuid()}/approve",
+            null);
+        Assert.Equal(HttpStatusCode.NotFound, missingResponse.StatusCode);
+
+        using var openResponse = await Client.PostAsync(
+            $"/api/jobs/{target.Id}/approve",
+            null);
+        Assert.Equal(HttpStatusCode.Conflict, openResponse.StatusCode);
+
+        using var completeResponse = await Client.PostAsync(
+            $"/api/jobs/{target.Id}/complete",
+            null);
+        Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
+
+        using var approveResponse = await Client.PostAsync(
+            $"/api/jobs/{target.Id}/approve",
+            null);
+        var approval = await approveResponse.Content.ReadFromJsonAsync<JobApprovalResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, approveResponse.StatusCode);
+        Assert.NotNull(approval);
+        Assert.Equal("approved", approval.Job.Status);
+        Assert.NotNull(approval.Job.ApprovedAtUtc);
+        Assert.Equal(target.Points, approval.PointsBalance);
+
+        using var repeatResponse = await Client.PostAsync(
+            $"/api/jobs/{target.Id}/approve",
+            null);
+        Assert.Equal(HttpStatusCode.Conflict, repeatResponse.StatusCode);
+
+        await RestartApplicationAsync();
+
+        var persisted = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.NotNull(persisted);
+        Assert.Equal(target.Points, persisted.Child.PointsBalance);
+        Assert.Equal(
+            "approved",
+            persisted.Jobs.Single(job => job.Id == target.Id).Status);
+    }
+
+    [Fact]
+    public async Task Concurrent_approval_requests_create_one_points_award()
+    {
+        using var completeResponse = await Client.PostAsync(
+            $"/api/jobs/{DemoDataIds.FeedDog}/complete",
+            null);
+        Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
+
+        var approvalRequests = new[]
+        {
+            Client.PostAsync($"/api/jobs/{DemoDataIds.FeedDog}/approve", null),
+            Client.PostAsync($"/api/jobs/{DemoDataIds.FeedDog}/approve", null),
+        };
+        var responses = await Task.WhenAll(approvalRequests);
+
+        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.OK);
+        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
+        foreach (var response in responses)
+        {
+            response.Dispose();
+        }
+
+        var board = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.NotNull(board);
+        Assert.Equal(5, board.Child.PointsBalance);
+    }
+
     [Theory]
     [MemberData(nameof(InvalidJobs))]
     public async Task Invalid_job_is_rejected_with_problem_details(
@@ -165,7 +241,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
     private sealed record TodayResponse(ChildResponse Child, DateOnly Date, IReadOnlyList<JobResponse> Jobs);
 
-    private sealed record ChildResponse(Guid Id, string Name);
+    private sealed record ChildResponse(Guid Id, string Name, int PointsBalance);
 
     private sealed record JobResponse(
         Guid Id,
@@ -173,7 +249,10 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         string Description,
         int Points,
         string Status,
-        DateTimeOffset? CompletedAtUtc);
+        DateTimeOffset? CompletedAtUtc,
+        DateTimeOffset? ApprovedAtUtc);
+
+    private sealed record JobApprovalResponse(JobResponse Job, int PointsBalance);
 
     private sealed class TestApiFactory : WebApplicationFactory<Program>
     {

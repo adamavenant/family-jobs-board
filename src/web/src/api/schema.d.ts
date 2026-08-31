@@ -64,6 +64,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a pending job and award its points.
+         * @description Returns 409 unless the job is pending approval or its points were already awarded.
+         */
+        post: operations["ApproveJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -78,6 +98,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+            /** Format: int32 */
+            pointsBalance: number | string;
         };
         HttpValidationProblemDetails: {
             type?: null | string;
@@ -90,6 +112,11 @@ export interface components {
                 [key: string]: string[];
             };
         };
+        JobApprovalResponse: {
+            job: components["schemas"]["JobResponse"];
+            /** Format: int32 */
+            pointsBalance: number | string;
+        };
         JobResponse: {
             /** Format: uuid */
             id: string;
@@ -100,6 +127,8 @@ export interface components {
             status: string;
             /** Format: date-time */
             completedAtUtc: null | string;
+            /** Format: date-time */
+            approvedAtUtc: null | string;
         };
         ProblemDetails: {
             type?: null | string;
@@ -213,6 +242,46 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    ApproveJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobApprovalResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
