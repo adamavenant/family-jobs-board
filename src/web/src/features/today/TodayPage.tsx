@@ -1,6 +1,6 @@
 import { useFetcher, useLoaderData } from "react-router";
 
-import type { TodayBoard, TodayJob } from "../../api/today";
+import type { PointEarning, TodayBoard, TodayJob } from "../../api/today";
 import type { TodayActionResult } from "../../app/routes";
 import { AddJobForm } from "./AddJobForm";
 import { ThemeToggle } from "../theme/ThemeToggle";
@@ -22,7 +22,7 @@ export function TodayPage() {
         </div>
         <div className="hero__content">
           <div>
-            <h1>Good day, {board.child.name}!</h1>
+            <h1>Good day, {board.child.displayName}!</h1>
             <p className="hero__date">{formattedDate}</p>
           </div>
           <div className="hero__stats">
@@ -61,8 +61,63 @@ export function TodayPage() {
           ))}
         </div>
       </section>
+
+      <PointsHistory
+        childName={board.child.displayName}
+        earnings={board.pointEarnings}
+      />
     </main>
   );
+}
+
+function PointsHistory({
+  childName,
+  earnings,
+}: {
+  childName: string;
+  earnings: PointEarning[];
+}) {
+  return (
+    <section
+      className="points-history"
+      aria-labelledby="points-history-heading"
+    >
+      <div className="points-history__heading">
+        <div>
+          <p className="eyebrow">Points</p>
+          <h2 id="points-history-heading">How {childName} earned them</h2>
+        </div>
+        <p>Approved jobs appear here, newest first.</p>
+      </div>
+
+      {earnings.length === 0 ? (
+        <p className="points-history__empty">
+          No points earned yet. Complete and approve a job to start the list.
+        </p>
+      ) : (
+        <ol className="earning-list">
+          {earnings.map((earning) => (
+            <li key={earning.id}>
+              <span className="earning-list__points">+{earning.points}</span>
+              <span>
+                <strong>{earning.jobName}</strong>
+                <time dateTime={earning.awardedAtUtc}>
+                  {formatAwardTime(earning.awardedAtUtc)}
+                </time>
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+function formatAwardTime(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 function JobCard({ job, index }: { job: TodayJob; index: number }) {

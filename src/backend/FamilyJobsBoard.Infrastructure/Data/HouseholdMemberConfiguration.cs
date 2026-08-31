@@ -11,7 +11,13 @@ internal sealed class HouseholdMemberConfiguration : IEntityTypeConfiguration<Ho
         builder.ToTable("household_members");
         builder.HasKey(member => member.Id);
         builder.Property(member => member.Id).HasColumnName("id");
-        builder.Property(member => member.FirstName).HasColumnName("first_name").HasMaxLength(100);
+        builder.Ignore(member => member.DisplayName);
+        builder.Property(member => member.FirstName)
+            .HasColumnName("first_name")
+            .HasMaxLength(HouseholdMember.MaximumNameLength);
+        builder.Property(member => member.Nickname)
+            .HasColumnName("nickname")
+            .HasMaxLength(HouseholdMember.MaximumNameLength);
         builder.Property(member => member.IsAdult).HasColumnName("is_adult");
     }
 }

@@ -148,9 +148,25 @@ internal static class TodayEndpoints
     private static TodayResponse MapBoard(TodayBoard board)
     {
         return new TodayResponse(
-            new ChildResponse(board.ChildId, board.ChildName, board.PointsBalance),
+            new ChildResponse(
+                board.ChildId,
+                board.ChildFirstName,
+                board.ChildNickname,
+                board.ChildDisplayName,
+                board.PointsBalance),
             board.Date,
-            board.Jobs.Select(MapJob).ToArray());
+            board.Jobs.Select(MapJob).ToArray(),
+            board.PointEarnings.Select(MapPointEarning).ToArray());
+    }
+
+    private static PointEarningResponse MapPointEarning(TodayPointEarning earning)
+    {
+        return new PointEarningResponse(
+            earning.Id,
+            earning.JobId,
+            earning.JobName,
+            earning.Points,
+            earning.AwardedAtUtc);
     }
 
     private static JobResponse MapJob(TodayJob job)

@@ -13,9 +13,24 @@ export interface TodayJob {
 }
 
 export interface TodayBoard {
-  child: { id: string; name: string; pointsBalance: number };
+  child: {
+    id: string;
+    firstName: string;
+    nickname: string | null;
+    displayName: string;
+    pointsBalance: number;
+  };
   date: string;
   jobs: TodayJob[];
+  pointEarnings: PointEarning[];
+}
+
+export interface PointEarning {
+  id: string;
+  jobId: string;
+  jobName: string;
+  points: number;
+  awardedAtUtc: string;
 }
 
 export interface JobApproval {
@@ -44,6 +59,10 @@ export async function getToday(): Promise<TodayBoard> {
     },
     date: data.date,
     jobs: data.jobs.map(mapJob),
+    pointEarnings: data.pointEarnings.map((earning) => ({
+      ...earning,
+      points: Number(earning.points),
+    })),
   };
 }
 

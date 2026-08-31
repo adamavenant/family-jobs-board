@@ -20,14 +20,17 @@ public sealed class TodayBoardService
         var child = await _repository.GetDemoChildAsync(cancellationToken)
             ?? throw new TodayBoardNotAvailableException();
         var jobs = await _repository.GetJobsAsync(child.Id, _clock.Today, cancellationToken);
-        var pointsBalance = await _repository.GetPointsBalanceAsync(child.Id, cancellationToken);
+        var points = await _repository.GetPointsSummaryAsync(child.Id, cancellationToken);
 
         return new TodayBoard(
             child.Id,
             child.FirstName,
-            pointsBalance,
+            child.Nickname,
+            child.DisplayName,
+            points.Balance,
             _clock.Today,
-            jobs.Select(MapJob).ToArray());
+            jobs.Select(MapJob).ToArray(),
+            points.Earnings);
     }
 
     public async Task<TodayJob> CompleteAsync(Guid jobId, CancellationToken cancellationToken)
@@ -87,11 +90,11 @@ public sealed class TodayBoardService
 
         await _repository.AddPointsAwardAsync(award, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
-        var pointsBalance = await _repository.GetPointsBalanceAsync(
+        var points = await _repository.GetPointsSummaryAsync(
             job.ChildId,
             cancellationToken);
 
-        return new TodayJobApproval(MapJob(job), pointsBalance);
+        return new TodayJobApproval(MapJob(job), points.Balance);
     }
 
     private static Dictionary<string, string[]> ValidateNewJob(

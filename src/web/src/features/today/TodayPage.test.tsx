@@ -9,10 +9,13 @@ import { routes } from "../../app/routes";
 const board = {
   child: {
     id: "c7b3309f-c84c-4b90-b923-305597484642",
-    name: "Alex",
+    firstName: "Addie",
+    nickname: null,
+    displayName: "Addie",
     pointsBalance: 0,
   },
   date: "2026-08-29",
+  pointEarnings: [],
   jobs: [
     {
       id: "7009b529-733c-4770-ae56-1f6fa69f6363",
@@ -68,7 +71,7 @@ describe("Today page", () => {
     renderApp();
 
     expect(
-      await screen.findByRole("heading", { name: "Good day, Alex!" }),
+      await screen.findByRole("heading", { name: "Good day, Addie!" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Feed the dog" }),
@@ -79,6 +82,27 @@ describe("Today page", () => {
     expect(
       screen.getByText("Nice work — ready for a grown-up."),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("No points earned yet.", { exact: false }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps grown-up tools collapsed until requested and defaults points to one", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(board)));
+    const user = userEvent.setup();
+
+    renderApp();
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+
+    const tools = screen.getByText("Grown-up tools").closest("details");
+    expect(tools).not.toBeNull();
+    expect(tools).not.toHaveAttribute("open");
+    expect(screen.getByRole("textbox", { name: "Job name" })).not.toBeVisible();
+
+    await user.click(within(tools as HTMLElement).getByText("Add a job"));
+
+    expect(tools).toHaveAttribute("open");
+    expect(screen.getByRole("spinbutton", { name: "Points" })).toHaveValue(1);
   });
 
   it("adds a job to the board and allows it to be completed", async () => {
@@ -115,12 +139,14 @@ describe("Today page", () => {
     const user = userEvent.setup();
     renderApp();
 
-    await screen.findByRole("heading", { name: "Good day, Alex!" });
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await openGrownUpTools(user);
     await user.type(screen.getByLabelText("Job name"), "Put toys away");
     await user.type(
       screen.getByLabelText("Description"),
       "Return every toy to its box.",
     );
+    await user.clear(screen.getByLabelText("Points"));
     await user.type(screen.getByLabelText("Points"), "4");
     await user.click(screen.getByRole("button", { name: "Add job" }));
 
@@ -131,6 +157,7 @@ describe("Today page", () => {
       "role",
       "status",
     );
+    expect(screen.getByLabelText("Points")).toHaveValue(1);
     const addedCard = addedHeading.closest("article");
     expect(addedCard).not.toBeNull();
 
@@ -149,6 +176,9 @@ describe("Today page", () => {
 
   it("approves a pending job and updates the points balance", async () => {
     const pendingJob = board.jobs[2];
+    if (!pendingJob) {
+      throw new Error("The pending-job fixture was missing.");
+    }
     const approvedJob = {
       ...pendingJob,
       status: "approved",
@@ -158,6 +188,15 @@ describe("Today page", () => {
       ...board,
       child: { ...board.child, pointsBalance: 5 },
       jobs: [board.jobs[0], board.jobs[1], approvedJob],
+      pointEarnings: [
+        {
+          id: "63fd708b-1296-409d-9ae4-7cd6fc501af7",
+          jobId: pendingJob.id,
+          jobName: pendingJob.name,
+          points: 5,
+          awardedAtUtc: "2026-08-29T10:30:00Z",
+        },
+      ],
     };
     vi.stubGlobal(
       "fetch",
@@ -187,6 +226,14 @@ describe("Today page", () => {
     expect(
       await screen.findByText("Approved — 5 points awarded"),
     ).toBeInTheDocument();
+    const history = screen
+      .getByRole("heading", { name: "How Addie earned them" })
+      .closest("section");
+    expect(history).not.toBeNull();
+    expect(within(history as HTMLElement).getByText("+5")).toBeInTheDocument();
+    expect(
+      within(history as HTMLElement).getByText("Clear the table"),
+    ).toBeInTheDocument();
   });
 
   it("persists an explicit dark theme selection", async () => {
@@ -197,7 +244,7 @@ describe("Today page", () => {
     const user = userEvent.setup();
     const rendered = renderApp();
 
-    await screen.findByRole("heading", { name: "Good day, Alex!" });
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
     await user.click(screen.getByRole("button", { name: "Dark mode" }));
 
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
@@ -229,9 +276,11 @@ describe("Today page", () => {
     const user = userEvent.setup();
     renderApp();
 
-    await screen.findByRole("heading", { name: "Good day, Alex!" });
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await openGrownUpTools(user);
     const name = screen.getByLabelText("Job name");
     await user.type(name, "Put toys away");
+    await user.clear(screen.getByLabelText("Points"));
     await user.type(screen.getByLabelText("Points"), "4");
     await user.click(screen.getByRole("button", { name: "Add job" }));
 
@@ -273,6 +322,15 @@ describe("Today page", () => {
 function renderApp() {
   const router = createMemoryRouter(routes, { initialEntries: ["/"] });
   return render(<RouterProvider router={router} />);
+}
+
+async function openGrownUpTools(user: ReturnType<typeof userEvent.setup>) {
+  const tools = screen.getByText("Grown-up tools").closest("details");
+  if (!tools) {
+    throw new Error("Grown-up tools were not rendered.");
+  }
+
+  await user.click(within(tools).getByText("Add a job"));
 }
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
