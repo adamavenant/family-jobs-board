@@ -211,7 +211,9 @@ function JobCard({
         <span className="points">{job.points} pts</span>
       </div>
       <div>
-        {isAdult ? <p className="job-card__assignee">For {job.childDisplayName}</p> : null}
+        {isAdult ? (
+          <p className="job-card__assignee">For {job.childDisplayName}</p>
+        ) : null}
         <h3>{job.name}</h3>
         <p>{job.description}</p>
       </div>

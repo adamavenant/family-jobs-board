@@ -33,7 +33,12 @@ export function AddJobForm({ children }: { children: HouseholdMember[] }) {
           <input type="hidden" name="intent" value="add" />
           <div className="form-group">
             <label htmlFor="childId">Assign to</label>
-            <select id="childId" name="childId" required defaultValue={children[0]?.id}>
+            <select
+              id="childId"
+              name="childId"
+              required
+              defaultValue={children[0]?.id}
+            >
               {children.map((child) => (
                 <option key={child.id} value={child.id}>
                   {child.displayName}

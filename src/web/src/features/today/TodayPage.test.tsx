@@ -7,11 +7,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { routes } from "../../app/routes";
 
 const addie = {
-    id: "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c",
-    firstName: "Addie",
-    nickname: null,
-    displayName: "Addie",
-    isAdult: true,
+  id: "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c",
+  firstName: "Addie",
+  nickname: null,
+  displayName: "Addie",
+  isAdult: true,
 };
 const hellie = {
   id: "9db319c1-28d1-4ce6-93d7-f04a45f8257d",
@@ -124,9 +124,7 @@ describe("Today page", () => {
     expect(
       screen.getByRole("button", { name: "Approve +5 points" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getAllByText("For Fredster")[0],
-    ).toBeInTheDocument();
+    expect(screen.getAllByText("For Fredster")[0]).toBeInTheDocument();
   });
 
   it("keeps grown-up tools collapsed until requested and defaults points to one", async () => {
@@ -183,7 +181,7 @@ describe("Today page", () => {
     await user.type(screen.getByLabelText("Points"), "4");
     await user.click(screen.getByRole("button", { name: "Add job" }));
 
-    await screen.findByRole("heading", {
+    const addedHeading = await screen.findByRole("heading", {
       name: "Put toys away",
     });
     expect(screen.getByText("Job added to today’s board.")).toHaveAttribute(
@@ -191,8 +189,10 @@ describe("Today page", () => {
       "status",
     );
     expect(screen.getByLabelText("Points")).toHaveValue(1);
+    const addedCard = addedHeading.closest("article");
+    expect(addedCard).not.toBeNull();
     expect(
-      screen.getByText("Ready for Fredster"),
+      within(addedCard as HTMLElement).getByText("Ready for Fredster"),
     ).toBeInTheDocument();
   });
 
@@ -217,6 +217,7 @@ describe("Today page", () => {
           jobName: pendingJob.name,
           points: 5,
           awardedAtUtc: "2026-08-29T10:30:00Z",
+        },
       ],
     };
     vi.stubGlobal(
@@ -243,7 +244,9 @@ describe("Today page", () => {
       }),
     );
 
-    expect(await screen.findByLabelText("0 jobs awaiting review")).toBeInTheDocument();
+    expect(
+      await screen.findByLabelText("0 jobs awaiting review"),
+    ).toBeInTheDocument();
     expect(
       await screen.findByText("Approved — 5 points awarded"),
     ).toBeInTheDocument();
@@ -269,13 +272,18 @@ describe("Today page", () => {
       ...board,
       jobs: [board.jobs[0], board.jobs[1], rejectedJob],
     };
+    const childRejectedBoard = {
+      ...childBoard,
+      jobs: [board.jobs[0], board.jobs[1], rejectedJob],
+    };
     vi.stubGlobal(
       "fetch",
       vi
         .fn()
         .mockResolvedValueOnce(jsonResponse(board))
         .mockResolvedValueOnce(jsonResponse(rejectedJob))
-        .mockResolvedValueOnce(jsonResponse(rejectedBoard)),
+        .mockResolvedValueOnce(jsonResponse(rejectedBoard))
+        .mockResolvedValueOnce(jsonResponse(childRejectedBoard)),
     );
     const user = userEvent.setup();
     renderApp();
@@ -293,16 +301,24 @@ describe("Today page", () => {
       within(card as HTMLElement).getByRole("button", { name: "Reject job" }),
     );
 
+    await user.selectOptions(screen.getByLabelText("Viewing as"), fredster.id);
+    const childHeading = await screen.findByRole("heading", {
+      name: "Clear the table",
+    });
+    const childCard = childHeading.closest("article");
+    expect(childCard).not.toBeNull();
     expect(
-      await within(card as HTMLElement).findByText("Needs another go"),
+      within(childCard as HTMLElement).getByText("Needs another go"),
     ).toBeInTheDocument();
     expect(
-      within(card as HTMLElement).getByText(
+      within(childCard as HTMLElement).getByText(
         "Please wipe underneath the table.",
       ),
     ).toBeInTheDocument();
     expect(
-      within(card as HTMLElement).getByText("Ready for Fredster"),
+      within(childCard as HTMLElement).getByRole("button", {
+        name: "Mark as done",
+      }),
     ).toBeInTheDocument();
   });
 

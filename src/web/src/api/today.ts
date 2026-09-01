@@ -62,7 +62,7 @@ export class ApiError extends Error {
 export async function getToday(memberId: string | null): Promise<TodayBoard> {
   const client = apiClient();
   const { data, error } = await client.GET("/api/today", {
-    params: { query: { memberId: memberId ?? undefined } },
+    params: { query: memberId ? { memberId } : {} },
   });
   if (!data) {
     throw new ApiError(problemMessage(error, "We couldn't load today's jobs."));

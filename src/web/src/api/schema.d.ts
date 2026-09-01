@@ -12,8 +12,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get the demo child's jobs for the current household date.
-         * @description Returns the deterministic development child and jobs scheduled today.
+         * Get the selected demo family member's board.
+         * @description Defaults to Fredster and returns a role-appropriate view for the selected household member.
          */
         get: operations["GetToday"];
         put?: never;
@@ -54,8 +54,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Add a new job for the demo child.
-         * @description Adds a new job to the demo child's board for today.
+         * Add a new job for a child.
+         * @description Adds a new job to the selected child's board for today.
          */
         post: operations["AddJob"];
         delete?: never;
@@ -109,19 +109,12 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AddJobRequest: {
+            /** Format: uuid */
+            childId: string;
             name: null | string;
             description: null | string;
             /** Format: int32 */
             points: number | string;
-        };
-        ChildResponse: {
-            /** Format: uuid */
-            id: string;
-            firstName: string;
-            nickname: null | string;
-            displayName: string;
-            /** Format: int32 */
-            pointsBalance: number | string;
         };
         HttpValidationProblemDetails: {
             type?: null | string;
@@ -149,6 +142,9 @@ export interface components {
         JobResponse: {
             /** Format: uuid */
             id: string;
+            /** Format: uuid */
+            childId: string;
+            childDisplayName: string;
             name: string;
             description: string;
             /** Format: int32 */
@@ -159,6 +155,14 @@ export interface components {
             /** Format: date-time */
             approvedAtUtc: null | string;
             latestRejection: null | components["schemas"]["JobRejectionResponse"];
+        };
+        MemberResponse: {
+            /** Format: uuid */
+            id: string;
+            firstName: string;
+            nickname: null | string;
+            displayName: string;
+            isAdult: boolean;
         };
         PointEarningResponse: {
             /** Format: uuid */
@@ -183,11 +187,16 @@ export interface components {
             reason: null | string;
         };
         TodayResponse: {
-            child: components["schemas"]["ChildResponse"];
+            viewer: components["schemas"]["MemberResponse"];
+            members: components["schemas"]["MemberResponse"][];
             /** Format: date */
             date: string;
             jobs: components["schemas"]["JobResponse"][];
+            /** Format: int32 */
+            pointsBalance: null | number | string;
             pointEarnings: components["schemas"]["PointEarningResponse"][];
+            /** Format: int32 */
+            pendingApprovalCount: number | string;
         };
     };
     responses: never;
@@ -200,7 +209,9 @@ export type $defs = Record<string, never>;
 export interface operations {
     GetToday: {
         parameters: {
-            query?: never;
+            query?: {
+                memberId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
