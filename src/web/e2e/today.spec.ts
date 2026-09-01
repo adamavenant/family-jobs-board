@@ -35,7 +35,7 @@ test("rejects a completed job, retries it, and then awards points", async ({
   await expect(points).toHaveValue("1");
 
   const card = page.getByRole("article").filter({ has: heading });
-  await expect(card.getByText("For Fredster")).toBeVisible();
+  await expect(card.locator(".job-card__assignee")).toHaveText("For Fredster");
   await page
     .getByLabel("Viewing as")
     .selectOption({ label: "Fredster — Child" });
@@ -53,11 +53,11 @@ test("rejects a completed job, retries it, and then awards points", async ({
     .fill("Please clean underneath it too.");
   await card.getByRole("button", { name: "Reject job" }).click();
 
-  await expect(card.getByText("Needs another go")).toBeVisible();
-  await expect(card.getByText("Please clean underneath it too.")).toBeVisible();
   await page
     .getByLabel("Viewing as")
     .selectOption({ label: "Fredster — Child" });
+  await expect(card.getByText("Needs another go")).toBeVisible();
+  await expect(card.getByText("Please clean underneath it too.")).toBeVisible();
   await card.getByRole("button", { name: "Mark as done" }).click();
   await expect(card.getByText("Needs another go")).not.toBeVisible();
 
