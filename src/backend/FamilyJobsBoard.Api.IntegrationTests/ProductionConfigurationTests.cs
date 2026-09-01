@@ -1,6 +1,7 @@
 using FamilyJobsBoard.Api.Composition;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Xunit;
 
 namespace FamilyJobsBoard.Api.IntegrationTests;
 
