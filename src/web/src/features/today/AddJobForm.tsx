@@ -2,8 +2,9 @@ import { useEffect, useRef } from "react";
 import { useFetcher } from "react-router";
 
 import type { TodayActionResult } from "../../app/routes";
+import type { HouseholdMember } from "../../api/today";
 
-export function AddJobForm() {
+export function AddJobForm({ children }: { children: HouseholdMember[] }) {
   const fetcher = useFetcher<TodayActionResult>();
   const formRef = useRef<HTMLFormElement>(null);
   const result = fetcher.data?.intent === "add" ? fetcher.data : undefined;
@@ -30,6 +31,21 @@ export function AddJobForm() {
         </div>
         <fetcher.Form method="post" className="add-job__form" ref={formRef}>
           <input type="hidden" name="intent" value="add" />
+          <div className="form-group">
+            <label htmlFor="childId">Assign to</label>
+            <select
+              id="childId"
+              name="childId"
+              required
+              defaultValue={children[0]?.id}
+            >
+              {children.map((child) => (
+                <option key={child.id} value={child.id}>
+                  {child.displayName}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="form-group">
             <label htmlFor="name">Job name</label>
             <input type="text" id="name" name="name" required maxLength={160} />

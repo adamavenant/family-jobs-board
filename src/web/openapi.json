@@ -15,9 +15,19 @@
         "tags": [
           "Today"
         ],
-        "summary": "Get the demo child's jobs for the current household date.",
-        "description": "Returns the deterministic development child and jobs scheduled today.",
+        "summary": "Get the selected demo family member's board.",
+        "description": "Defaults to Fredster and returns a role-appropriate view for the selected household member.",
         "operationId": "GetToday",
+        "parameters": [
+          {
+            "name": "memberId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -90,8 +100,8 @@
         "tags": [
           "Today"
         ],
-        "summary": "Add a new job for the demo child.",
-        "description": "Adds a new job to the demo child's board for today.",
+        "summary": "Add a new job for a child.",
+        "description": "Adds a new job to the selected child's board for today.",
         "operationId": "AddJob",
         "requestBody": {
           "content": {
@@ -258,12 +268,17 @@
     "schemas": {
       "AddJobRequest": {
         "required": [
+          "childId",
           "name",
           "description",
           "points"
         ],
         "type": "object",
         "properties": {
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "name": {
             "type": [
               "null",
@@ -277,42 +292,6 @@
             ]
           },
           "points": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          }
-        }
-      },
-      "ChildResponse": {
-        "required": [
-          "id",
-          "firstName",
-          "nickname",
-          "displayName",
-          "pointsBalance"
-        ],
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "firstName": {
-            "type": "string"
-          },
-          "nickname": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "pointsBalance": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
@@ -416,6 +395,8 @@
       "JobResponse": {
         "required": [
           "id",
+          "childId",
+          "childDisplayName",
           "name",
           "description",
           "points",
@@ -429,6 +410,13 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childDisplayName": {
+            "type": "string"
           },
           "name": {
             "type": "string"
@@ -470,6 +458,37 @@
                 "$ref": "#/components/schemas/JobRejectionResponse"
               }
             ]
+          }
+        }
+      },
+      "MemberResponse": {
+        "required": [
+          "id",
+          "firstName",
+          "nickname",
+          "displayName",
+          "isAdult"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "nickname": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "isAdult": {
+            "type": "boolean"
           }
         }
       },
@@ -562,15 +581,24 @@
       },
       "TodayResponse": {
         "required": [
-          "child",
+          "viewer",
+          "members",
           "date",
           "jobs",
-          "pointEarnings"
+          "pointsBalance",
+          "pointEarnings",
+          "pendingApprovalCount"
         ],
         "type": "object",
         "properties": {
-          "child": {
-            "$ref": "#/components/schemas/ChildResponse"
+          "viewer": {
+            "$ref": "#/components/schemas/MemberResponse"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberResponse"
+            }
           },
           "date": {
             "type": "string",
@@ -582,11 +610,28 @@
               "$ref": "#/components/schemas/JobResponse"
             }
           },
+          "pointsBalance": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
           "pointEarnings": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PointEarningResponse"
             }
+          },
+          "pendingApprovalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       }

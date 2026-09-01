@@ -1,4 +1,9 @@
-import { useFetcher, useLoaderData } from "react-router";
+import {
+  useFetcher,
+  useLoaderData,
+  useLocation,
+  useNavigate,
+} from "react-router";
 
 import type { PointEarning, TodayBoard, TodayJob } from "../../api/today";
 import type { TodayActionResult } from "../../app/routes";
@@ -7,31 +12,65 @@ import { ThemeToggle } from "../theme/ThemeToggle";
 
 export function TodayPage() {
   const board = useLoaderData() as TodayBoard;
+  const navigate = useNavigate();
+  const location = useLocation();
+  const children = board.members.filter((member) => !member.isAdult);
   const formattedDate = new Intl.DateTimeFormat("en", {
     weekday: "long",
     day: "numeric",
     month: "long",
   }).format(new Date(`${board.date}T12:00:00`));
+  const selectMember = (memberId: string) => {
+    window.localStorage.setItem("family-jobs-board-member", memberId);
+    const search = new URLSearchParams(location.search);
+    search.set("member", memberId);
+    void navigate(`${location.pathname}?${search.toString()}`);
+  };
 
   return (
     <main>
       <header className="hero">
         <div className="hero__toolbar">
           <p className="eyebrow">Family Jobs Board</p>
-          <ThemeToggle />
+          <div className="hero__actions">
+            <label className="member-picker">
+              <span className="member-picker__label">Viewing as</span>
+              <select
+                value={board.viewer.id}
+                onChange={(event) => selectMember(event.target.value)}
+              >
+                {board.members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.displayName} — {member.isAdult ? "Adult" : "Child"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <ThemeToggle />
+          </div>
         </div>
         <div className="hero__content">
           <div>
-            <h1>Good day, {board.child.displayName}!</h1>
+            <h1>Good day, {board.viewer.displayName}!</h1>
             <p className="hero__date">{formattedDate}</p>
           </div>
           <div className="hero__stats">
             <div
               className="hero__balance"
-              aria-label={`${board.child.pointsBalance} points earned`}
+              aria-label={
+                board.viewer.isAdult
+                  ? `${board.pendingApprovalCount} jobs awaiting review`
+                  : `${board.pointsBalance ?? 0} points earned`
+              }
             >
-              <strong>{board.child.pointsBalance}</strong>
-              <span>points earned</span>
+              <strong>
+                {board.viewer.isAdult
+                  ? board.pendingApprovalCount
+                  : (board.pointsBalance ?? 0)}
+              </strong>
+              <span>
+                {board.viewer.isAdult ? "awaiting review" : "points earned"}
+              </span>
             </div>
             <div
               className="hero__count"
@@ -44,28 +83,43 @@ export function TodayPage() {
         </div>
       </header>
 
-      <AddJobForm />
+      {board.viewer.isAdult ? <AddJobForm children={children} /> : null}
 
       <section className="board" aria-labelledby="today-heading">
         <div className="board__heading">
           <div>
-            <p className="eyebrow">Your list</p>
-            <h2 id="today-heading">Today’s jobs</h2>
+            <p className="eyebrow">
+              {board.viewer.isAdult ? "Household list" : "Your list"}
+            </p>
+            <h2 id="today-heading">
+              {board.viewer.isAdult ? "Family jobs" : "Today’s jobs"}
+            </h2>
           </div>
-          <p>Finish a job to send it for a grown-up to approve.</p>
+          <p>
+            {board.viewer.isAdult
+              ? "Assign jobs and review each child’s completed work."
+              : "Finish a job to send it for a grown-up to approve."}
+          </p>
         </div>
 
         <div className="job-grid">
           {board.jobs.map((job, index) => (
-            <JobCard key={job.id} job={job} index={index} />
+            <JobCard
+              key={job.id}
+              job={job}
+              index={index}
+              isAdult={board.viewer.isAdult}
+            />
           ))}
         </div>
       </section>
 
-      <PointsHistory
-        childName={board.child.displayName}
-        earnings={board.pointEarnings}
-      />
+      {!board.viewer.isAdult ? (
+        <PointsHistory
+          childName={board.viewer.displayName}
+          earnings={board.pointEarnings}
+        />
+      ) : null}
     </main>
   );
 }
@@ -120,7 +174,15 @@ function formatAwardTime(value: string) {
   }).format(new Date(value));
 }
 
-function JobCard({ job, index }: { job: TodayJob; index: number }) {
+function JobCard({
+  job,
+  index,
+  isAdult,
+}: {
+  job: TodayJob;
+  index: number;
+  isAdult: boolean;
+}) {
   const fetcher = useFetcher<TodayActionResult>();
   const isSubmitting = fetcher.state !== "idle";
   const submittingIntent = fetcher.formData?.get("intent");
@@ -149,6 +211,9 @@ function JobCard({ job, index }: { job: TodayJob; index: number }) {
         <span className="points">{job.points} pts</span>
       </div>
       <div>
+        {isAdult ? (
+          <p className="job-card__assignee">For {job.childDisplayName}</p>
+        ) : null}
         <h3>{job.name}</h3>
         <p>{job.description}</p>
       </div>
@@ -158,7 +223,7 @@ function JobCard({ job, index }: { job: TodayJob; index: number }) {
           <span aria-hidden="true">★</span>
           Approved — {job.points} points awarded
         </div>
-      ) : isPending ? (
+      ) : isPending && isAdult ? (
         <fetcher.Form method="post" className="approval-form">
           <input type="hidden" name="jobId" value={job.id} />
           <p>Nice work — ready for a grown-up.</p>
@@ -195,6 +260,14 @@ function JobCard({ job, index }: { job: TodayJob; index: number }) {
             </button>
           </div>
         </fetcher.Form>
+      ) : isPending ? (
+        <div className="complete-state" role="status">
+          Sent to a grown-up for approval
+        </div>
+      ) : isAdult ? (
+        <div className="complete-state" role="status">
+          Ready for {job.childDisplayName}
+        </div>
       ) : (
         <div className="open-job-actions">
           {job.latestRejection ? (

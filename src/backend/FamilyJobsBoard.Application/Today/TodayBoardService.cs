@@ -1,4 +1,5 @@
 using FamilyJobsBoard.Application.Clock;
+using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Domain.Points;
 
@@ -15,40 +16,63 @@ public sealed class TodayBoardService
         _clock = clock;
     }
 
-    public async Task<TodayBoard> GetAsync(CancellationToken cancellationToken)
+    public async Task<TodayBoard> GetAsync(
+        Guid defaultViewerId,
+        Guid? viewerId,
+        CancellationToken cancellationToken)
     {
-        var child = await _repository.GetDemoChildAsync(cancellationToken)
-            ?? throw new TodayBoardNotAvailableException();
-        var jobs = await _repository.GetJobsAsync(child.Id, _clock.Today, cancellationToken);
+        var members = await _repository.GetMembersAsync(cancellationToken);
+        if (members.Count == 0)
+        {
+            throw new TodayBoardNotAvailableException();
+        }
+
+        var selectedId = viewerId ?? defaultViewerId;
+        var viewer = members.SingleOrDefault(member => member.Id == selectedId)
+            ?? throw new HouseholdMemberNotFoundException(selectedId);
+        var children = members.Where(member => !member.IsAdult).ToArray();
+        var visibleChildren = viewer.IsAdult
+            ? children
+            : children.Where(child => child.Id == viewer.Id).ToArray();
+        var visibleChildIds = visibleChildren.Select(child => child.Id).ToArray();
+        var jobs = await _repository.GetJobsAsync(
+            visibleChildIds,
+            _clock.Today,
+            cancellationToken);
         var latestRejections = await _repository.GetLatestRejectionsAsync(
-            child.Id,
+            visibleChildIds,
             _clock.Today,
             cancellationToken);
         var rejectionByJobId = latestRejections.ToDictionary(rejection => rejection.JobId);
-        var points = await _repository.GetPointsSummaryAsync(child.Id, cancellationToken);
+        var childById = children.ToDictionary(child => child.Id);
+        TodayPointsSummary? points = null;
+        if (!viewer.IsAdult)
+        {
+            points = await _repository.GetPointsSummaryAsync(viewer.Id, cancellationToken);
+        }
 
         return new TodayBoard(
-            child.Id,
-            child.FirstName,
-            child.Nickname,
-            child.DisplayName,
-            points.Balance,
+            MapMember(viewer),
+            members.Select(MapMember).ToArray(),
             _clock.Today,
             jobs.Select(job => MapJob(
                 job,
+                childById[job.ChildId],
                 rejectionByJobId.GetValueOrDefault(job.Id))).ToArray(),
-            points.Earnings);
+            points?.Balance,
+            points?.Earnings ?? [],
+            jobs.Count(job => job.Status == JobStatus.PendingApproval));
     }
 
     public async Task<TodayJob> CompleteAsync(Guid jobId, CancellationToken cancellationToken)
     {
-        var job = await _repository.GetJobAsync(jobId, cancellationToken)
-            ?? throw new JobNotFoundException(jobId);
+        var job = await GetJobAsync(jobId, cancellationToken);
+        var child = await GetChildAsync(job.ChildId, cancellationToken);
 
         job.MarkComplete(_clock.UtcNow);
         await _repository.SaveChangesAsync(cancellationToken);
 
-        return MapJob(job, null);
+        return MapJob(job, child, null);
     }
 
     public async Task<TodayJob> AddJobAsync(
@@ -58,17 +82,20 @@ public sealed class TodayBoardService
         var name = request.Name?.Trim() ?? string.Empty;
         var description = request.Description?.Trim() ?? string.Empty;
         var errors = ValidateNewJob(name, description, request.Points);
+        var child = await _repository.GetMemberAsync(request.ChildId, cancellationToken);
+        if (child is null || child.IsAdult)
+        {
+            errors[nameof(AddTodayJob.ChildId)] = ["Choose a child in this household."];
+        }
+
         if (errors.Count > 0)
         {
             throw new InvalidTodayJobException(errors);
         }
 
-        var child = await _repository.GetDemoChildAsync(cancellationToken)
-            ?? throw new TodayBoardNotAvailableException();
-
         var job = new Job(
             Guid.NewGuid(),
-            child.Id,
+            child!.Id,
             name,
             description,
             request.Points,
@@ -77,15 +104,15 @@ public sealed class TodayBoardService
         await _repository.AddJobAsync(job, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
 
-        return MapJob(job, null);
+        return MapJob(job, child, null);
     }
 
     public async Task<TodayJobApproval> ApproveAsync(
         Guid jobId,
         CancellationToken cancellationToken)
     {
-        var job = await _repository.GetJobAsync(jobId, cancellationToken)
-            ?? throw new JobNotFoundException(jobId);
+        var job = await GetJobAsync(jobId, cancellationToken);
+        var child = await GetChildAsync(job.ChildId, cancellationToken);
 
         var decidedAtUtc = _clock.UtcNow;
         job.Approve(decidedAtUtc);
@@ -109,7 +136,7 @@ public sealed class TodayBoardService
             job.ChildId,
             cancellationToken);
 
-        return new TodayJobApproval(MapJob(job, null), points.Balance);
+        return new TodayJobApproval(MapJob(job, child, null), points.Balance);
     }
 
     public async Task<TodayJob> RejectAsync(
@@ -127,8 +154,8 @@ public sealed class TodayBoardService
             });
         }
 
-        var job = await _repository.GetJobAsync(jobId, cancellationToken)
-            ?? throw new JobNotFoundException(jobId);
+        var job = await GetJobAsync(jobId, cancellationToken);
+        var child = await GetChildAsync(job.ChildId, cancellationToken);
         var decidedAtUtc = _clock.UtcNow;
         job.Reject();
         var decision = new JobReviewDecision(
@@ -141,11 +168,27 @@ public sealed class TodayBoardService
         await _repository.AddReviewDecisionAsync(decision, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
 
-        return MapJob(job, new TodayJobRejection(
+        return MapJob(job, child, new TodayJobRejection(
             decision.Id,
             decision.JobId,
             decision.Reason,
             decision.DecidedAtUtc));
+    }
+
+    private async Task<Job> GetJobAsync(Guid jobId, CancellationToken cancellationToken)
+    {
+        return await _repository.GetJobAsync(jobId, cancellationToken)
+            ?? throw new JobNotFoundException(jobId);
+    }
+
+    private async Task<HouseholdMember> GetChildAsync(
+        Guid childId,
+        CancellationToken cancellationToken)
+    {
+        var child = await _repository.GetMemberAsync(childId, cancellationToken);
+        return child is { IsAdult: false }
+            ? child
+            : throw new HouseholdMemberNotFoundException(childId);
     }
 
     private static Dictionary<string, string[]> ValidateNewJob(
@@ -179,7 +222,20 @@ public sealed class TodayBoardService
         return errors;
     }
 
-    private static TodayJob MapJob(Job job, TodayJobRejection? latestRejection)
+    private static TodayMember MapMember(HouseholdMember member)
+    {
+        return new TodayMember(
+            member.Id,
+            member.FirstName,
+            member.Nickname,
+            member.DisplayName,
+            member.IsAdult);
+    }
+
+    private static TodayJob MapJob(
+        Job job,
+        HouseholdMember child,
+        TodayJobRejection? latestRejection)
     {
         var status = job.Status switch
         {
@@ -191,6 +247,8 @@ public sealed class TodayBoardService
 
         return new TodayJob(
             job.Id,
+            child.Id,
+            child.DisplayName,
             job.Name,
             job.Description,
             job.Points,

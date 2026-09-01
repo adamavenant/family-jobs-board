@@ -60,10 +60,11 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var initial = await client.GetFromJsonAsync<TodayResponse>("/api/today");
 
         Assert.NotNull(initial);
-        Assert.Equal(DemoDataIds.Child, initial.Child.Id);
-        Assert.Equal("Addie", initial.Child.FirstName);
-        Assert.Null(initial.Child.Nickname);
-        Assert.Equal("Addie", initial.Child.DisplayName);
+        Assert.Equal(DemoDataIds.Fredster, initial.Viewer.Id);
+        Assert.Equal("Fredster", initial.Viewer.FirstName);
+        Assert.False(initial.Viewer.IsAdult);
+        Assert.Equal(4, initial.Members.Count);
+        Assert.Equal(0, initial.PointsBalance);
         Assert.Equal(3, initial.Jobs.Count);
         Assert.Empty(initial.PointEarnings);
         Assert.All(initial.Jobs, job => Assert.Equal("open", job.Status));
@@ -96,19 +97,19 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             const string nickname = "Ads";
             await database.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE household_members SET nickname = {nickname} WHERE id = {DemoDataIds.Child}");
+                $"UPDATE household_members SET nickname = {nickname} WHERE id = {DemoDataIds.Fredster}");
         }
 
         var board = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
 
         Assert.NotNull(board);
-        Assert.Equal("Addie", board.Child.FirstName);
-        Assert.Equal("Ads", board.Child.Nickname);
-        Assert.Equal("Ads", board.Child.DisplayName);
+        Assert.Equal("Fredster", board.Viewer.FirstName);
+        Assert.Equal("Ads", board.Viewer.Nickname);
+        Assert.Equal("Ads", board.Viewer.DisplayName);
     }
 
     [Fact]
-    public async Task Nickname_migration_upgrades_the_existing_demo_child_name()
+    public async Task Profile_migration_preserves_existing_jobs_and_moves_them_to_Fredster()
     {
         await using var postgres = new PostgreSqlBuilder("postgres:18-alpine")
             .WithDatabase("family_jobs_board_upgrade_tests")
@@ -122,18 +123,26 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             .Options;
         await using var database = new AppDbContext(options);
         var migrator = database.GetService<IMigrator>();
-        await migrator.MigrateAsync("20260831101140_AddJobApprovalsAndPointsLedger");
+        await migrator.MigrateAsync("20260831113745_AddHouseholdMemberNickname");
         await database.Database.ExecuteSqlRawAsync(
-            "INSERT INTO household_members (id, first_name, is_adult) " +
-            "VALUES ('22eb0cc1-058e-4b2e-bb18-d7aaad564a6c', 'Alex', FALSE);");
+            "INSERT INTO household_members (id, first_name, nickname, is_adult) VALUES " +
+            "('22eb0cc1-058e-4b2e-bb18-d7aaad564a6c', 'Addie', NULL, FALSE), " +
+            "('9db319c1-28d1-4ce6-93d7-f04a45f8257d', 'Adam', NULL, TRUE);");
+        var jobId = Guid.NewGuid();
+        await database.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO jobs (id, child_id, name, description, points, scheduled_date, status, completed_at_utc, approved_at_utc) VALUES ({jobId}, {DemoDataIds.Addie}, 'Existing job', 'Keep me.', 3, DATE '2026-08-31', 'Open', NULL, NULL);");
 
         await migrator.MigrateAsync();
         database.ChangeTracker.Clear();
-        var child = await database.HouseholdMembers.SingleAsync(
-            member => member.Id == DemoDataIds.Child);
+        var members = await database.HouseholdMembers.OrderBy(member => member.FirstName).ToListAsync();
+        var job = await database.Jobs.SingleAsync(existing => existing.Id == jobId);
 
-        Assert.Equal("Addie", child.FirstName);
-        Assert.Null(child.Nickname);
+        Assert.Equal(["Addie", "Fredster", "Harrie", "Hellie"], members.Select(member => member.FirstName));
+        Assert.True(members.Single(member => member.Id == DemoDataIds.Addie).IsAdult);
+        Assert.True(members.Single(member => member.Id == DemoDataIds.Hellie).IsAdult);
+        Assert.False(members.Single(member => member.Id == DemoDataIds.Fredster).IsAdult);
+        Assert.False(members.Single(member => member.Id == DemoDataIds.Harrie).IsAdult);
+        Assert.Equal(DemoDataIds.Fredster, job.ChildId);
     }
 
     [Fact]
@@ -144,6 +153,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             "/api/today/jobs",
             new
             {
+                childId = DemoDataIds.Fredster,
                 name = "  Put toys away  ",
                 description = "  Return every toy to its box.  ",
                 points = 4,
@@ -177,11 +187,73 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Selected_member_gets_a_role_appropriate_board()
+    {
+        using var addForHarrie = await Client.PostAsJsonAsync(
+            "/api/today/jobs",
+            new
+            {
+                childId = DemoDataIds.Harrie,
+                name = "Water the plants",
+                description = "Give each plant a small drink.",
+                points = 2,
+            });
+        addForHarrie.EnsureSuccessStatusCode();
+
+        var adult = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}");
+        var fredster = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Fredster}");
+        var harrie = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Harrie}");
+
+        Assert.NotNull(adult);
+        Assert.True(adult.Viewer.IsAdult);
+        Assert.Null(adult.PointsBalance);
+        Assert.Empty(adult.PointEarnings);
+        Assert.Contains(adult.Jobs, job => job.ChildId == DemoDataIds.Fredster);
+        Assert.Contains(adult.Jobs, job => job.ChildId == DemoDataIds.Harrie);
+
+        Assert.NotNull(fredster);
+        Assert.False(fredster.Viewer.IsAdult);
+        Assert.All(fredster.Jobs, job => Assert.Equal(DemoDataIds.Fredster, job.ChildId));
+
+        Assert.NotNull(harrie);
+        var harrieJob = Assert.Single(harrie.Jobs);
+        Assert.Equal("Water the plants", harrieJob.Name);
+        Assert.Equal("Harrie", harrieJob.ChildDisplayName);
+    }
+
+    [Fact]
+    public async Task Unknown_viewer_and_non_child_assignee_return_problem_details()
+    {
+        using var unknownViewer = await Client.GetAsync(
+            $"/api/today?memberId={Guid.NewGuid()}");
+        Assert.Equal(HttpStatusCode.NotFound, unknownViewer.StatusCode);
+        Assert.Equal(
+            "Household member not found",
+            (await unknownViewer.Content.ReadFromJsonAsync<ProblemDetails>())?.Title);
+
+        using var adultAssignee = await Client.PostAsJsonAsync(
+            "/api/today/jobs",
+            new
+            {
+                childId = DemoDataIds.Addie,
+                name = "Invalid assignment",
+                description = "Adults cannot be job assignees.",
+                points = 1,
+            });
+        var problem = await adultAssignee.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        Assert.Equal(HttpStatusCode.BadRequest, adultAssignee.StatusCode);
+        Assert.Contains("ChildId", problem?.Errors.Keys ?? []);
+    }
+
+    [Fact]
     public async Task Pending_job_can_be_approved_once_and_award_persists_after_restart()
     {
         var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
         Assert.NotNull(initial);
-        Assert.Equal(0, initial.Child.PointsBalance);
+        Assert.Equal(0, initial.PointsBalance);
         var target = initial.Jobs.Single(job => job.Id == DemoDataIds.FeedDog);
 
         using var missingResponse = await Client.PostAsync(
@@ -219,7 +291,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
         var persisted = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
         Assert.NotNull(persisted);
-        Assert.Equal(target.Points, persisted.Child.PointsBalance);
+        Assert.Equal(target.Points, persisted.PointsBalance);
         var earning = Assert.Single(persisted.PointEarnings);
         Assert.NotEqual(Guid.Empty, earning.Id);
         Assert.Equal(target.Id, earning.JobId);
@@ -271,7 +343,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
         var persisted = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
         Assert.NotNull(persisted);
-        Assert.Equal(0, persisted.Child.PointsBalance);
+        Assert.Equal(0, persisted.PointsBalance);
         Assert.Empty(persisted.PointEarnings);
         var reopened = persisted.Jobs.Single(job => job.Id == target.Id);
         Assert.Equal("open", reopened.Status);
@@ -294,7 +366,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
         var finalBoard = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
         Assert.NotNull(finalBoard);
-        Assert.Equal(target.Points, finalBoard.Child.PointsBalance);
+        Assert.Equal(target.Points, finalBoard.PointsBalance);
         Assert.Single(finalBoard.PointEarnings);
 
         var factory = _factory ?? throw new InvalidOperationException("Test API was not initialised.");
@@ -349,7 +421,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.Equal(
             "pendingApproval",
             board?.Jobs.Single(job => job.Id == invalidReasonJob.Id).Status);
-        Assert.Equal(0, board?.Child.PointsBalance);
+        Assert.Equal(0, board?.PointsBalance);
     }
 
     [Fact]
@@ -371,9 +443,9 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var jobId = Guid.NewGuid();
         var approvedAtUtc = new DateTimeOffset(2026, 8, 31, 10, 30, 0, TimeSpan.Zero);
         await database.Database.ExecuteSqlInterpolatedAsync(
-            $"INSERT INTO household_members (id, first_name, nickname, is_adult) VALUES ({DemoDataIds.Child}, 'Addie', NULL, FALSE);");
+            $"INSERT INTO household_members (id, first_name, nickname, is_adult) VALUES ({DemoDataIds.Addie}, 'Addie', NULL, FALSE);");
         await database.Database.ExecuteSqlInterpolatedAsync(
-            $"INSERT INTO jobs (id, child_id, name, description, points, scheduled_date, status, completed_at_utc, approved_at_utc) VALUES ({jobId}, {DemoDataIds.Child}, 'Existing job', 'Already approved.', 4, DATE '2026-08-31', 'Approved', {approvedAtUtc}, {approvedAtUtc});");
+            $"INSERT INTO jobs (id, child_id, name, description, points, scheduled_date, status, completed_at_utc, approved_at_utc) VALUES ({jobId}, {DemoDataIds.Addie}, 'Existing job', 'Already approved.', 4, DATE '2026-08-31', 'Approved', {approvedAtUtc}, {approvedAtUtc});");
 
         await migrator.MigrateAsync();
         database.ChangeTracker.Clear();
@@ -399,8 +471,8 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var board = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
 
         Assert.NotNull(board);
-        Assert.Equal(first.Points + second.Points, board.Child.PointsBalance);
-        Assert.Equal(board.Child.PointsBalance, board.PointEarnings.Sum(earning => earning.Points));
+        Assert.Equal(first.Points + second.Points, board.PointsBalance);
+        Assert.Equal(board.PointsBalance, board.PointEarnings.Sum(earning => earning.Points));
         Assert.Collection(
             board.PointEarnings,
             earning =>
@@ -439,7 +511,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
         var board = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
         Assert.NotNull(board);
-        Assert.Equal(5, board.Child.PointsBalance);
+        Assert.Equal(5, board.PointsBalance);
     }
 
     [Theory]
@@ -452,7 +524,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     {
         using var response = await Client.PostAsJsonAsync(
             "/api/today/jobs",
-            new { name, description, points });
+            new { childId = DemoDataIds.Fredster, name, description, points });
         var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -499,20 +571,25 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     private sealed record TodayResponse(
-        ChildResponse Child,
+        MemberResponse Viewer,
+        IReadOnlyList<MemberResponse> Members,
         DateOnly Date,
         IReadOnlyList<JobResponse> Jobs,
-        IReadOnlyList<PointEarningResponse> PointEarnings);
+        int? PointsBalance,
+        IReadOnlyList<PointEarningResponse> PointEarnings,
+        int PendingApprovalCount);
 
-    private sealed record ChildResponse(
+    private sealed record MemberResponse(
         Guid Id,
         string FirstName,
         string? Nickname,
         string DisplayName,
-        int PointsBalance);
+        bool IsAdult);
 
     private sealed record JobResponse(
         Guid Id,
+        Guid ChildId,
+        string ChildDisplayName,
         string Name,
         string Description,
         int Points,

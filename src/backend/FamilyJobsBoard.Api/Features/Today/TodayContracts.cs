@@ -1,24 +1,33 @@
 namespace FamilyJobsBoard.Api.Features.Today;
 
 public sealed record TodayResponse(
-    ChildResponse Child,
+    MemberResponse Viewer,
+    IReadOnlyList<MemberResponse> Members,
     DateOnly Date,
     IReadOnlyList<JobResponse> Jobs,
-    IReadOnlyList<PointEarningResponse> PointEarnings);
+    int? PointsBalance,
+    IReadOnlyList<PointEarningResponse> PointEarnings,
+    int PendingApprovalCount);
 
-public sealed record ChildResponse(
+public sealed record MemberResponse(
     Guid Id,
     string FirstName,
     string? Nickname,
     string DisplayName,
-    int PointsBalance);
+    bool IsAdult);
 
-public sealed record AddJobRequest(string? Name, string? Description, int Points);
+public sealed record AddJobRequest(
+    Guid ChildId,
+    string? Name,
+    string? Description,
+    int Points);
 
 public sealed record RejectJobRequest(string? Reason);
 
 public sealed record JobResponse(
     Guid Id,
+    Guid ChildId,
+    string ChildDisplayName,
     string Name,
     string Description,
     int Points,

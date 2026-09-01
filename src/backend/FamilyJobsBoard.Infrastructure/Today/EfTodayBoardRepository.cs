@@ -17,21 +17,33 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         _database = database;
     }
 
-    public Task<HouseholdMember?> GetDemoChildAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<HouseholdMember>> GetMembersAsync(
+        CancellationToken cancellationToken)
+    {
+        return await _database.HouseholdMembers
+            .AsNoTracking()
+            .OrderByDescending(member => member.IsAdult)
+            .ThenBy(member => member.FirstName)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<HouseholdMember?> GetMemberAsync(
+        Guid memberId,
+        CancellationToken cancellationToken)
     {
         return _database.HouseholdMembers
             .AsNoTracking()
-            .SingleOrDefaultAsync(member => member.Id == DemoDataIds.Child, cancellationToken);
+            .SingleOrDefaultAsync(member => member.Id == memberId, cancellationToken);
     }
 
     public async Task<IReadOnlyList<Job>> GetJobsAsync(
-        Guid childId,
+        IReadOnlyCollection<Guid> childIds,
         DateOnly scheduledDate,
         CancellationToken cancellationToken)
     {
         return await _database.Jobs
             .AsNoTracking()
-            .Where(job => job.ChildId == childId && job.ScheduledDate == scheduledDate)
+            .Where(job => childIds.Contains(job.ChildId) && job.ScheduledDate == scheduledDate)
             .OrderBy(job => job.Name)
             .ToListAsync(cancellationToken);
     }
@@ -42,7 +54,7 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
     }
 
     public async Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(
-        Guid childId,
+        IReadOnlyCollection<Guid> childIds,
         DateOnly scheduledDate,
         CancellationToken cancellationToken)
     {
@@ -51,7 +63,7 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
             .Where(decision => decision.Outcome == JobReviewOutcome.Rejected)
             .Join(
                 _database.Jobs.AsNoTracking().Where(job =>
-                    job.ChildId == childId && job.ScheduledDate == scheduledDate),
+                    childIds.Contains(job.ChildId) && job.ScheduledDate == scheduledDate),
                 decision => decision.JobId,
                 job => job.Id,
                 (decision, _) => decision)

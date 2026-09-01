@@ -4,6 +4,8 @@ import type { paths } from "./schema";
 
 export interface TodayJob {
   id: string;
+  childId: string;
+  childDisplayName: string;
   name: string;
   description: string;
   points: number;
@@ -20,16 +22,21 @@ export interface JobRejection {
 }
 
 export interface TodayBoard {
-  child: {
-    id: string;
-    firstName: string;
-    nickname: string | null;
-    displayName: string;
-    pointsBalance: number;
-  };
+  viewer: HouseholdMember;
+  members: HouseholdMember[];
   date: string;
   jobs: TodayJob[];
+  pointsBalance: number | null;
   pointEarnings: PointEarning[];
+  pendingApprovalCount: number;
+}
+
+export interface HouseholdMember {
+  id: string;
+  firstName: string;
+  nickname: string | null;
+  displayName: string;
+  isAdult: boolean;
 }
 
 export interface PointEarning {
@@ -52,24 +59,27 @@ export class ApiError extends Error {
   }
 }
 
-export async function getToday(): Promise<TodayBoard> {
+export async function getToday(memberId: string | null): Promise<TodayBoard> {
   const client = apiClient();
-  const { data, error } = await client.GET("/api/today");
+  const { data, error } = await client.GET("/api/today", {
+    params: { query: memberId ? { memberId } : {} },
+  });
   if (!data) {
     throw new ApiError(problemMessage(error, "We couldn't load today's jobs."));
   }
 
   return {
-    child: {
-      ...data.child,
-      pointsBalance: Number(data.child.pointsBalance),
-    },
+    viewer: data.viewer,
+    members: data.members,
     date: data.date,
     jobs: data.jobs.map(mapJob),
+    pointsBalance:
+      data.pointsBalance === null ? null : Number(data.pointsBalance),
     pointEarnings: data.pointEarnings.map((earning) => ({
       ...earning,
       points: Number(earning.points),
     })),
+    pendingApprovalCount: Number(data.pendingApprovalCount),
   };
 }
 
@@ -119,6 +129,7 @@ export async function rejectJob(
 }
 
 export async function addJob(request: {
+  childId: string;
   name: string;
   description: string;
   points: number;
@@ -143,6 +154,8 @@ function apiClient() {
 
 function mapJob(job: {
   id: string;
+  childId: string;
+  childDisplayName: string;
   name: string;
   description: string;
   points: number | string;

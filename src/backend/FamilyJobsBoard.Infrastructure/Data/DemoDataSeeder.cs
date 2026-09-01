@@ -15,19 +15,10 @@ public sealed class DemoDataSeeder
 
     public async Task SeedAsync(DateOnly householdDate, CancellationToken cancellationToken)
     {
-        if (!await _database.HouseholdMembers.AnyAsync(
-                member => member.Id == DemoDataIds.Adult,
-                cancellationToken))
-        {
-            _database.HouseholdMembers.Add(new HouseholdMember(DemoDataIds.Adult, "Adam", true));
-        }
-
-        if (!await _database.HouseholdMembers.AnyAsync(
-                member => member.Id == DemoDataIds.Child,
-                cancellationToken))
-        {
-            _database.HouseholdMembers.Add(new HouseholdMember(DemoDataIds.Child, "Addie", false));
-        }
+        await AddMemberIfMissingAsync(DemoDataIds.Addie, "Addie", true, cancellationToken);
+        await AddMemberIfMissingAsync(DemoDataIds.Hellie, "Hellie", true, cancellationToken);
+        await AddMemberIfMissingAsync(DemoDataIds.Fredster, "Fredster", false, cancellationToken);
+        await AddMemberIfMissingAsync(DemoDataIds.Harrie, "Harrie", false, cancellationToken);
 
         await UpsertJobAsync(
             DemoDataIds.FeedDog,
@@ -54,6 +45,20 @@ public sealed class DemoDataSeeder
         await _database.SaveChangesAsync(cancellationToken);
     }
 
+    private async Task AddMemberIfMissingAsync(
+        Guid id,
+        string firstName,
+        bool isAdult,
+        CancellationToken cancellationToken)
+    {
+        if (!await _database.HouseholdMembers.AnyAsync(
+                member => member.Id == id,
+                cancellationToken))
+        {
+            _database.HouseholdMembers.Add(new HouseholdMember(id, firstName, isAdult));
+        }
+    }
+
     private async Task UpsertJobAsync(
         Guid id,
         string name,
@@ -66,7 +71,7 @@ public sealed class DemoDataSeeder
         if (existing is null)
         {
             _database.Jobs.Add(
-                new Job(id, DemoDataIds.Child, name, description, points, householdDate));
+                new Job(id, DemoDataIds.Fredster, name, description, points, householdDate));
             return;
         }
 

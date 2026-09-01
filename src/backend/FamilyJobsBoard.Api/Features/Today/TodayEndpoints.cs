@@ -1,6 +1,7 @@
 using FamilyJobsBoard.Application.Today;
 using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Domain.Points;
+using FamilyJobsBoard.Infrastructure.Data;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,8 +15,8 @@ internal static class TodayEndpoints
 
         group.MapGet("/today", GetTodayAsync)
             .WithName("GetToday")
-            .WithSummary("Get the demo child's jobs for the current household date.")
-            .WithDescription("Returns the deterministic development child and jobs scheduled today.");
+            .WithSummary("Get the selected demo family member's board.")
+            .WithDescription("Defaults to Fredster and returns a role-appropriate view for the selected household member.");
 
         group.MapPost("/jobs/{id:guid}/complete", CompleteJobAsync)
             .WithName("CompleteJob")
@@ -24,8 +25,8 @@ internal static class TodayEndpoints
 
         group.MapPost("/today/jobs", AddJobAsync)
             .WithName("AddJob")
-            .WithSummary("Add a new job for the demo child.")
-            .WithDescription("Adds a new job to the demo child's board for today.");
+            .WithSummary("Add a new job for a child.")
+            .WithDescription("Adds a new job to the selected child's board for today.");
 
         group.MapPost("/jobs/{id:guid}/approve", ApproveJobAsync)
             .WithName("ApproveJob")
@@ -41,13 +42,24 @@ internal static class TodayEndpoints
     }
 
     private static async Task<Results<Ok<TodayResponse>, ProblemHttpResult>> GetTodayAsync(
+        Guid? memberId,
         TodayBoardService service,
         CancellationToken cancellationToken)
     {
         try
         {
-            var board = await service.GetAsync(cancellationToken);
+            var board = await service.GetAsync(
+                DemoDataIds.Fredster,
+                memberId,
+                cancellationToken);
             return TypedResults.Ok(MapBoard(board));
+        }
+        catch (HouseholdMemberNotFoundException exception)
+        {
+            return TypedResults.Problem(
+                detail: exception.Message,
+                statusCode: StatusCodes.Status404NotFound,
+                title: "Household member not found");
         }
         catch (TodayBoardNotAvailableException exception)
         {
@@ -66,7 +78,11 @@ internal static class TodayEndpoints
         try
         {
             var job = await service.AddJobAsync(
-                new AddTodayJob(request.Name, request.Description, request.Points),
+                new AddTodayJob(
+                    request.ChildId,
+                    request.Name,
+                    request.Description,
+                    request.Points),
                 cancellationToken);
             return TypedResults.Created("/api/today", MapJob(job));
         }
@@ -191,15 +207,23 @@ internal static class TodayEndpoints
     private static TodayResponse MapBoard(TodayBoard board)
     {
         return new TodayResponse(
-            new ChildResponse(
-                board.ChildId,
-                board.ChildFirstName,
-                board.ChildNickname,
-                board.ChildDisplayName,
-                board.PointsBalance),
+            MapMember(board.Viewer),
+            board.Members.Select(MapMember).ToArray(),
             board.Date,
             board.Jobs.Select(MapJob).ToArray(),
-            board.PointEarnings.Select(MapPointEarning).ToArray());
+            board.PointsBalance,
+            board.PointEarnings.Select(MapPointEarning).ToArray(),
+            board.PendingApprovalCount);
+    }
+
+    private static MemberResponse MapMember(TodayMember member)
+    {
+        return new MemberResponse(
+            member.Id,
+            member.FirstName,
+            member.Nickname,
+            member.DisplayName,
+            member.IsAdult);
     }
 
     private static PointEarningResponse MapPointEarning(TodayPointEarning earning)
@@ -216,6 +240,8 @@ internal static class TodayEndpoints
     {
         return new JobResponse(
             job.Id,
+            job.ChildId,
+            job.ChildDisplayName,
             job.Name,
             job.Description,
             job.Points,

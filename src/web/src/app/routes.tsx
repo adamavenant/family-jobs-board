@@ -1,4 +1,4 @@
-import type { ActionFunctionArgs } from "react-router";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { RouteObject } from "react-router";
 
 import {
@@ -42,8 +42,13 @@ export type TodayActionResult =
   | ApproveActionResult
   | RejectActionResult;
 
-async function todayLoader() {
-  return getToday();
+const selectedMemberKey = "family-jobs-board-member";
+
+async function todayLoader({ request }: LoaderFunctionArgs) {
+  const memberFromUrl = new URL(request.url).searchParams.get("member");
+  const memberId =
+    memberFromUrl ?? window.localStorage.getItem(selectedMemberKey);
+  return getToday(memberId);
 }
 
 async function todayAction({
@@ -143,7 +148,12 @@ async function addJobAction(form: FormData): Promise<AddJobActionResult> {
   const name = form.get("name");
   const description = form.get("description");
   const pointsValue = form.get("points");
+  const childId = form.get("childId");
   const points = Number(pointsValue);
+
+  if (typeof childId !== "string" || childId.length === 0) {
+    return { intent: "add", error: "Choose a child." };
+  }
 
   if (typeof name !== "string" || name.trim().length === 0) {
     return { intent: "add", error: "Enter a job name." };
@@ -170,7 +180,7 @@ async function addJobAction(form: FormData): Promise<AddJobActionResult> {
   }
 
   try {
-    await addJob({ name, description, points });
+    await addJob({ childId, name, description, points });
     return { intent: "add", success: true };
   } catch (error) {
     return {

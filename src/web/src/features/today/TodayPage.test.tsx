@@ -6,19 +6,47 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { routes } from "../../app/routes";
 
+const addie = {
+  id: "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c",
+  firstName: "Addie",
+  nickname: null,
+  displayName: "Addie",
+  isAdult: true,
+};
+const hellie = {
+  id: "9db319c1-28d1-4ce6-93d7-f04a45f8257d",
+  firstName: "Hellie",
+  nickname: null,
+  displayName: "Hellie",
+  isAdult: true,
+};
+const fredster = {
+  id: "754de05d-b6f6-4626-bbad-79e2079cc5c3",
+  firstName: "Fredster",
+  nickname: null,
+  displayName: "Fredster",
+  isAdult: false,
+};
+const harrie = {
+  id: "e22facf5-69ce-45ce-9dad-306eef1852c9",
+  firstName: "Harrie",
+  nickname: null,
+  displayName: "Harrie",
+  isAdult: false,
+};
+
 const board = {
-  child: {
-    id: "c7b3309f-c84c-4b90-b923-305597484642",
-    firstName: "Addie",
-    nickname: null,
-    displayName: "Addie",
-    pointsBalance: 0,
-  },
+  viewer: addie,
+  members: [addie, hellie, fredster, harrie],
   date: "2026-08-29",
+  pointsBalance: null,
+  pendingApprovalCount: 1,
   pointEarnings: [],
   jobs: [
     {
       id: "7009b529-733c-4770-ae56-1f6fa69f6363",
+      childId: fredster.id,
+      childDisplayName: fredster.displayName,
       name: "Feed the dog",
       description: "Fill the food bowl and make sure there is fresh water.",
       points: 5,
@@ -29,6 +57,8 @@ const board = {
     },
     {
       id: "b9d6a90c-58e4-4606-bf65-61de33c2573d",
+      childId: fredster.id,
+      childDisplayName: fredster.displayName,
       name: "Pack school bag",
       description: "Check tomorrow's timetable and pack everything needed.",
       points: 8,
@@ -39,6 +69,8 @@ const board = {
     },
     {
       id: "ea64b5d3-ab18-4c75-bc33-eb3cbf7524f6",
+      childId: fredster.id,
+      childDisplayName: fredster.displayName,
       name: "Clear the table",
       description: "Take dishes to the kitchen after dinner.",
       points: 5,
@@ -48,6 +80,13 @@ const board = {
       latestRejection: null,
     },
   ],
+};
+
+const childBoard = {
+  ...board,
+  viewer: fredster,
+  pointsBalance: 0,
+  jobs: board.jobs,
 };
 
 afterEach(() => {
@@ -68,7 +107,7 @@ describe("Today page", () => {
     expect(screen.getByText("Getting today’s jobs ready…")).toBeInTheDocument();
   });
 
-  it("shows the child, jobs, and completion states", async () => {
+  it("shows the selected adult, family jobs, and review controls", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(board)));
 
     renderApp();
@@ -83,11 +122,9 @@ describe("Today page", () => {
       screen.getByRole("heading", { name: "Pack school bag" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Nice work — ready for a grown-up."),
+      screen.getByRole("button", { name: "Approve +5 points" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("No points earned yet.", { exact: false }),
-    ).toBeInTheDocument();
+    expect(screen.getAllByText("For Fredster")[0]).toBeInTheDocument();
   });
 
   it("keeps grown-up tools collapsed until requested and defaults points to one", async () => {
@@ -108,9 +145,11 @@ describe("Today page", () => {
     expect(screen.getByRole("spinbutton", { name: "Points" })).toHaveValue(1);
   });
 
-  it("adds a job to the board and allows it to be completed", async () => {
+  it("adds a job for the selected child", async () => {
     const addedJob = {
       id: "f75612ce-4253-4ca7-8d13-52636e825d98",
+      childId: fredster.id,
+      childDisplayName: fredster.displayName,
       name: "Put toys away",
       description: "Return every toy to its box.",
       points: 4,
@@ -120,25 +159,13 @@ describe("Today page", () => {
       latestRejection: null,
     };
     const boardWithAddedJob = { ...board, jobs: [...board.jobs, addedJob] };
-    const completedJob = {
-      ...addedJob,
-      status: "pendingApproval",
-      completedAtUtc: "2026-08-29T10:00:00Z",
-      approvedAtUtc: null,
-    };
-    const completedBoard = {
-      ...board,
-      jobs: [...board.jobs, completedJob],
-    };
     vi.stubGlobal(
       "fetch",
       vi
         .fn()
         .mockResolvedValueOnce(jsonResponse(board))
         .mockResolvedValueOnce(jsonResponse(addedJob, { status: 201 }))
-        .mockResolvedValueOnce(jsonResponse(boardWithAddedJob))
-        .mockResolvedValueOnce(jsonResponse(completedJob))
-        .mockResolvedValueOnce(jsonResponse(completedBoard)),
+        .mockResolvedValueOnce(jsonResponse(boardWithAddedJob)),
     );
     const user = userEvent.setup();
     renderApp();
@@ -164,17 +191,8 @@ describe("Today page", () => {
     expect(screen.getByLabelText("Points")).toHaveValue(1);
     const addedCard = addedHeading.closest("article");
     expect(addedCard).not.toBeNull();
-
-    await user.click(
-      within(addedCard as HTMLElement).getByRole("button", {
-        name: "Mark as done",
-      }),
-    );
-
     expect(
-      await within(addedCard as HTMLElement).findByText(
-        "Nice work — ready for a grown-up.",
-      ),
+      within(addedCard as HTMLElement).getByText("Ready for Fredster"),
     ).toBeInTheDocument();
   });
 
@@ -190,8 +208,8 @@ describe("Today page", () => {
     };
     const approvedBoard = {
       ...board,
-      child: { ...board.child, pointsBalance: 5 },
       jobs: [board.jobs[0], board.jobs[1], approvedJob],
+      pendingApprovalCount: 0,
       pointEarnings: [
         {
           id: "63fd708b-1296-409d-9ae4-7cd6fc501af7",
@@ -226,18 +244,13 @@ describe("Today page", () => {
       }),
     );
 
-    expect(await screen.findByLabelText("5 points earned")).toBeInTheDocument();
+    expect(
+      await screen.findByLabelText("0 jobs awaiting review"),
+    ).toBeInTheDocument();
     expect(
       await screen.findByText("Approved — 5 points awarded"),
     ).toBeInTheDocument();
-    const history = screen
-      .getByRole("heading", { name: "How Addie earned them" })
-      .closest("section");
-    expect(history).not.toBeNull();
-    expect(within(history as HTMLElement).getByText("+5")).toBeInTheDocument();
-    expect(
-      within(history as HTMLElement).getByText("Clear the table"),
-    ).toBeInTheDocument();
+    expect(screen.queryByText("How Addie earned them")).not.toBeInTheDocument();
   });
 
   it("rejects a pending job with feedback and allows another try", async () => {
@@ -259,15 +272,9 @@ describe("Today page", () => {
       ...board,
       jobs: [board.jobs[0], board.jobs[1], rejectedJob],
     };
-    const resubmittedJob = {
-      ...rejectedJob,
-      status: "pendingApproval",
-      completedAtUtc: "2026-08-29T10:30:00Z",
-      latestRejection: null,
-    };
-    const resubmittedBoard = {
-      ...board,
-      jobs: [board.jobs[0], board.jobs[1], resubmittedJob],
+    const childRejectedBoard = {
+      ...childBoard,
+      jobs: [board.jobs[0], board.jobs[1], rejectedJob],
     };
     vi.stubGlobal(
       "fetch",
@@ -276,8 +283,7 @@ describe("Today page", () => {
         .mockResolvedValueOnce(jsonResponse(board))
         .mockResolvedValueOnce(jsonResponse(rejectedJob))
         .mockResolvedValueOnce(jsonResponse(rejectedBoard))
-        .mockResolvedValueOnce(jsonResponse(resubmittedJob))
-        .mockResolvedValueOnce(jsonResponse(resubmittedBoard)),
+        .mockResolvedValueOnce(jsonResponse(childRejectedBoard)),
     );
     const user = userEvent.setup();
     renderApp();
@@ -295,28 +301,25 @@ describe("Today page", () => {
       within(card as HTMLElement).getByRole("button", { name: "Reject job" }),
     );
 
+    await user.selectOptions(screen.getByLabelText("Viewing as"), fredster.id);
+    const childHeading = await screen.findByRole("heading", {
+      name: "Clear the table",
+    });
+    const childCard = childHeading.closest("article");
+    expect(childCard).not.toBeNull();
     expect(
-      await within(card as HTMLElement).findByText("Needs another go"),
+      within(childCard as HTMLElement).getByText("Needs another go"),
     ).toBeInTheDocument();
     expect(
-      within(card as HTMLElement).getByText(
+      within(childCard as HTMLElement).getByText(
         "Please wipe underneath the table.",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("0 points earned")).toBeInTheDocument();
-
-    await user.click(
-      within(card as HTMLElement).getByRole("button", { name: "Mark as done" }),
-    );
-
     expect(
-      await within(card as HTMLElement).findByText(
-        "Nice work — ready for a grown-up.",
-      ),
+      within(childCard as HTMLElement).getByRole("button", {
+        name: "Mark as done",
+      }),
     ).toBeInTheDocument();
-    expect(
-      within(card as HTMLElement).queryByText("Needs another go"),
-    ).not.toBeInTheDocument();
   });
 
   it("reports rejection failures without clearing the reason", async () => {
@@ -411,7 +414,7 @@ describe("Today page", () => {
   it("reports completion failures through the job card", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(board))
+      .mockResolvedValueOnce(jsonResponse(childBoard))
       .mockResolvedValueOnce(
         jsonResponse(
           { detail: "This job is already pending approval." },
@@ -434,6 +437,33 @@ describe("Today page", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "This job is already pending approval.",
     );
+  });
+
+  it("switches to a child view and persists the selection", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(board))
+        .mockResolvedValueOnce(jsonResponse(childBoard)),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.selectOptions(screen.getByLabelText("Viewing as"), fredster.id);
+
+    expect(
+      await screen.findByRole("heading", { name: "Good day, Fredster!" }),
+    ).toBeInTheDocument();
+    expect(window.localStorage.getItem("family-jobs-board-member")).toBe(
+      fredster.id,
+    );
+    expect(screen.queryByText("Grown-up tools")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("0 points earned")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Approve/ }),
+    ).not.toBeInTheDocument();
   });
 });
 
