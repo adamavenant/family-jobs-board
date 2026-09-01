@@ -64,6 +64,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recurring-jobs/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a daily recurring job for a child.
+         * @description Creates an adult-owned daily series and materializes duplicate-safe occurrences through an eight-week horizon.
+         */
+        post: operations["CreateDailyRecurringJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{id}/approve": {
         parameters: {
             query?: never;
@@ -116,6 +136,33 @@ export interface components {
             /** Format: int32 */
             points: number | string;
         };
+        CreateDailyRecurringJobRequest: {
+            /** Format: uuid */
+            requestId: string;
+            /** Format: uuid */
+            viewerId: string;
+            /** Format: uuid */
+            childId: string;
+            name: null | string;
+            description: null | string;
+            /** Format: int32 */
+            points: number | string;
+            agendaPeriod: null | string;
+            /** Format: time */
+            scheduledTime: null | string;
+            /** Format: date */
+            startDate: string;
+            /** Format: date */
+            endDate: null | string;
+        };
+        DailyRecurringJobResponse: {
+            /** Format: uuid */
+            seriesId: string;
+            /** Format: date */
+            generatedThrough: string;
+            /** Format: int32 */
+            occurrenceCount: number | string;
+        };
         HttpValidationProblemDetails: {
             type?: null | string;
             title?: null | string;
@@ -149,6 +196,13 @@ export interface components {
             description: string;
             /** Format: int32 */
             points: number | string;
+            /** Format: date */
+            scheduledDate: string;
+            agendaPeriod: string;
+            /** Format: time */
+            scheduledTime: null | string;
+            /** Format: uuid */
+            recurringJobSeriesId: null | string;
             status: string;
             /** Format: date-time */
             completedAtUtc: null | string;
@@ -298,6 +352,57 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    CreateDailyRecurringJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDailyRecurringJobRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DailyRecurringJobResponse"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DailyRecurringJobResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
                 };
             };
         };

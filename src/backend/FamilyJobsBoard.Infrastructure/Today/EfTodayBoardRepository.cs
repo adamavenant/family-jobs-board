@@ -104,6 +104,49 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         await _database.Jobs.AddAsync(job, cancellationToken);
     }
 
+    public async Task AddJobsAsync(
+        IReadOnlyCollection<Job> jobs,
+        CancellationToken cancellationToken)
+    {
+        await _database.Jobs.AddRangeAsync(jobs, cancellationToken);
+    }
+
+    public Task<DailyJobSeries?> GetDailyJobSeriesAsync(
+        Guid seriesId,
+        CancellationToken cancellationToken)
+    {
+        return _database.DailyJobSeries
+            .AsNoTracking()
+            .SingleOrDefaultAsync(series => series.Id == seriesId, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<DailyJobSeries>> GetDailyJobSeriesNeedingGenerationAsync(
+        DateOnly horizon,
+        CancellationToken cancellationToken)
+    {
+        return await _database.DailyJobSeries
+            .Where(series =>
+                series.GeneratedThrough < horizon
+                && (series.EndDate == null || series.GeneratedThrough < series.EndDate))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task AddDailyJobSeriesAsync(
+        DailyJobSeries series,
+        CancellationToken cancellationToken)
+    {
+        await _database.DailyJobSeries.AddAsync(series, cancellationToken);
+    }
+
+    public Task<int> GetDailyJobSeriesOccurrenceCountAsync(
+        Guid seriesId,
+        CancellationToken cancellationToken)
+    {
+        return _database.Jobs.CountAsync(
+            job => job.RecurringJobSeriesId == seriesId,
+            cancellationToken);
+    }
+
     public async Task<TodayPointsSummary> GetPointsSummaryAsync(
         Guid childId,
         CancellationToken cancellationToken)

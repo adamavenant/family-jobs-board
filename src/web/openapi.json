@@ -137,6 +137,68 @@
         }
       }
     },
+    "/api/recurring-jobs/daily": {
+      "post": {
+        "tags": [
+          "Today"
+        ],
+        "summary": "Create a daily recurring job for a child.",
+        "description": "Creates an adult-owned daily series and materializes duplicate-safe occurrences through an eight-week horizon.",
+        "operationId": "CreateDailyRecurringJob",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDailyRecurringJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyRecurringJobResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyRecurringJobResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{id}/approve": {
       "post": {
         "tags": [
@@ -301,6 +363,105 @@
           }
         }
       },
+      "CreateDailyRecurringJobRequest": {
+        "required": [
+          "requestId",
+          "viewerId",
+          "childId",
+          "name",
+          "description",
+          "points",
+          "agendaPeriod",
+          "scheduledTime",
+          "startDate",
+          "endDate"
+        ],
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "viewerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "points": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "agendaPeriod": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scheduledTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "time"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "endDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          }
+        }
+      },
+      "DailyRecurringJobResponse": {
+        "required": [
+          "seriesId",
+          "generatedThrough",
+          "occurrenceCount"
+        ],
+        "type": "object",
+        "properties": {
+          "seriesId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generatedThrough": {
+            "type": "string",
+            "format": "date"
+          },
+          "occurrenceCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "HttpValidationProblemDetails": {
         "type": "object",
         "properties": {
@@ -400,6 +561,10 @@
           "name",
           "description",
           "points",
+          "scheduledDate",
+          "agendaPeriod",
+          "scheduledTime",
+          "recurringJobSeriesId",
           "status",
           "completedAtUtc",
           "approvedAtUtc",
@@ -431,6 +596,27 @@
               "string"
             ],
             "format": "int32"
+          },
+          "scheduledDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "agendaPeriod": {
+            "type": "string"
+          },
+          "scheduledTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "time"
+          },
+          "recurringJobSeriesId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           },
           "status": {
             "type": "string"

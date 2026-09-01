@@ -1,5 +1,39 @@
 import { expect, test } from "@playwright/test";
 
+test("creates a daily recurring job and completes today's occurrence", async ({
+  page,
+}) => {
+  const jobName = `Daily Playwright job ${Date.now()}`;
+  const addieId = "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c";
+
+  await page.goto(`/?member=${addieId}`);
+  const recurringTools = page.locator("details.grown-up-tools--recurring");
+  await recurringTools.locator("summary").click();
+  await page
+    .getByLabel("Assign daily job to")
+    .selectOption({ label: "Fredster" });
+  await page.getByLabel("Daily job name").fill(jobName);
+  await page
+    .getByLabel("Daily job description")
+    .fill("Created as a daily routine through the browser.");
+  await page.getByLabel("Daily job points").fill("2");
+  await page.getByLabel("Daily job part of day").selectOption("morning");
+  await page.getByLabel("Daily job time (optional)").fill("07:30");
+  await page.getByRole("button", { name: "Create daily job" }).click();
+
+  const heading = page.getByRole("heading", { name: jobName, exact: true });
+  await expect(heading).toBeVisible();
+  await expect(page.getByText(/Daily job created through/)).toBeVisible();
+  const card = page.getByRole("article").filter({ has: heading });
+  await expect(card.getByText("Daily · Morning · 07:30")).toBeVisible();
+
+  await page
+    .getByLabel("Viewing as")
+    .selectOption({ label: "Fredster — Child" });
+  await card.getByRole("button", { name: "Mark as done" }).click();
+  await expect(card.getByText("Sent to a grown-up for approval")).toBeVisible();
+});
+
 test("rejects a completed job, retries it, and then awards points", async ({
   page,
 }) => {
@@ -10,7 +44,7 @@ test("rejects a completed job, retries it, and then awards points", async ({
   await expect(
     page.getByRole("heading", { name: /Good day, Addie!/ }),
   ).toBeVisible();
-  const grownUpTools = page.locator("details.grown-up-tools");
+  const grownUpTools = page.locator("details.grown-up-tools--one-off");
   await expect(grownUpTools).not.toHaveAttribute("open", "");
   await grownUpTools.locator("summary").click();
   await expect(grownUpTools).toHaveAttribute("open", "");
@@ -19,11 +53,13 @@ test("rejects a completed job, retries it, and then awards points", async ({
     exact: true,
   });
   await expect(points).toHaveValue("1");
-  await page.getByLabel("Assign to").selectOption({ label: "Fredster" });
-
-  await page.getByLabel("Job name").fill(jobName);
   await page
-    .getByLabel("Description")
+    .getByLabel("Assign to", { exact: true })
+    .selectOption({ label: "Fredster" });
+
+  await page.getByLabel("Job name", { exact: true }).fill(jobName);
+  await page
+    .getByLabel("Description", { exact: true })
     .fill("Created through the public browser interface.");
   await points.fill("3");
   await page.getByRole("button", { name: "Add job" }).click();
@@ -31,7 +67,7 @@ test("rejects a completed job, retries it, and then awards points", async ({
   const heading = page.getByRole("heading", { name: jobName, exact: true });
   await expect(heading).toBeVisible();
   await expect(page.getByText("Job added to today’s board.")).toBeVisible();
-  await expect(page.getByLabel("Job name")).toHaveValue("");
+  await expect(page.getByLabel("Job name", { exact: true })).toHaveValue("");
   await expect(points).toHaveValue("1");
 
   const card = page.getByRole("article").filter({ has: heading });
@@ -72,8 +108,9 @@ test("rejects a completed job, retries it, and then awards points", async ({
     page.getByLabel(`${initialBalance + 3} points earned`),
   ).toBeVisible();
   const history = page.locator("section.points-history");
-  await expect(history.getByText(jobName, { exact: true })).toBeVisible();
-  await expect(history.getByText("+3", { exact: true })).toBeVisible();
+  const earning = history.getByRole("listitem").filter({ hasText: jobName });
+  await expect(earning.getByText(jobName, { exact: true })).toBeVisible();
+  await expect(earning.getByText("+3", { exact: true })).toBeVisible();
 });
 
 test("shows a server failure and preserves the entered job", async ({
@@ -89,8 +126,8 @@ test("shows a server failure and preserves the entered job", async ({
   });
 
   await page.goto("/?member=22eb0cc1-058e-4b2e-bb18-d7aaad564a6c");
-  await page.locator("details.grown-up-tools summary").click();
-  await page.getByLabel("Job name").fill("Keep this job");
+  await page.locator("details.grown-up-tools--one-off summary").click();
+  await page.getByLabel("Job name", { exact: true }).fill("Keep this job");
   await page.getByRole("spinbutton", { name: "Points", exact: true }).fill("4");
 
   const addButton = page.getByRole("button", { name: "Add job" });
@@ -99,7 +136,9 @@ test("shows a server failure and preserves the entered job", async ({
   await expect(page.getByRole("alert")).toHaveText(
     "The database is unavailable.",
   );
-  await expect(page.getByLabel("Job name")).toHaveValue("Keep this job");
+  await expect(page.getByLabel("Job name", { exact: true })).toHaveValue(
+    "Keep this job",
+  );
 });
 
 test("persists the selected dark theme after reload", async ({ page }) => {

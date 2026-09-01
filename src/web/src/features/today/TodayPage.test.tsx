@@ -196,6 +196,107 @@ describe("Today page", () => {
     ).toBeInTheDocument();
   });
 
+  it("creates a daily recurring job and refreshes today's board", async () => {
+    const recurringJob = {
+      id: "667b50fd-447d-4320-8390-ea82f5bb9145",
+      childId: fredster.id,
+      childDisplayName: fredster.displayName,
+      name: "Feed the fish",
+      description: "Add one small scoop.",
+      points: 3,
+      scheduledDate: board.date,
+      agendaPeriod: "morning",
+      scheduledTime: "07:30:00",
+      recurringJobSeriesId: "56d75d00-3b67-4532-a149-8a388889c9ca",
+      status: "open",
+      completedAtUtc: null,
+      approvedAtUtc: null,
+      latestRejection: null,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(board))
+        .mockResolvedValueOnce(
+          jsonResponse(
+            {
+              seriesId: recurringJob.recurringJobSeriesId,
+              generatedThrough: "2026-10-23",
+              occurrenceCount: 56,
+            },
+            { status: 201 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({ ...board, jobs: [...board.jobs, recurringJob] }),
+        ),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    const recurringTools = screen.getByText("Routines").closest("details");
+    expect(recurringTools).not.toBeNull();
+    await user.click(screen.getByText("Routines"));
+    await user.type(screen.getByLabelText("Daily job name"), "Feed the fish");
+    await user.type(
+      screen.getByLabelText("Daily job description"),
+      "Add one small scoop.",
+    );
+    await user.clear(screen.getByLabelText("Daily job points"));
+    await user.type(screen.getByLabelText("Daily job points"), "3");
+    await user.selectOptions(
+      screen.getByLabelText("Daily job part of day"),
+      "morning",
+    );
+    await user.type(
+      screen.getByLabelText("Daily job time (optional)"),
+      "07:30",
+    );
+    await user.click(screen.getByRole("button", { name: "Create daily job" }));
+
+    const heading = await screen.findByRole("heading", {
+      name: "Feed the fish",
+    });
+    const card = heading.closest("article");
+    expect(card).not.toBeNull();
+    expect(
+      within(card as HTMLElement).getByText("Daily · Morning · 07:30"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Daily job created through 2026-10-23."),
+    ).toHaveAttribute("role", "status");
+  });
+
+  it("reports recurring-job server failures without clearing the form", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(board))
+        .mockResolvedValueOnce(
+          jsonResponse(
+            { detail: "The recurring job could not be saved." },
+            { status: 503 },
+          ),
+        ),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Routines"));
+    const name = screen.getByLabelText("Daily job name");
+    await user.type(name, "Feed the fish");
+    await user.click(screen.getByRole("button", { name: "Create daily job" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The recurring job could not be saved.",
+    );
+    expect(name).toHaveValue("Feed the fish");
+  });
+
   it("approves a pending job and updates the points balance", async () => {
     const pendingJob = board.jobs[2];
     if (!pendingJob) {

@@ -28,6 +28,12 @@ internal static class TodayEndpoints
             .WithSummary("Add a new job for a child.")
             .WithDescription("Adds a new job to the selected child's board for today.");
 
+        group.MapPost("/recurring-jobs/daily", CreateDailyRecurringJobAsync)
+            .WithName("CreateDailyRecurringJob")
+            .WithSummary("Create a daily recurring job for a child.")
+            .WithDescription(
+                "Creates an adult-owned daily series and materializes duplicate-safe occurrences through an eight-week horizon.");
+
         group.MapPost("/jobs/{id:guid}/approve", ApproveJobAsync)
             .WithName("ApproveJob")
             .WithSummary("Approve a pending job and award its points.")
@@ -39,6 +45,55 @@ internal static class TodayEndpoints
             .WithDescription("Records optional feedback and returns 409 unless the job is pending approval.");
 
         return endpoints;
+    }
+
+    private static async Task<Results<
+        Created<DailyRecurringJobResponse>,
+        Ok<DailyRecurringJobResponse>,
+        ValidationProblem,
+        Conflict<ProblemDetails>>> CreateDailyRecurringJobAsync(
+        CreateDailyRecurringJobRequest request,
+        TodayBoardService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var creation = await service.CreateDailyRecurringJobAsync(
+                new CreateDailyRecurringJob(
+                    request.RequestId,
+                    request.ViewerId,
+                    request.ChildId,
+                    request.Name,
+                    request.Description,
+                    request.Points,
+                    request.AgendaPeriod,
+                    request.ScheduledTime,
+                    request.StartDate,
+                    request.EndDate),
+                cancellationToken);
+            var response = new DailyRecurringJobResponse(
+                creation.SeriesId,
+                creation.GeneratedThrough,
+                creation.OccurrenceCount);
+            return creation.WasCreated
+                ? TypedResults.Created($"/api/recurring-jobs/daily/{creation.SeriesId}", response)
+                : TypedResults.Ok(response);
+        }
+        catch (InvalidDailyRecurringJobException exception)
+        {
+            return TypedResults.ValidationProblem(
+                exception.Errors,
+                title: "Invalid daily recurring job data");
+        }
+        catch (DailyRecurringJobRequestConflictException exception)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Recurring job request conflict",
+                Detail = exception.Message,
+                Status = StatusCodes.Status409Conflict,
+            });
+        }
     }
 
     private static async Task<Results<Ok<TodayResponse>, ProblemHttpResult>> GetTodayAsync(
@@ -245,6 +300,10 @@ internal static class TodayEndpoints
             job.Name,
             job.Description,
             job.Points,
+            job.ScheduledDate,
+            job.AgendaPeriod,
+            job.ScheduledTime,
+            job.RecurringJobSeriesId,
             job.Status,
             job.CompletedAtUtc,
             job.ApprovedAtUtc,

@@ -6,6 +6,7 @@ import {
   addJob,
   approveJob,
   completeJob,
+  createDailyRecurringJob,
   getToday,
   rejectJob,
 } from "../api/today";
@@ -30,6 +31,13 @@ export interface ApproveActionResult {
   error?: string;
 }
 
+export interface AddRecurringJobActionResult {
+  intent: "addRecurring";
+  success?: boolean;
+  generatedThrough?: string;
+  error?: string;
+}
+
 export interface RejectActionResult {
   intent: "reject";
   jobId: string;
@@ -39,6 +47,7 @@ export interface RejectActionResult {
 export type TodayActionResult =
   | CompleteActionResult
   | AddJobActionResult
+  | AddRecurringJobActionResult
   | ApproveActionResult
   | RejectActionResult;
 
@@ -58,6 +67,9 @@ async function todayAction({
   if (form.get("intent") === "add") {
     return addJobAction(form);
   }
+  if (form.get("intent") === "addRecurring") {
+    return addRecurringJobAction(form);
+  }
   if (form.get("intent") === "approve") {
     return approveAction(form);
   }
@@ -66,6 +78,87 @@ async function todayAction({
   }
 
   return completeAction(form);
+}
+
+async function addRecurringJobAction(
+  form: FormData,
+): Promise<AddRecurringJobActionResult> {
+  const submittedRequestId = form.get("requestId");
+  const requestId =
+    typeof submittedRequestId === "string" && submittedRequestId.length > 0
+      ? submittedRequestId
+      : crypto.randomUUID();
+  const viewerId = form.get("viewerId");
+  const childId = form.get("childId");
+  const name = form.get("name");
+  const description = form.get("description");
+  const pointsValue = form.get("points");
+  const agendaPeriod = form.get("agendaPeriod");
+  const scheduledTime = form.get("scheduledTime");
+  const startDate = form.get("startDate");
+  const endDate = form.get("endDate");
+  const points = Number(pointsValue);
+  const validAgendaPeriods = [
+    "morning",
+    "arrivingHome",
+    "evening",
+    "unscheduled",
+  ] as const;
+
+  if (
+    typeof viewerId !== "string" ||
+    typeof childId !== "string" ||
+    typeof name !== "string" ||
+    name.trim().length === 0 ||
+    name.trim().length > 160 ||
+    typeof description !== "string" ||
+    description.trim().length > 1000 ||
+    typeof pointsValue !== "string" ||
+    !Number.isInteger(points) ||
+    points < 0 ||
+    typeof agendaPeriod !== "string" ||
+    !validAgendaPeriods.some((value) => value === agendaPeriod) ||
+    typeof startDate !== "string" ||
+    startDate.length === 0 ||
+    (typeof endDate === "string" && endDate.length > 0 && endDate < startDate)
+  ) {
+    return {
+      intent: "addRecurring",
+      error: "Check the recurring job details and try again.",
+    };
+  }
+
+  try {
+    const result = await createDailyRecurringJob({
+      requestId,
+      viewerId,
+      childId,
+      name,
+      description,
+      points,
+      agendaPeriod: agendaPeriod as (typeof validAgendaPeriods)[number],
+      scheduledTime:
+        typeof scheduledTime === "string" && scheduledTime.length > 0
+          ? scheduledTime
+          : null,
+      startDate,
+      endDate:
+        typeof endDate === "string" && endDate.length > 0 ? endDate : null,
+    });
+    return {
+      intent: "addRecurring",
+      success: true,
+      generatedThrough: result.generatedThrough,
+    };
+  } catch (error) {
+    return {
+      intent: "addRecurring",
+      error:
+        error instanceof ApiError
+          ? error.message
+          : "That recurring job couldn't be created.",
+    };
+  }
 }
 
 async function rejectAction(form: FormData): Promise<RejectActionResult> {

@@ -21,6 +21,7 @@ public sealed class TodayBoardService
         Guid? viewerId,
         CancellationToken cancellationToken)
     {
+        await EnsureDailyRecurringJobsAsync(cancellationToken);
         var members = await _repository.GetMembersAsync(cancellationToken);
         if (members.Count == 0)
         {
@@ -105,6 +106,145 @@ public sealed class TodayBoardService
         await _repository.SaveChangesAsync(cancellationToken);
 
         return MapJob(job, child, null);
+    }
+
+    public async Task<DailyRecurringJobCreation> CreateDailyRecurringJobAsync(
+        CreateDailyRecurringJob request,
+        CancellationToken cancellationToken)
+    {
+        var name = request.Name?.Trim() ?? string.Empty;
+        var description = request.Description?.Trim() ?? string.Empty;
+        var errors = ValidateNewJob(name, description, request.Points);
+        if (request.RequestId == Guid.Empty)
+        {
+            errors[nameof(CreateDailyRecurringJob.RequestId)] = ["A request ID is required."];
+        }
+
+        var viewer = await _repository.GetMemberAsync(request.ViewerId, cancellationToken);
+        if (viewer is null || !viewer.IsAdult)
+        {
+            errors[nameof(CreateDailyRecurringJob.ViewerId)] =
+                ["Only an adult in this household can create recurring jobs."];
+        }
+
+        var child = await _repository.GetMemberAsync(request.ChildId, cancellationToken);
+        if (child is null || child.IsAdult)
+        {
+            errors[nameof(CreateDailyRecurringJob.ChildId)] = ["Choose a child in this household."];
+        }
+
+        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        {
+            errors[nameof(CreateDailyRecurringJob.AgendaPeriod)] =
+                ["Choose morning, arrivingHome, evening, or unscheduled."];
+        }
+
+        if (request.EndDate < request.StartDate)
+        {
+            errors[nameof(CreateDailyRecurringJob.EndDate)] =
+                ["The end date cannot precede the start date."];
+        }
+
+        if (request.StartDate < _clock.Today)
+        {
+            errors[nameof(CreateDailyRecurringJob.StartDate)] =
+                ["The start date cannot be in the past."];
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new InvalidDailyRecurringJobException(errors);
+        }
+
+        var horizon = _clock.Today.AddDays(55);
+        var existing = await _repository.GetDailyJobSeriesAsync(
+            request.RequestId,
+            cancellationToken);
+        if (existing is not null)
+        {
+            if (!existing.Matches(
+                    child!.Id,
+                    viewer!.Id,
+                    name,
+                    description,
+                    request.Points,
+                    agendaPeriod,
+                    request.ScheduledTime,
+                    request.StartDate,
+                    request.EndDate))
+            {
+                throw new DailyRecurringJobRequestConflictException(request.RequestId);
+            }
+
+            var existingCount = await _repository.GetDailyJobSeriesOccurrenceCountAsync(
+                existing.Id,
+                cancellationToken);
+            return new DailyRecurringJobCreation(
+                existing.Id,
+                existing.GeneratedThrough,
+                existingCount,
+                false);
+        }
+
+        var series = new DailyJobSeries(
+            request.RequestId,
+            child!.Id,
+            viewer!.Id,
+            name,
+            description,
+            request.Points,
+            agendaPeriod,
+            request.ScheduledTime,
+            request.StartDate,
+            request.EndDate);
+        var occurrences = series
+            .GenerateThrough(horizon)
+            .Select(date => CreateOccurrence(series, date))
+            .ToArray();
+
+        await _repository.AddDailyJobSeriesAsync(series, cancellationToken);
+        await _repository.AddJobsAsync(occurrences, cancellationToken);
+        await _repository.SaveChangesAsync(cancellationToken);
+
+        return new DailyRecurringJobCreation(
+            series.Id,
+            series.GeneratedThrough,
+            occurrences.Length,
+            true);
+    }
+
+    private async Task EnsureDailyRecurringJobsAsync(CancellationToken cancellationToken)
+    {
+        var horizon = _clock.Today.AddDays(55);
+        var seriesToAdvance = await _repository.GetDailyJobSeriesNeedingGenerationAsync(
+            horizon,
+            cancellationToken);
+        var occurrences = seriesToAdvance
+            .SelectMany(series => series
+                .GenerateThrough(horizon)
+                .Select(date => CreateOccurrence(series, date)))
+            .ToArray();
+        if (seriesToAdvance.Count == 0)
+        {
+            return;
+        }
+
+        await _repository.AddJobsAsync(occurrences, cancellationToken);
+        await _repository.SaveChangesAsync(cancellationToken);
+    }
+
+    private static Job CreateOccurrence(DailyJobSeries series, DateOnly date)
+    {
+        return new Job(
+            Guid.NewGuid(),
+            series.ChildId,
+            series.Name,
+            series.Description,
+            series.Points,
+            date,
+            series.AgendaPeriod,
+            series.ScheduledTime,
+            series.Id);
     }
 
     public async Task<TodayJobApproval> ApproveAsync(
@@ -222,6 +362,19 @@ public sealed class TodayBoardService
         return errors;
     }
 
+    private static bool TryParseAgendaPeriod(string? value, out AgendaPeriod agendaPeriod)
+    {
+        agendaPeriod = value switch
+        {
+            "morning" => AgendaPeriod.Morning,
+            "arrivingHome" => AgendaPeriod.ArrivingHome,
+            "evening" => AgendaPeriod.Evening,
+            "unscheduled" => AgendaPeriod.Unscheduled,
+            _ => AgendaPeriod.Unscheduled,
+        };
+        return value is "morning" or "arrivingHome" or "evening" or "unscheduled";
+    }
+
     private static TodayMember MapMember(HouseholdMember member)
     {
         return new TodayMember(
@@ -252,9 +405,25 @@ public sealed class TodayBoardService
             job.Name,
             job.Description,
             job.Points,
+            job.ScheduledDate,
+            MapAgendaPeriod(job.AgendaPeriod),
+            job.ScheduledTime,
+            job.RecurringJobSeriesId,
             status,
             job.CompletedAtUtc,
             job.ApprovedAtUtc,
             job.Status == JobStatus.Open ? latestRejection : null);
+    }
+
+    private static string MapAgendaPeriod(AgendaPeriod agendaPeriod)
+    {
+        return agendaPeriod switch
+        {
+            AgendaPeriod.Morning => "morning",
+            AgendaPeriod.ArrivingHome => "arrivingHome",
+            AgendaPeriod.Evening => "evening",
+            AgendaPeriod.Unscheduled => "unscheduled",
+            _ => throw new InvalidOperationException($"Unknown agenda period '{agendaPeriod}'."),
+        };
     }
 }
