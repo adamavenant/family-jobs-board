@@ -1,8 +1,8 @@
 name: family-jobs-board
 
 x-database-environment: &database-environment
-  ConnectionStrings__Database: Host=db;Port=5432;Database=family_jobs_board;Username=family_jobs_board;Password=family_jobs_board
-  Household__TimeZone: Africa/Johannesburg
+  ConnectionStrings__Database: Host=db;Port=5432;Database=family_jobs_board;Username=family_jobs_board;Password=${DATABASE_PASSWORD:-family_jobs_board}
+  Household__TimeZone: ${HOUSEHOLD_TIME_ZONE:-Africa/Johannesburg}
 
 services:
   db:
@@ -10,7 +10,7 @@ services:
     environment:
       POSTGRES_DB: family_jobs_board
       POSTGRES_USER: family_jobs_board
-      POSTGRES_PASSWORD: family_jobs_board
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-family_jobs_board}
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
@@ -46,8 +46,6 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    ports:
-      - "${API_PORT:-8080}:8080"
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/health/ready"]
       interval: 3s
@@ -64,8 +62,6 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    ports:
-      - "${WEB_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/health"]
       interval: 3s
@@ -81,14 +77,7 @@ services:
         condition: service_healthy
       web:
         condition: service_healthy
-    command:
-      - /bin/sh
-      - -c
-      - |
-        echo "Family Jobs Board is ready"
-        echo "Web: http://localhost:${WEB_PORT:-3000}"
-        echo "API: http://localhost:${API_PORT:-8080}/api/today"
-        exec tail -f /dev/null
+    command: ["/bin/sh", "-c", "echo 'Family Jobs Board is ready'; exec tail -f /dev/null"]
 
 volumes:
   postgres-data:
