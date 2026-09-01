@@ -1,0 +1,18 @@
+services:
+  api:
+    ports:
+      - "${API_PORT:-8080}:8080"
+
+  web:
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+
+  app-links:
+    command:
+      - /bin/sh
+      - -c
+      - |
+        echo "Family Jobs Board is ready"
+        echo "Web: http://localhost:${WEB_PORT:-3000}"
+        echo "API: http://localhost:${API_PORT:-8080}/api/today"
+        exec tail -f /dev/null
