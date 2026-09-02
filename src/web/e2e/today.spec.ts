@@ -34,6 +34,46 @@ test("creates a daily recurring job and completes today's occurrence", async ({
   await expect(card.getByText("Sent to a grown-up for approval")).toBeVisible();
 });
 
+test("creates a weekly recurring job for selected weekdays", async ({
+  page,
+}) => {
+  const jobName = `Weekly Playwright job ${Date.now()}`;
+  const addieId = "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c";
+
+  await page.goto(`/?member=${addieId}`);
+  const recurringTools = page.locator("details.grown-up-tools--recurring");
+  await recurringTools.locator("summary").click();
+  await page.getByLabel("Repeats").selectOption("weekly");
+  for (const weekday of [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+  ]) {
+    await page.getByRole("checkbox", { name: weekday }).check();
+  }
+  await page
+    .getByLabel("Assign weekly job to")
+    .selectOption({ label: "Harrie" });
+  await page.getByLabel("Weekly job name").fill(jobName);
+  await page
+    .getByLabel("Weekly job description")
+    .fill("Created as a weekly routine through the browser.");
+  await page.getByLabel("Weekly job points").fill("3");
+  await page.getByLabel("Weekly job part of day").selectOption("evening");
+  await page.getByLabel("Weekly job time (optional)").fill("18:15");
+  await page.getByRole("button", { name: "Create weekly job" }).click();
+
+  const heading = page.getByRole("heading", { name: jobName, exact: true });
+  await expect(heading).toBeVisible();
+  await expect(page.getByText(/Weekly job created through/)).toBeVisible();
+  const card = page.getByRole("article").filter({ has: heading });
+  await expect(card.getByText("Weekly · Evening · 18:15")).toBeVisible();
+});
+
 test("rejects a completed job, retries it, and then awards points", async ({
   page,
 }) => {

@@ -34,7 +34,20 @@ public sealed record CreateDailyRecurringJobRequest(
     DateOnly StartDate,
     DateOnly? EndDate);
 
-public sealed record DailyRecurringJobResponse(
+public sealed record CreateWeeklyRecurringJobRequest(
+    Guid RequestId,
+    Guid ViewerId,
+    Guid ChildId,
+    string? Name,
+    string? Description,
+    int Points,
+    string? AgendaPeriod,
+    TimeOnly? ScheduledTime,
+    DateOnly StartDate,
+    DateOnly? EndDate,
+    IReadOnlyList<string>? Weekdays);
+
+public sealed record RecurringJobResponse(
     Guid SeriesId,
     DateOnly GeneratedThrough,
     int OccurrenceCount);
@@ -52,6 +65,7 @@ public sealed record JobResponse(
     string AgendaPeriod,
     TimeOnly? ScheduledTime,
     Guid? RecurringJobSeriesId,
+    string? RecurrenceFrequency,
     string Status,
     DateTimeOffset? CompletedAtUtc,
     DateTimeOffset? ApprovedAtUtc,

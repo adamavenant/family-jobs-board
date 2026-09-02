@@ -1,8 +1,18 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 
 import type { TodayActionResult } from "../../app/routes";
 import type { HouseholdMember } from "../../api/today";
+
+const weekdays = [
+  ["monday", "Monday"],
+  ["tuesday", "Tuesday"],
+  ["wednesday", "Wednesday"],
+  ["thursday", "Thursday"],
+  ["friday", "Friday"],
+  ["saturday", "Saturday"],
+  ["sunday", "Sunday"],
+] as const;
 
 export function RecurringJobForm({
   children,
@@ -15,9 +25,11 @@ export function RecurringJobForm({
 }) {
   const fetcher = useFetcher<TodayActionResult>();
   const formRef = useRef<HTMLFormElement>(null);
+  const [frequency, setFrequency] = useState<"daily" | "weekly">("daily");
   const result =
     fetcher.data?.intent === "addRecurring" ? fetcher.data : undefined;
   const isSubmitting = fetcher.state !== "idle";
+  const frequencyLabel = frequency === "weekly" ? "Weekly" : "Daily";
 
   useEffect(() => {
     if (fetcher.state === "idle" && result?.success) {
@@ -30,19 +42,44 @@ export function RecurringJobForm({
       <summary>
         <span className="eyebrow">Routines</span>
         <span className="grown-up-tools__action">
-          Add a daily job <span aria-hidden="true">+</span>
+          Add a recurring job <span aria-hidden="true">+</span>
         </span>
       </summary>
       <div className="add-job" aria-labelledby="add-recurring-job-heading">
         <div className="add-job__heading">
-          <h2 id="add-recurring-job-heading">Add a daily job</h2>
-          <p>Create one job per day for the next eight weeks.</p>
+          <h2 id="add-recurring-job-heading">Add a recurring job</h2>
+          <p>
+            Create jobs on a daily or weekly schedule for the next eight weeks.
+          </p>
         </div>
-        <fetcher.Form method="post" className="add-job__form" ref={formRef}>
+        <fetcher.Form
+          method="post"
+          className="add-job__form"
+          ref={formRef}
+          onReset={() => setFrequency("daily")}
+        >
           <input type="hidden" name="intent" value="addRecurring" />
           <input type="hidden" name="viewerId" value={viewerId} />
           <div className="form-group">
-            <label htmlFor="recurringChildId">Assign daily job to</label>
+            <label htmlFor="recurrenceFrequency">Repeats</label>
+            <select
+              id="recurrenceFrequency"
+              name="recurrenceFrequency"
+              value={frequency}
+              onChange={(event) =>
+                setFrequency(
+                  event.target.value === "weekly" ? "weekly" : "daily",
+                )
+              }
+            >
+              <option value="daily">Every day</option>
+              <option value="weekly">Selected weekdays</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label htmlFor="recurringChildId">
+              Assign {frequencyLabel.toLowerCase()} job to
+            </label>
             <select
               id="recurringChildId"
               name="childId"
@@ -56,8 +93,21 @@ export function RecurringJobForm({
               ))}
             </select>
           </div>
+          {frequency === "weekly" ? (
+            <fieldset className="weekday-picker">
+              <legend>Repeat on</legend>
+              <div className="weekday-picker__options">
+                {weekdays.map(([value, label]) => (
+                  <label key={value} className="weekday-option">
+                    <input type="checkbox" name="weekdays" value={value} />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
           <div className="form-group">
-            <label htmlFor="recurringName">Daily job name</label>
+            <label htmlFor="recurringName">{frequencyLabel} job name</label>
             <input
               type="text"
               id="recurringName"
@@ -67,7 +117,9 @@ export function RecurringJobForm({
             />
           </div>
           <div className="form-group">
-            <label htmlFor="recurringDescription">Daily job description</label>
+            <label htmlFor="recurringDescription">
+              {frequencyLabel} job description
+            </label>
             <textarea
               id="recurringDescription"
               name="description"
@@ -77,7 +129,9 @@ export function RecurringJobForm({
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label htmlFor="recurringPoints">Daily job points</label>
+              <label htmlFor="recurringPoints">
+                {frequencyLabel} job points
+              </label>
               <input
                 type="number"
                 id="recurringPoints"
@@ -89,7 +143,9 @@ export function RecurringJobForm({
               />
             </div>
             <div className="form-group">
-              <label htmlFor="agendaPeriod">Daily job part of day</label>
+              <label htmlFor="agendaPeriod">
+                {frequencyLabel} job part of day
+              </label>
               <select
                 id="agendaPeriod"
                 name="agendaPeriod"
@@ -104,11 +160,13 @@ export function RecurringJobForm({
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label htmlFor="scheduledTime">Daily job time (optional)</label>
+              <label htmlFor="scheduledTime">
+                {frequencyLabel} job time (optional)
+              </label>
               <input type="time" id="scheduledTime" name="scheduledTime" />
             </div>
             <div className="form-group">
-              <label htmlFor="startDate">Daily job starts</label>
+              <label htmlFor="startDate">{frequencyLabel} job starts</label>
               <input
                 type="date"
                 id="startDate"
@@ -119,7 +177,9 @@ export function RecurringJobForm({
               />
             </div>
             <div className="form-group">
-              <label htmlFor="endDate">Daily job ends (optional)</label>
+              <label htmlFor="endDate">
+                {frequencyLabel} job ends (optional)
+              </label>
               <input type="date" id="endDate" name="endDate" min={today} />
             </div>
           </div>
@@ -131,12 +191,13 @@ export function RecurringJobForm({
           ) : null}
           {result?.success && !isSubmitting ? (
             <p role="status" className="success-message">
-              Daily job created through {result.generatedThrough}.
+              {result.frequency === "weekly" ? "Weekly" : "Daily"} job created
+              through {result.generatedThrough}.
             </p>
           ) : null}
 
           <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Creating…" : "Create daily job"}
+            {isSubmitting ? "Creating…" : `Create ${frequency} job`}
           </button>
         </fetcher.Form>
       </div>

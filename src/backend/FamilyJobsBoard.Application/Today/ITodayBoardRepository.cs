@@ -26,19 +26,19 @@ public interface ITodayBoardRepository
 
     Task AddJobsAsync(IReadOnlyCollection<Job> jobs, CancellationToken cancellationToken);
 
-    Task<DailyJobSeries?> GetDailyJobSeriesAsync(
+    Task<RecurringJobSeries?> GetRecurringJobSeriesAsync(
         Guid seriesId,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<DailyJobSeries>> GetDailyJobSeriesNeedingGenerationAsync(
+    Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesNeedingGenerationAsync(
         DateOnly horizon,
         CancellationToken cancellationToken);
 
-    Task AddDailyJobSeriesAsync(
-        DailyJobSeries series,
+    Task AddRecurringJobSeriesAsync(
+        RecurringJobSeries series,
         CancellationToken cancellationToken);
 
-    Task<int> GetDailyJobSeriesOccurrenceCountAsync(
+    Task<int> GetRecurringJobSeriesOccurrenceCountAsync(
         Guid seriesId,
         CancellationToken cancellationToken);
 

@@ -7,6 +7,7 @@ import {
   approveJob,
   completeJob,
   createDailyRecurringJob,
+  createWeeklyRecurringJob,
   getToday,
   rejectJob,
 } from "../api/today";
@@ -33,6 +34,7 @@ export interface ApproveActionResult {
 
 export interface AddRecurringJobActionResult {
   intent: "addRecurring";
+  frequency?: "daily" | "weekly";
   success?: boolean;
   generatedThrough?: string;
   error?: string;
@@ -89,6 +91,7 @@ async function addRecurringJobAction(
       ? submittedRequestId
       : crypto.randomUUID();
   const viewerId = form.get("viewerId");
+  const recurrenceFrequency = form.get("recurrenceFrequency");
   const childId = form.get("childId");
   const name = form.get("name");
   const description = form.get("description");
@@ -97,6 +100,9 @@ async function addRecurringJobAction(
   const scheduledTime = form.get("scheduledTime");
   const startDate = form.get("startDate");
   const endDate = form.get("endDate");
+  const weekdays = form
+    .getAll("weekdays")
+    .filter((value): value is string => typeof value === "string");
   const points = Number(pointsValue);
   const validAgendaPeriods = [
     "morning",
@@ -107,6 +113,7 @@ async function addRecurringJobAction(
 
   if (
     typeof viewerId !== "string" ||
+    (recurrenceFrequency !== "daily" && recurrenceFrequency !== "weekly") ||
     typeof childId !== "string" ||
     typeof name !== "string" ||
     name.trim().length === 0 ||
@@ -120,7 +127,10 @@ async function addRecurringJobAction(
     !validAgendaPeriods.some((value) => value === agendaPeriod) ||
     typeof startDate !== "string" ||
     startDate.length === 0 ||
-    (typeof endDate === "string" && endDate.length > 0 && endDate < startDate)
+    (typeof endDate === "string" &&
+      endDate.length > 0 &&
+      endDate < startDate) ||
+    (recurrenceFrequency === "weekly" && weekdays.length === 0)
   ) {
     return {
       intent: "addRecurring",
@@ -129,7 +139,7 @@ async function addRecurringJobAction(
   }
 
   try {
-    const result = await createDailyRecurringJob({
+    const recurringRequest = {
       requestId,
       viewerId,
       childId,
@@ -144,9 +154,17 @@ async function addRecurringJobAction(
       startDate,
       endDate:
         typeof endDate === "string" && endDate.length > 0 ? endDate : null,
-    });
+    };
+    const result =
+      recurrenceFrequency === "weekly"
+        ? await createWeeklyRecurringJob({
+            ...recurringRequest,
+            weekdays,
+          })
+        : await createDailyRecurringJob(recurringRequest);
     return {
       intent: "addRecurring",
+      frequency: recurrenceFrequency,
       success: true,
       generatedThrough: result.generatedThrough,
     };

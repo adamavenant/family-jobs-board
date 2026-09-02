@@ -21,7 +21,7 @@ public sealed class TodayBoardService
         Guid? viewerId,
         CancellationToken cancellationToken)
     {
-        await EnsureDailyRecurringJobsAsync(cancellationToken);
+        await EnsureRecurringJobsAsync(cancellationToken);
         var members = await _repository.GetMembersAsync(cancellationToken);
         if (members.Count == 0)
         {
@@ -108,7 +108,7 @@ public sealed class TodayBoardService
         return MapJob(job, child, null);
     }
 
-    public async Task<DailyRecurringJobCreation> CreateDailyRecurringJobAsync(
+    public async Task<RecurringJobCreation> CreateDailyRecurringJobAsync(
         CreateDailyRecurringJob request,
         CancellationToken cancellationToken)
     {
@@ -157,12 +157,12 @@ public sealed class TodayBoardService
         }
 
         var horizon = _clock.Today.AddDays(55);
-        var existing = await _repository.GetDailyJobSeriesAsync(
+        var existing = await _repository.GetRecurringJobSeriesAsync(
             request.RequestId,
             cancellationToken);
         if (existing is not null)
         {
-            if (!existing.Matches(
+            if (!existing.MatchesDaily(
                     child!.Id,
                     viewer!.Id,
                     name,
@@ -176,17 +176,17 @@ public sealed class TodayBoardService
                 throw new DailyRecurringJobRequestConflictException(request.RequestId);
             }
 
-            var existingCount = await _repository.GetDailyJobSeriesOccurrenceCountAsync(
+            var existingCount = await _repository.GetRecurringJobSeriesOccurrenceCountAsync(
                 existing.Id,
                 cancellationToken);
-            return new DailyRecurringJobCreation(
+            return new RecurringJobCreation(
                 existing.Id,
                 existing.GeneratedThrough,
                 existingCount,
                 false);
         }
 
-        var series = new DailyJobSeries(
+        var series = RecurringJobSeries.Daily(
             request.RequestId,
             child!.Id,
             viewer!.Id,
@@ -202,21 +202,134 @@ public sealed class TodayBoardService
             .Select(date => CreateOccurrence(series, date))
             .ToArray();
 
-        await _repository.AddDailyJobSeriesAsync(series, cancellationToken);
+        await _repository.AddRecurringJobSeriesAsync(series, cancellationToken);
         await _repository.AddJobsAsync(occurrences, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
 
-        return new DailyRecurringJobCreation(
+        return new RecurringJobCreation(
             series.Id,
             series.GeneratedThrough,
             occurrences.Length,
             true);
     }
 
-    private async Task EnsureDailyRecurringJobsAsync(CancellationToken cancellationToken)
+    public async Task<RecurringJobCreation> CreateWeeklyRecurringJobAsync(
+        CreateWeeklyRecurringJob request,
+        CancellationToken cancellationToken)
+    {
+        var name = request.Name?.Trim() ?? string.Empty;
+        var description = request.Description?.Trim() ?? string.Empty;
+        var errors = ValidateNewJob(name, description, request.Points);
+        if (request.RequestId == Guid.Empty)
+        {
+            errors[nameof(CreateWeeklyRecurringJob.RequestId)] = ["A request ID is required."];
+        }
+
+        var viewer = await _repository.GetMemberAsync(request.ViewerId, cancellationToken);
+        if (viewer is null || !viewer.IsAdult)
+        {
+            errors[nameof(CreateWeeklyRecurringJob.ViewerId)] =
+                ["Only an adult in this household can create recurring jobs."];
+        }
+
+        var child = await _repository.GetMemberAsync(request.ChildId, cancellationToken);
+        if (child is null || child.IsAdult)
+        {
+            errors[nameof(CreateWeeklyRecurringJob.ChildId)] = ["Choose a child in this household."];
+        }
+
+        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        {
+            errors[nameof(CreateWeeklyRecurringJob.AgendaPeriod)] =
+                ["Choose morning, arrivingHome, evening, or unscheduled."];
+        }
+
+        if (!TryParseWeekdays(request.Weekdays, out var weekdays))
+        {
+            errors[nameof(CreateWeeklyRecurringJob.Weekdays)] =
+                ["Choose one or more weekdays without duplicates."];
+        }
+
+        if (request.EndDate < request.StartDate)
+        {
+            errors[nameof(CreateWeeklyRecurringJob.EndDate)] =
+                ["The end date cannot precede the start date."];
+        }
+
+        if (request.StartDate < _clock.Today)
+        {
+            errors[nameof(CreateWeeklyRecurringJob.StartDate)] =
+                ["The start date cannot be in the past."];
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new InvalidWeeklyRecurringJobException(errors);
+        }
+
+        var horizon = _clock.Today.AddDays(55);
+        var existing = await _repository.GetRecurringJobSeriesAsync(
+            request.RequestId,
+            cancellationToken);
+        if (existing is not null)
+        {
+            if (!existing.MatchesWeekly(
+                    child!.Id,
+                    viewer!.Id,
+                    name,
+                    description,
+                    request.Points,
+                    agendaPeriod,
+                    request.ScheduledTime,
+                    request.StartDate,
+                    request.EndDate,
+                    weekdays))
+            {
+                throw new WeeklyRecurringJobRequestConflictException(request.RequestId);
+            }
+
+            var existingCount = await _repository.GetRecurringJobSeriesOccurrenceCountAsync(
+                existing.Id,
+                cancellationToken);
+            return new RecurringJobCreation(
+                existing.Id,
+                existing.GeneratedThrough,
+                existingCount,
+                false);
+        }
+
+        var series = RecurringJobSeries.Weekly(
+            request.RequestId,
+            child!.Id,
+            viewer!.Id,
+            name,
+            description,
+            request.Points,
+            agendaPeriod,
+            request.ScheduledTime,
+            request.StartDate,
+            request.EndDate,
+            weekdays);
+        var occurrences = series
+            .GenerateThrough(horizon)
+            .Select(date => CreateOccurrence(series, date))
+            .ToArray();
+
+        await _repository.AddRecurringJobSeriesAsync(series, cancellationToken);
+        await _repository.AddJobsAsync(occurrences, cancellationToken);
+        await _repository.SaveChangesAsync(cancellationToken);
+
+        return new RecurringJobCreation(
+            series.Id,
+            series.GeneratedThrough,
+            occurrences.Length,
+            true);
+    }
+
+    private async Task EnsureRecurringJobsAsync(CancellationToken cancellationToken)
     {
         var horizon = _clock.Today.AddDays(55);
-        var seriesToAdvance = await _repository.GetDailyJobSeriesNeedingGenerationAsync(
+        var seriesToAdvance = await _repository.GetRecurringJobSeriesNeedingGenerationAsync(
             horizon,
             cancellationToken);
         var occurrences = seriesToAdvance
@@ -233,7 +346,7 @@ public sealed class TodayBoardService
         await _repository.SaveChangesAsync(cancellationToken);
     }
 
-    private static Job CreateOccurrence(DailyJobSeries series, DateOnly date)
+    private static Job CreateOccurrence(RecurringJobSeries series, DateOnly date)
     {
         return new Job(
             Guid.NewGuid(),
@@ -244,7 +357,8 @@ public sealed class TodayBoardService
             date,
             series.AgendaPeriod,
             series.ScheduledTime,
-            series.Id);
+            series.Id,
+            series.Frequency);
     }
 
     public async Task<TodayJobApproval> ApproveAsync(
@@ -375,6 +489,33 @@ public sealed class TodayBoardService
         return value is "morning" or "arrivingHome" or "evening" or "unscheduled";
     }
 
+    private static bool TryParseWeekdays(
+        IReadOnlyCollection<string>? values,
+        out IReadOnlyCollection<DayOfWeek> weekdays)
+    {
+        var parsed = new List<DayOfWeek>();
+        if (values is null || values.Count == 0)
+        {
+            weekdays = parsed;
+            return false;
+        }
+
+        foreach (var value in values)
+        {
+            if (!Enum.TryParse<DayOfWeek>(value, true, out var weekday)
+                || !Enum.IsDefined(weekday))
+            {
+                weekdays = parsed;
+                return false;
+            }
+
+            parsed.Add(weekday);
+        }
+
+        weekdays = parsed;
+        return parsed.Count == parsed.Distinct().Count();
+    }
+
     private static TodayMember MapMember(HouseholdMember member)
     {
         return new TodayMember(
@@ -409,6 +550,9 @@ public sealed class TodayBoardService
             MapAgendaPeriod(job.AgendaPeriod),
             job.ScheduledTime,
             job.RecurringJobSeriesId,
+            job.RecurrenceFrequency is null
+                ? null
+                : MapRecurrenceFrequency(job.RecurrenceFrequency.Value),
             status,
             job.CompletedAtUtc,
             job.ApprovedAtUtc,
@@ -424,6 +568,16 @@ public sealed class TodayBoardService
             AgendaPeriod.Evening => "evening",
             AgendaPeriod.Unscheduled => "unscheduled",
             _ => throw new InvalidOperationException($"Unknown agenda period '{agendaPeriod}'."),
+        };
+    }
+
+    private static string MapRecurrenceFrequency(RecurrenceFrequency frequency)
+    {
+        return frequency switch
+        {
+            RecurrenceFrequency.Daily => "daily",
+            RecurrenceFrequency.Weekly => "weekly",
+            _ => throw new InvalidOperationException($"Unknown recurrence frequency '{frequency}'."),
         };
     }
 }

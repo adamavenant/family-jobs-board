@@ -23,6 +23,10 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
             .HasMaxLength(32);
         builder.Property(job => job.ScheduledTime).HasColumnName("scheduled_time");
         builder.Property(job => job.RecurringJobSeriesId).HasColumnName("recurring_job_series_id");
+        builder.Property(job => job.RecurrenceFrequency)
+            .HasColumnName("recurrence_frequency")
+            .HasConversion<string>()
+            .HasMaxLength(16);
         builder.Property(job => job.Status)
             .HasColumnName("status")
             .HasConversion<string>()
@@ -38,7 +42,7 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
             .WithMany()
             .HasForeignKey(job => job.ChildId)
             .OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne<DailyJobSeries>()
+        builder.HasOne<RecurringJobSeries>()
             .WithMany()
             .HasForeignKey(job => job.RecurringJobSeriesId)
             .OnDelete(DeleteBehavior.Restrict);

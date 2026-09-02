@@ -227,7 +227,8 @@ function JobCard({
         <h3>{job.name}</h3>
         {job.recurringJobSeriesId ? (
           <p className="job-card__schedule">
-            Daily · {formatAgendaPeriod(job.agendaPeriod)}
+            {job.recurrenceFrequency === "weekly" ? "Weekly" : "Daily"} ·{" "}
+            {formatAgendaPeriod(job.agendaPeriod)}
             {job.scheduledTime ? ` · ${job.scheduledTime.slice(0, 5)}` : ""}
           </p>
         ) : null}

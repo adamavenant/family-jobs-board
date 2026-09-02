@@ -208,6 +208,7 @@ describe("Today page", () => {
       agendaPeriod: "morning",
       scheduledTime: "07:30:00",
       recurringJobSeriesId: "56d75d00-3b67-4532-a149-8a388889c9ca",
+      recurrenceFrequency: "daily",
       status: "open",
       completedAtUtc: null,
       approvedAtUtc: null,
@@ -266,6 +267,84 @@ describe("Today page", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText("Daily job created through 2026-10-23."),
+    ).toHaveAttribute("role", "status");
+  });
+
+  it("creates a weekly recurring job for selected weekdays", async () => {
+    const recurringJob = {
+      id: "372ee9d4-1bfc-4daa-a111-39a29eebcb3c",
+      childId: fredster.id,
+      childDisplayName: fredster.displayName,
+      name: "Pack sports kit",
+      description: "Check the kit bag.",
+      points: 4,
+      scheduledDate: board.date,
+      agendaPeriod: "evening",
+      scheduledTime: "18:15:00",
+      recurringJobSeriesId: "afcd56e4-ed26-4399-b342-673905d55079",
+      recurrenceFrequency: "weekly",
+      status: "open",
+      completedAtUtc: null,
+      approvedAtUtc: null,
+      latestRejection: null,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(board))
+        .mockResolvedValueOnce(
+          jsonResponse(
+            {
+              seriesId: recurringJob.recurringJobSeriesId,
+              generatedThrough: "2026-10-23",
+              occurrenceCount: 16,
+            },
+            { status: 201 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({ ...board, jobs: [...board.jobs, recurringJob] }),
+        ),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Routines"));
+    await user.selectOptions(screen.getByLabelText("Repeats"), "weekly");
+    await user.click(screen.getByRole("checkbox", { name: "Monday" }));
+    await user.click(screen.getByRole("checkbox", { name: "Saturday" }));
+    await user.type(
+      screen.getByLabelText("Weekly job name"),
+      "Pack sports kit",
+    );
+    await user.type(
+      screen.getByLabelText("Weekly job description"),
+      "Check the kit bag.",
+    );
+    await user.clear(screen.getByLabelText("Weekly job points"));
+    await user.type(screen.getByLabelText("Weekly job points"), "4");
+    await user.selectOptions(
+      screen.getByLabelText("Weekly job part of day"),
+      "evening",
+    );
+    await user.type(
+      screen.getByLabelText("Weekly job time (optional)"),
+      "18:15",
+    );
+    await user.click(screen.getByRole("button", { name: "Create weekly job" }));
+
+    const heading = await screen.findByRole("heading", {
+      name: "Pack sports kit",
+    });
+    const card = heading.closest("article");
+    expect(card).not.toBeNull();
+    expect(
+      within(card as HTMLElement).getByText("Weekly · Evening · 18:15"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Weekly job created through 2026-10-23."),
     ).toHaveAttribute("role", "status");
   });
 
