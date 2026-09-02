@@ -161,7 +161,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DailyRecurringJobResponse"
+                  "$ref": "#/components/schemas/RecurringJobResponse"
                 }
               }
             }
@@ -171,7 +171,69 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DailyRecurringJobResponse"
+                  "$ref": "#/components/schemas/RecurringJobResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recurring-jobs/weekly": {
+      "post": {
+        "tags": [
+          "Today"
+        ],
+        "summary": "Create a weekly recurring job for a child.",
+        "description": "Creates an adult-owned weekly series for selected weekdays and materializes duplicate-safe occurrences through an eight-week horizon.",
+        "operationId": "CreateWeeklyRecurringJob",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWeeklyRecurringJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringJobResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringJobResponse"
                 }
               }
             }
@@ -436,29 +498,86 @@
           }
         }
       },
-      "DailyRecurringJobResponse": {
+      "CreateWeeklyRecurringJobRequest": {
         "required": [
-          "seriesId",
-          "generatedThrough",
-          "occurrenceCount"
+          "requestId",
+          "viewerId",
+          "childId",
+          "name",
+          "description",
+          "points",
+          "agendaPeriod",
+          "scheduledTime",
+          "startDate",
+          "endDate",
+          "weekdays"
         ],
         "type": "object",
         "properties": {
-          "seriesId": {
+          "requestId": {
             "type": "string",
             "format": "uuid"
           },
-          "generatedThrough": {
+          "viewerId": {
             "type": "string",
-            "format": "date"
+            "format": "uuid"
           },
-          "occurrenceCount": {
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "points": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
               "string"
             ],
             "format": "int32"
+          },
+          "agendaPeriod": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scheduledTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "time"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "endDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "weekdays": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -565,6 +684,7 @@
           "agendaPeriod",
           "scheduledTime",
           "recurringJobSeriesId",
+          "recurrenceFrequency",
           "status",
           "completedAtUtc",
           "approvedAtUtc",
@@ -617,6 +737,12 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "recurrenceFrequency": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "status": {
             "type": "string"
@@ -748,6 +874,32 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "RecurringJobResponse": {
+        "required": [
+          "seriesId",
+          "generatedThrough",
+          "occurrenceCount"
+        ],
+        "type": "object",
+        "properties": {
+          "seriesId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generatedThrough": {
+            "type": "string",
+            "format": "date"
+          },
+          "occurrenceCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },

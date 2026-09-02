@@ -13,6 +13,7 @@ export interface TodayJob {
   agendaPeriod: "morning" | "arrivingHome" | "evening" | "unscheduled";
   scheduledTime: string | null;
   recurringJobSeriesId: string | null;
+  recurrenceFrequency: "daily" | "weekly" | null;
   status: "open" | "pendingApproval" | "approved";
   completedAtUtc: string | null;
   approvedAtUtc: string | null;
@@ -56,7 +57,7 @@ export interface JobApproval {
   pointsBalance: number;
 }
 
-export interface DailyRecurringJobCreation {
+export interface RecurringJobCreation {
   seriesId: string;
   generatedThrough: string;
   occurrenceCount: number;
@@ -166,9 +167,38 @@ export async function createDailyRecurringJob(request: {
   scheduledTime: string | null;
   startDate: string;
   endDate: string | null;
-}): Promise<DailyRecurringJobCreation> {
+}): Promise<RecurringJobCreation> {
   const client = apiClient();
   const { data, error } = await client.POST("/api/recurring-jobs/daily", {
+    body: request,
+  });
+  if (!data) {
+    throw new ApiError(
+      problemMessage(error, "That recurring job couldn't be created."),
+    );
+  }
+
+  return {
+    ...data,
+    occurrenceCount: Number(data.occurrenceCount),
+  };
+}
+
+export async function createWeeklyRecurringJob(request: {
+  requestId: string;
+  viewerId: string;
+  childId: string;
+  name: string;
+  description: string;
+  points: number;
+  agendaPeriod: "morning" | "arrivingHome" | "evening" | "unscheduled";
+  scheduledTime: string | null;
+  startDate: string;
+  endDate: string | null;
+  weekdays: string[];
+}): Promise<RecurringJobCreation> {
+  const client = apiClient();
+  const { data, error } = await client.POST("/api/recurring-jobs/weekly", {
     body: request,
   });
   if (!data) {
@@ -201,6 +231,7 @@ function mapJob(job: {
   agendaPeriod: string;
   scheduledTime: string | null;
   recurringJobSeriesId: string | null;
+  recurrenceFrequency: string | null;
   status: string;
   completedAtUtc: string | null;
   approvedAtUtc: string | null;
@@ -219,6 +250,11 @@ function mapJob(job: {
       job.agendaPeriod === "evening"
         ? job.agendaPeriod
         : "unscheduled",
+    recurrenceFrequency:
+      job.recurrenceFrequency === "daily" ||
+      job.recurrenceFrequency === "weekly"
+        ? job.recurrenceFrequency
+        : null,
     status:
       job.status === "pendingApproval" || job.status === "approved"
         ? job.status

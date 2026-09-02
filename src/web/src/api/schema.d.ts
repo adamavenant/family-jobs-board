@@ -84,6 +84,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recurring-jobs/weekly": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a weekly recurring job for a child.
+         * @description Creates an adult-owned weekly series for selected weekdays and materializes duplicate-safe occurrences through an eight-week horizon.
+         */
+        post: operations["CreateWeeklyRecurringJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{id}/approve": {
         parameters: {
             query?: never;
@@ -155,13 +175,25 @@ export interface components {
             /** Format: date */
             endDate: null | string;
         };
-        DailyRecurringJobResponse: {
+        CreateWeeklyRecurringJobRequest: {
             /** Format: uuid */
-            seriesId: string;
-            /** Format: date */
-            generatedThrough: string;
+            requestId: string;
+            /** Format: uuid */
+            viewerId: string;
+            /** Format: uuid */
+            childId: string;
+            name: null | string;
+            description: null | string;
             /** Format: int32 */
-            occurrenceCount: number | string;
+            points: number | string;
+            agendaPeriod: null | string;
+            /** Format: time */
+            scheduledTime: null | string;
+            /** Format: date */
+            startDate: string;
+            /** Format: date */
+            endDate: null | string;
+            weekdays: null | string[];
         };
         HttpValidationProblemDetails: {
             type?: null | string;
@@ -203,6 +235,7 @@ export interface components {
             scheduledTime: null | string;
             /** Format: uuid */
             recurringJobSeriesId: null | string;
+            recurrenceFrequency: null | string;
             status: string;
             /** Format: date-time */
             completedAtUtc: null | string;
@@ -236,6 +269,14 @@ export interface components {
             status?: null | number | string;
             detail?: null | string;
             instance?: null | string;
+        };
+        RecurringJobResponse: {
+            /** Format: uuid */
+            seriesId: string;
+            /** Format: date */
+            generatedThrough: string;
+            /** Format: int32 */
+            occurrenceCount: number | string;
         };
         RejectJobRequest: {
             reason: null | string;
@@ -375,7 +416,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DailyRecurringJobResponse"];
+                    "application/json": components["schemas"]["RecurringJobResponse"];
                 };
             };
             /** @description Created */
@@ -384,7 +425,58 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DailyRecurringJobResponse"];
+                    "application/json": components["schemas"]["RecurringJobResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    CreateWeeklyRecurringJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWeeklyRecurringJobRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringJobResponse"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringJobResponse"];
                 };
             };
             /** @description Bad Request */

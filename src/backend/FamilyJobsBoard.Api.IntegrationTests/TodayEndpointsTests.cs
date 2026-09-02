@@ -211,7 +211,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         using var createResponse = await Client.PostAsJsonAsync(
             "/api/recurring-jobs/daily",
             request);
-        var created = await createResponse.Content.ReadFromJsonAsync<DailyRecurringJobResponse>();
+        var created = await createResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
 
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         Assert.NotNull(created);
@@ -228,11 +228,12 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.Equal(initial.Date, occurrence.ScheduledDate);
         Assert.Equal("morning", occurrence.AgendaPeriod);
         Assert.Equal(new TimeOnly(7, 30), occurrence.ScheduledTime);
+        Assert.Equal("daily", occurrence.RecurrenceFrequency);
 
         using var retryResponse = await Client.PostAsJsonAsync(
             "/api/recurring-jobs/daily",
             request);
-        var retried = await retryResponse.Content.ReadFromJsonAsync<DailyRecurringJobResponse>();
+        var retried = await retryResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
         Assert.Equal(HttpStatusCode.OK, retryResponse.StatusCode);
         Assert.Equal(3, retried?.OccurrenceCount);
 
@@ -240,7 +241,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            Assert.Equal(1, await database.DailyJobSeries.CountAsync(series => series.Id == requestId));
+            Assert.Equal(1, await database.RecurringJobSeries.CountAsync(series => series.Id == requestId));
             Assert.Equal(3, await database.Jobs.CountAsync(job => job.RecurringJobSeriesId == requestId));
         }
 
@@ -263,6 +264,124 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var awarded = await Client.GetFromJsonAsync<TodayResponse>(
             $"/api/today?memberId={DemoDataIds.Fredster}");
         Assert.Contains(awarded!.PointEarnings, earning => earning.JobId == persistedOccurrence.Id);
+    }
+
+    [Fact]
+    public async Task Weekly_recurring_job_materializes_selected_weekdays_once_and_survives_restart()
+    {
+        var initial = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}");
+        Assert.NotNull(initial);
+        var requestId = Guid.NewGuid();
+        var endDate = initial.Date.AddDays(8);
+        var selectedWeekdays = new[]
+        {
+            initial.Date.DayOfWeek,
+            initial.Date.AddDays(2).DayOfWeek,
+        };
+        var expectedDates = Enumerable.Range(0, 9)
+            .Select(offset => initial.Date.AddDays(offset))
+            .Where(date => selectedWeekdays.Contains(date.DayOfWeek))
+            .ToArray();
+        var request = new
+        {
+            requestId,
+            viewerId = DemoDataIds.Addie,
+            childId = DemoDataIds.Fredster,
+            name = "  Pack sports kit  ",
+            description = "  Check the kit bag.  ",
+            points = 4,
+            agendaPeriod = "evening",
+            scheduledTime = "18:15:00",
+            startDate = initial.Date,
+            endDate,
+            weekdays = selectedWeekdays
+                .Select(day => day.ToString().ToLowerInvariant())
+                .ToArray(),
+        };
+
+        using var createResponse = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/weekly",
+            request);
+        var created = await createResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        Assert.NotNull(created);
+        Assert.Equal(requestId, created.SeriesId);
+        Assert.Equal(endDate, created.GeneratedThrough);
+        Assert.Equal(expectedDates.Length, created.OccurrenceCount);
+
+        var board = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Fredster}");
+        var occurrence = Assert.Single(
+            board!.Jobs,
+            job => job.RecurringJobSeriesId == requestId);
+        Assert.Equal("Pack sports kit", occurrence.Name);
+        Assert.Equal(initial.Date, occurrence.ScheduledDate);
+        Assert.Equal("weekly", occurrence.RecurrenceFrequency);
+        Assert.Equal("evening", occurrence.AgendaPeriod);
+        Assert.Equal(new TimeOnly(18, 15), occurrence.ScheduledTime);
+
+        using var retryResponse = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/weekly",
+            request);
+        var retried = await retryResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
+        Assert.Equal(HttpStatusCode.OK, retryResponse.StatusCode);
+        Assert.Equal(expectedDates.Length, retried?.OccurrenceCount);
+
+        await RestartApplicationAsync();
+        await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Fredster}");
+
+        var factory = _factory ?? throw new InvalidOperationException("Test API was not initialised.");
+        await using var scope = factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var series = await database.RecurringJobSeries.SingleAsync(item => item.Id == requestId);
+        var persistedDates = await database.Jobs
+            .Where(job => job.RecurringJobSeriesId == requestId)
+            .OrderBy(job => job.ScheduledDate)
+            .Select(job => job.ScheduledDate)
+            .ToArrayAsync();
+        Assert.Equal(RecurrenceFrequency.Weekly, series.Frequency);
+        Assert.Equal(selectedWeekdays.Order(), series.SelectedWeekdays().Order());
+        Assert.Equal(expectedDates, persistedDates);
+    }
+
+    [Fact]
+    public async Task Weekly_recurring_job_rejects_missing_duplicate_and_unknown_weekdays()
+    {
+        var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.NotNull(initial);
+
+        foreach (var weekdays in new[]
+                 {
+                     Array.Empty<string>(),
+                     ["monday", "monday"],
+                     ["monday", "funday"],
+                 })
+        {
+            using var response = await Client.PostAsJsonAsync(
+                "/api/recurring-jobs/weekly",
+                new
+                {
+                    requestId = Guid.NewGuid(),
+                    viewerId = DemoDataIds.Addie,
+                    childId = DemoDataIds.Fredster,
+                    name = "Pack sports kit",
+                    description = "Check the kit bag.",
+                    points = 4,
+                    agendaPeriod = "evening",
+                    scheduledTime = (string?)null,
+                    startDate = initial.Date,
+                    endDate = (DateOnly?)null,
+                    weekdays,
+                });
+            var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Equal("Invalid weekly recurring job data", problem?.Title);
+            Assert.Contains("Weekdays", problem?.Errors.Keys ?? []);
+        }
     }
 
     [Fact]
@@ -769,6 +888,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         string AgendaPeriod,
         TimeOnly? ScheduledTime,
         Guid? RecurringJobSeriesId,
+        string? RecurrenceFrequency,
         string Status,
         DateTimeOffset? CompletedAtUtc,
         DateTimeOffset? ApprovedAtUtc,
@@ -781,7 +901,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
     private sealed record JobApprovalResponse(JobResponse Job, int PointsBalance);
 
-    private sealed record DailyRecurringJobResponse(
+    private sealed record RecurringJobResponse(
         Guid SeriesId,
         DateOnly GeneratedThrough,
         int OccurrenceCount);

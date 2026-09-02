@@ -1,6 +1,6 @@
 namespace FamilyJobsBoard.Application.Today;
 
-public sealed record CreateDailyRecurringJob(
+public sealed record CreateWeeklyRecurringJob(
     Guid RequestId,
     Guid ViewerId,
     Guid ChildId,
@@ -10,10 +10,5 @@ public sealed record CreateDailyRecurringJob(
     string? AgendaPeriod,
     TimeOnly? ScheduledTime,
     DateOnly StartDate,
-    DateOnly? EndDate);
-
-public sealed record RecurringJobCreation(
-    Guid SeriesId,
-    DateOnly GeneratedThrough,
-    int OccurrenceCount,
-    bool WasCreated);
+    DateOnly? EndDate,
+    IReadOnlyCollection<string>? Weekdays);

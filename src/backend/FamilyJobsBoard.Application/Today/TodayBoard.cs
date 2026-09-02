@@ -27,6 +27,7 @@ public sealed record TodayJob(
     string AgendaPeriod,
     TimeOnly? ScheduledTime,
     Guid? RecurringJobSeriesId,
+    string? RecurrenceFrequency,
     string Status,
     DateTimeOffset? CompletedAtUtc,
     DateTimeOffset? ApprovedAtUtc,

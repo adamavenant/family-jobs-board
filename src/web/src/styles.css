@@ -306,6 +306,47 @@ h1 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
+.weekday-picker {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.weekday-picker legend {
+  margin-bottom: 8px;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.weekday-picker__options {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+.weekday-option {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  background: var(--input);
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.weekday-option:has(input:checked) {
+  color: var(--success-text);
+  background: var(--success-bg);
+  border-color: var(--success-text);
+}
+.weekday-option input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.weekday-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .form-group:first-of-type,
 .form-group:nth-of-type(3),
 .add-job__form > .error-message,
@@ -718,6 +759,9 @@ h1 {
   }
   .form-row {
     grid-template-columns: 1fr;
+  }
+  .weekday-picker__options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .form-group:first-of-type,
   .form-group:nth-of-type(3),

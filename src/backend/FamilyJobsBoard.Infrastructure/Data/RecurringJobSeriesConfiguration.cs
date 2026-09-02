@@ -5,11 +5,11 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace FamilyJobsBoard.Infrastructure.Data;
 
-internal sealed class DailyJobSeriesConfiguration : IEntityTypeConfiguration<DailyJobSeries>
+internal sealed class RecurringJobSeriesConfiguration : IEntityTypeConfiguration<RecurringJobSeries>
 {
-    public void Configure(EntityTypeBuilder<DailyJobSeries> builder)
+    public void Configure(EntityTypeBuilder<RecurringJobSeries> builder)
     {
-        builder.ToTable("daily_job_series");
+        builder.ToTable("recurring_job_series");
         builder.HasKey(series => series.Id);
         builder.Property(series => series.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(series => series.ChildId).HasColumnName("child_id");
@@ -28,6 +28,11 @@ internal sealed class DailyJobSeriesConfiguration : IEntityTypeConfiguration<Dai
         builder.Property(series => series.ScheduledTime).HasColumnName("scheduled_time");
         builder.Property(series => series.StartDate).HasColumnName("start_date");
         builder.Property(series => series.EndDate).HasColumnName("end_date");
+        builder.Property(series => series.Frequency)
+            .HasColumnName("frequency")
+            .HasConversion<string>()
+            .HasMaxLength(16);
+        builder.Property(series => series.WeekdayMask).HasColumnName("weekday_mask");
         builder.Property(series => series.GeneratedThrough).HasColumnName("generated_through");
         builder.HasIndex(series => new { series.ChildId, series.StartDate });
         builder.HasOne<HouseholdMember>()

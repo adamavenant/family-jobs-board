@@ -34,6 +34,12 @@ internal static class TodayEndpoints
             .WithDescription(
                 "Creates an adult-owned daily series and materializes duplicate-safe occurrences through an eight-week horizon.");
 
+        group.MapPost("/recurring-jobs/weekly", CreateWeeklyRecurringJobAsync)
+            .WithName("CreateWeeklyRecurringJob")
+            .WithSummary("Create a weekly recurring job for a child.")
+            .WithDescription(
+                "Creates an adult-owned weekly series for selected weekdays and materializes duplicate-safe occurrences through an eight-week horizon.");
+
         group.MapPost("/jobs/{id:guid}/approve", ApproveJobAsync)
             .WithName("ApproveJob")
             .WithSummary("Approve a pending job and award its points.")
@@ -48,8 +54,8 @@ internal static class TodayEndpoints
     }
 
     private static async Task<Results<
-        Created<DailyRecurringJobResponse>,
-        Ok<DailyRecurringJobResponse>,
+        Created<RecurringJobResponse>,
+        Ok<RecurringJobResponse>,
         ValidationProblem,
         Conflict<ProblemDetails>>> CreateDailyRecurringJobAsync(
         CreateDailyRecurringJobRequest request,
@@ -71,7 +77,7 @@ internal static class TodayEndpoints
                     request.StartDate,
                     request.EndDate),
                 cancellationToken);
-            var response = new DailyRecurringJobResponse(
+            var response = new RecurringJobResponse(
                 creation.SeriesId,
                 creation.GeneratedThrough,
                 creation.OccurrenceCount);
@@ -86,6 +92,56 @@ internal static class TodayEndpoints
                 title: "Invalid daily recurring job data");
         }
         catch (DailyRecurringJobRequestConflictException exception)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Recurring job request conflict",
+                Detail = exception.Message,
+                Status = StatusCodes.Status409Conflict,
+            });
+        }
+    }
+
+    private static async Task<Results<
+        Created<RecurringJobResponse>,
+        Ok<RecurringJobResponse>,
+        ValidationProblem,
+        Conflict<ProblemDetails>>> CreateWeeklyRecurringJobAsync(
+        CreateWeeklyRecurringJobRequest request,
+        TodayBoardService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var creation = await service.CreateWeeklyRecurringJobAsync(
+                new CreateWeeklyRecurringJob(
+                    request.RequestId,
+                    request.ViewerId,
+                    request.ChildId,
+                    request.Name,
+                    request.Description,
+                    request.Points,
+                    request.AgendaPeriod,
+                    request.ScheduledTime,
+                    request.StartDate,
+                    request.EndDate,
+                    request.Weekdays),
+                cancellationToken);
+            var response = new RecurringJobResponse(
+                creation.SeriesId,
+                creation.GeneratedThrough,
+                creation.OccurrenceCount);
+            return creation.WasCreated
+                ? TypedResults.Created($"/api/recurring-jobs/weekly/{creation.SeriesId}", response)
+                : TypedResults.Ok(response);
+        }
+        catch (InvalidWeeklyRecurringJobException exception)
+        {
+            return TypedResults.ValidationProblem(
+                exception.Errors,
+                title: "Invalid weekly recurring job data");
+        }
+        catch (WeeklyRecurringJobRequestConflictException exception)
         {
             return TypedResults.Conflict(new ProblemDetails
             {
@@ -304,6 +360,7 @@ internal static class TodayEndpoints
             job.AgendaPeriod,
             job.ScheduledTime,
             job.RecurringJobSeriesId,
+            job.RecurrenceFrequency,
             job.Status,
             job.CompletedAtUtc,
             job.ApprovedAtUtc,

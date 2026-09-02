@@ -18,7 +18,8 @@ public sealed class Job
         DateOnly scheduledDate,
         AgendaPeriod agendaPeriod = AgendaPeriod.Unscheduled,
         TimeOnly? scheduledTime = null,
-        Guid? recurringJobSeriesId = null)
+        Guid? recurringJobSeriesId = null,
+        RecurrenceFrequency? recurrenceFrequency = null)
     {
         if (id == Guid.Empty)
         {
@@ -56,6 +57,13 @@ public sealed class Job
             throw new ArgumentOutOfRangeException(nameof(points), "Points cannot be negative.");
         }
 
+        if ((recurringJobSeriesId is null) != (recurrenceFrequency is null))
+        {
+            throw new ArgumentException(
+                "Recurring jobs need both a series ID and recurrence frequency.",
+                nameof(recurringJobSeriesId));
+        }
+
         Id = id;
         ChildId = childId;
         Name = trimmedName;
@@ -65,6 +73,7 @@ public sealed class Job
         AgendaPeriod = agendaPeriod;
         ScheduledTime = scheduledTime;
         RecurringJobSeriesId = recurringJobSeriesId;
+        RecurrenceFrequency = recurrenceFrequency;
         Status = JobStatus.Open;
     }
 
@@ -85,6 +94,8 @@ public sealed class Job
     public TimeOnly? ScheduledTime { get; private set; }
 
     public Guid? RecurringJobSeriesId { get; private set; }
+
+    public RecurrenceFrequency? RecurrenceFrequency { get; private set; }
 
     public JobStatus Status { get; private set; }
 
