@@ -17,7 +17,7 @@ export function AddJobForm({ children }: { children: HouseholdMember[] }) {
   }, [fetcher.state, result?.success]);
 
   return (
-    <details className="grown-up-tools">
+    <details className="grown-up-tools grown-up-tools--one-off">
       <summary>
         <span className="eyebrow">Grown-up tools</span>
         <span className="grown-up-tools__action">

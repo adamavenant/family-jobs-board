@@ -8,6 +8,7 @@ import {
 import type { PointEarning, TodayBoard, TodayJob } from "../../api/today";
 import type { TodayActionResult } from "../../app/routes";
 import { AddJobForm } from "./AddJobForm";
+import { RecurringJobForm } from "./RecurringJobForm";
 import { ThemeToggle } from "../theme/ThemeToggle";
 
 export function TodayPage() {
@@ -83,7 +84,16 @@ export function TodayPage() {
         </div>
       </header>
 
-      {board.viewer.isAdult ? <AddJobForm children={children} /> : null}
+      {board.viewer.isAdult ? (
+        <div className="grown-up-toolbox">
+          <AddJobForm children={children} />
+          <RecurringJobForm
+            children={children}
+            viewerId={board.viewer.id}
+            today={board.date}
+          />
+        </div>
+      ) : null}
 
       <section className="board" aria-labelledby="today-heading">
         <div className="board__heading">
@@ -215,6 +225,12 @@ function JobCard({
           <p className="job-card__assignee">For {job.childDisplayName}</p>
         ) : null}
         <h3>{job.name}</h3>
+        {job.recurringJobSeriesId ? (
+          <p className="job-card__schedule">
+            Daily · {formatAgendaPeriod(job.agendaPeriod)}
+            {job.scheduledTime ? ` · ${job.scheduledTime.slice(0, 5)}` : ""}
+          </p>
+        ) : null}
         <p>{job.description}</p>
       </div>
 
@@ -296,4 +312,12 @@ function JobCard({
       ) : null}
     </article>
   );
+}
+
+function formatAgendaPeriod(value: TodayJob["agendaPeriod"]) {
+  return value === "arrivingHome"
+    ? "Arriving home"
+    : value === "unscheduled"
+      ? "Any time"
+      : `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }

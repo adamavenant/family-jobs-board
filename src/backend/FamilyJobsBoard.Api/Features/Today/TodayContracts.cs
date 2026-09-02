@@ -22,6 +22,23 @@ public sealed record AddJobRequest(
     string? Description,
     int Points);
 
+public sealed record CreateDailyRecurringJobRequest(
+    Guid RequestId,
+    Guid ViewerId,
+    Guid ChildId,
+    string? Name,
+    string? Description,
+    int Points,
+    string? AgendaPeriod,
+    TimeOnly? ScheduledTime,
+    DateOnly StartDate,
+    DateOnly? EndDate);
+
+public sealed record DailyRecurringJobResponse(
+    Guid SeriesId,
+    DateOnly GeneratedThrough,
+    int OccurrenceCount);
+
 public sealed record RejectJobRequest(string? Reason);
 
 public sealed record JobResponse(
@@ -31,6 +48,10 @@ public sealed record JobResponse(
     string Name,
     string Description,
     int Points,
+    DateOnly ScheduledDate,
+    string AgendaPeriod,
+    TimeOnly? ScheduledTime,
+    Guid? RecurringJobSeriesId,
     string Status,
     DateTimeOffset? CompletedAtUtc,
     DateTimeOffset? ApprovedAtUtc,

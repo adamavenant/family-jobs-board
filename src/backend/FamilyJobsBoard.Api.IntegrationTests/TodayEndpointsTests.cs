@@ -187,6 +187,178 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Daily_recurring_job_is_materialized_once_persists_and_uses_the_job_workflow()
+    {
+        var initial = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}");
+        Assert.NotNull(initial);
+        var requestId = Guid.NewGuid();
+        var endDate = initial.Date.AddDays(2);
+        var request = new
+        {
+            requestId,
+            viewerId = DemoDataIds.Addie,
+            childId = DemoDataIds.Fredster,
+            name = "  Feed the fish  ",
+            description = "  Add one small scoop.  ",
+            points = 3,
+            agendaPeriod = "morning",
+            scheduledTime = "07:30:00",
+            startDate = initial.Date,
+            endDate,
+        };
+
+        using var createResponse = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/daily",
+            request);
+        var created = await createResponse.Content.ReadFromJsonAsync<DailyRecurringJobResponse>();
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        Assert.NotNull(created);
+        Assert.Equal(requestId, created.SeriesId);
+        Assert.Equal(endDate, created.GeneratedThrough);
+        Assert.Equal(3, created.OccurrenceCount);
+
+        var board = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Fredster}");
+        Assert.NotNull(board);
+        var occurrence = Assert.Single(board.Jobs, job => job.RecurringJobSeriesId == requestId);
+        Assert.Equal("Feed the fish", occurrence.Name);
+        Assert.Equal("Add one small scoop.", occurrence.Description);
+        Assert.Equal(initial.Date, occurrence.ScheduledDate);
+        Assert.Equal("morning", occurrence.AgendaPeriod);
+        Assert.Equal(new TimeOnly(7, 30), occurrence.ScheduledTime);
+
+        using var retryResponse = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/daily",
+            request);
+        var retried = await retryResponse.Content.ReadFromJsonAsync<DailyRecurringJobResponse>();
+        Assert.Equal(HttpStatusCode.OK, retryResponse.StatusCode);
+        Assert.Equal(3, retried?.OccurrenceCount);
+
+        var factory = _factory ?? throw new InvalidOperationException("Test API was not initialised.");
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.Equal(1, await database.DailyJobSeries.CountAsync(series => series.Id == requestId));
+            Assert.Equal(3, await database.Jobs.CountAsync(job => job.RecurringJobSeriesId == requestId));
+        }
+
+        await RestartApplicationAsync();
+
+        var persisted = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Fredster}");
+        var persistedOccurrence = Assert.Single(
+            persisted!.Jobs,
+            job => job.RecurringJobSeriesId == requestId);
+        using var completeResponse = await Client.PostAsync(
+            $"/api/jobs/{persistedOccurrence.Id}/complete",
+            null);
+        Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
+        using var approveResponse = await Client.PostAsync(
+            $"/api/jobs/{persistedOccurrence.Id}/approve",
+            null);
+        Assert.Equal(HttpStatusCode.OK, approveResponse.StatusCode);
+
+        var awarded = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Fredster}");
+        Assert.Contains(awarded!.PointEarnings, earning => earning.JobId == persistedOccurrence.Id);
+    }
+
+    [Fact]
+    public async Task Daily_recurring_job_requires_an_adult_valid_child_and_valid_values()
+    {
+        var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.NotNull(initial);
+
+        using var childViewer = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/daily",
+            new
+            {
+                requestId = Guid.NewGuid(),
+                viewerId = DemoDataIds.Fredster,
+                childId = DemoDataIds.Fredster,
+                name = "Feed the fish",
+                description = "One scoop.",
+                points = 2,
+                agendaPeriod = "morning",
+                scheduledTime = (string?)null,
+                startDate = initial.Date,
+                endDate = (DateOnly?)null,
+            });
+        var childProblem = await childViewer.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        Assert.Equal(HttpStatusCode.BadRequest, childViewer.StatusCode);
+        Assert.Contains("ViewerId", childProblem?.Errors.Keys ?? []);
+
+        using var invalid = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/daily",
+            new
+            {
+                requestId = Guid.NewGuid(),
+                viewerId = DemoDataIds.Addie,
+                childId = Guid.NewGuid(),
+                name = "Feed the fish",
+                description = "One scoop.",
+                points = -1,
+                agendaPeriod = "bedtime",
+                scheduledTime = (string?)null,
+                startDate = initial.Date,
+                endDate = initial.Date.AddDays(-1),
+            });
+        var invalidProblem = await invalid.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.NotNull(invalidProblem);
+        Assert.Equal("Invalid daily recurring job data", invalidProblem.Title);
+        Assert.Contains("ChildId", invalidProblem.Errors.Keys);
+        Assert.Contains("Points", invalidProblem.Errors.Keys);
+        Assert.Contains("AgendaPeriod", invalidProblem.Errors.Keys);
+        Assert.Contains("EndDate", invalidProblem.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task Reusing_a_daily_request_id_with_different_details_is_rejected()
+    {
+        var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.NotNull(initial);
+        var requestId = Guid.NewGuid();
+
+        using var created = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/daily",
+            new
+            {
+                requestId,
+                viewerId = DemoDataIds.Addie,
+                childId = DemoDataIds.Fredster,
+                name = "Feed the fish",
+                description = "One scoop.",
+                points = 2,
+                agendaPeriod = "morning",
+                scheduledTime = (string?)null,
+                startDate = initial.Date,
+                endDate = initial.Date,
+            });
+        created.EnsureSuccessStatusCode();
+
+        using var conflict = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/daily",
+            new
+            {
+                requestId,
+                viewerId = DemoDataIds.Addie,
+                childId = DemoDataIds.Fredster,
+                name = "Different job",
+                description = "One scoop.",
+                points = 2,
+                agendaPeriod = "morning",
+                scheduledTime = (string?)null,
+                startDate = initial.Date,
+                endDate = initial.Date,
+            });
+
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+    }
+
+    [Fact]
     public async Task Selected_member_gets_a_role_appropriate_board()
     {
         using var addForHarrie = await Client.PostAsJsonAsync(
@@ -593,6 +765,10 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         string Name,
         string Description,
         int Points,
+        DateOnly ScheduledDate,
+        string AgendaPeriod,
+        TimeOnly? ScheduledTime,
+        Guid? RecurringJobSeriesId,
         string Status,
         DateTimeOffset? CompletedAtUtc,
         DateTimeOffset? ApprovedAtUtc,
@@ -604,6 +780,11 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         DateTimeOffset RejectedAtUtc);
 
     private sealed record JobApprovalResponse(JobResponse Job, int PointsBalance);
+
+    private sealed record DailyRecurringJobResponse(
+        Guid SeriesId,
+        DateOnly GeneratedThrough,
+        int OccurrenceCount);
 
     private sealed record PointEarningResponse(
         Guid Id,

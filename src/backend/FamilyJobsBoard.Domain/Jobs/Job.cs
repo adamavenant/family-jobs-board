@@ -15,7 +15,10 @@ public sealed class Job
         string name,
         string description,
         int points,
-        DateOnly scheduledDate)
+        DateOnly scheduledDate,
+        AgendaPeriod agendaPeriod = AgendaPeriod.Unscheduled,
+        TimeOnly? scheduledTime = null,
+        Guid? recurringJobSeriesId = null)
     {
         if (id == Guid.Empty)
         {
@@ -59,6 +62,9 @@ public sealed class Job
         Description = trimmedDescription;
         Points = points;
         ScheduledDate = scheduledDate;
+        AgendaPeriod = agendaPeriod;
+        ScheduledTime = scheduledTime;
+        RecurringJobSeriesId = recurringJobSeriesId;
         Status = JobStatus.Open;
     }
 
@@ -73,6 +79,12 @@ public sealed class Job
     public int Points { get; private set; }
 
     public DateOnly ScheduledDate { get; private set; }
+
+    public AgendaPeriod AgendaPeriod { get; private set; }
+
+    public TimeOnly? ScheduledTime { get; private set; }
+
+    public Guid? RecurringJobSeriesId { get; private set; }
 
     public JobStatus Status { get; private set; }
 

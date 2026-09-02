@@ -229,8 +229,12 @@ h1 {
   font-size: 0.78rem;
   font-weight: 700;
 }
-.grown-up-tools {
+.grown-up-toolbox {
+  display: grid;
+  gap: 12px;
   margin-top: 24px;
+}
+.grown-up-tools {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 18px;
@@ -295,6 +299,12 @@ h1 {
 .form-group {
   display: grid;
   gap: 7px;
+}
+.form-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
 }
 .form-group:first-of-type,
 .form-group:nth-of-type(3),
@@ -436,6 +446,12 @@ h1 {
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+.job-card .job-card__schedule {
+  margin: -4px 0 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 .job-card p {
   margin: 0;
@@ -698,6 +714,9 @@ h1 {
     padding: 4px 18px 20px;
   }
   .add-job__form {
+    grid-template-columns: 1fr;
+  }
+  .form-row {
     grid-template-columns: 1fr;
   }
   .form-group:first-of-type,

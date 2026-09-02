@@ -9,6 +9,10 @@ export interface TodayJob {
   name: string;
   description: string;
   points: number;
+  scheduledDate: string;
+  agendaPeriod: "morning" | "arrivingHome" | "evening" | "unscheduled";
+  scheduledTime: string | null;
+  recurringJobSeriesId: string | null;
   status: "open" | "pendingApproval" | "approved";
   completedAtUtc: string | null;
   approvedAtUtc: string | null;
@@ -50,6 +54,12 @@ export interface PointEarning {
 export interface JobApproval {
   job: TodayJob;
   pointsBalance: number;
+}
+
+export interface DailyRecurringJobCreation {
+  seriesId: string;
+  generatedThrough: string;
+  occurrenceCount: number;
 }
 
 export class ApiError extends Error {
@@ -145,6 +155,34 @@ export async function addJob(request: {
   return mapJob(data);
 }
 
+export async function createDailyRecurringJob(request: {
+  requestId: string;
+  viewerId: string;
+  childId: string;
+  name: string;
+  description: string;
+  points: number;
+  agendaPeriod: "morning" | "arrivingHome" | "evening" | "unscheduled";
+  scheduledTime: string | null;
+  startDate: string;
+  endDate: string | null;
+}): Promise<DailyRecurringJobCreation> {
+  const client = apiClient();
+  const { data, error } = await client.POST("/api/recurring-jobs/daily", {
+    body: request,
+  });
+  if (!data) {
+    throw new ApiError(
+      problemMessage(error, "That recurring job couldn't be created."),
+    );
+  }
+
+  return {
+    ...data,
+    occurrenceCount: Number(data.occurrenceCount),
+  };
+}
+
 function apiClient() {
   return createClient<paths>({
     baseUrl: window.location.origin,
@@ -159,6 +197,10 @@ function mapJob(job: {
   name: string;
   description: string;
   points: number | string;
+  scheduledDate: string;
+  agendaPeriod: string;
+  scheduledTime: string | null;
+  recurringJobSeriesId: string | null;
   status: string;
   completedAtUtc: string | null;
   approvedAtUtc: string | null;
@@ -171,6 +213,12 @@ function mapJob(job: {
   return {
     ...job,
     points: Number(job.points),
+    agendaPeriod:
+      job.agendaPeriod === "morning" ||
+      job.agendaPeriod === "arrivingHome" ||
+      job.agendaPeriod === "evening"
+        ? job.agendaPeriod
+        : "unscheduled",
     status:
       job.status === "pendingApproval" || job.status === "approved"
         ? job.status

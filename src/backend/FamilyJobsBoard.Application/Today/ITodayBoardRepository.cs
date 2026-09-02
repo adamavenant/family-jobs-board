@@ -24,6 +24,24 @@ public interface ITodayBoardRepository
 
     Task AddJobAsync(Job job, CancellationToken cancellationToken);
 
+    Task AddJobsAsync(IReadOnlyCollection<Job> jobs, CancellationToken cancellationToken);
+
+    Task<DailyJobSeries?> GetDailyJobSeriesAsync(
+        Guid seriesId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<DailyJobSeries>> GetDailyJobSeriesNeedingGenerationAsync(
+        DateOnly horizon,
+        CancellationToken cancellationToken);
+
+    Task AddDailyJobSeriesAsync(
+        DailyJobSeries series,
+        CancellationToken cancellationToken);
+
+    Task<int> GetDailyJobSeriesOccurrenceCountAsync(
+        Guid seriesId,
+        CancellationToken cancellationToken);
+
     Task<TodayPointsSummary> GetPointsSummaryAsync(
         Guid childId,
         CancellationToken cancellationToken);
