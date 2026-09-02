@@ -261,6 +261,68 @@
         }
       }
     },
+    "/api/recurring-jobs/monthly": {
+      "post": {
+        "tags": [
+          "Today"
+        ],
+        "summary": "Create a monthly recurring job for a child.",
+        "description": "Creates an adult-owned monthly series for a calendar day and uses the final valid day in shorter months.",
+        "operationId": "CreateMonthlyRecurringJob",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMonthlyRecurringJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringJobResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringJobResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{id}/approve": {
       "post": {
         "tags": [
@@ -495,6 +557,88 @@
               "string"
             ],
             "format": "date"
+          }
+        }
+      },
+      "CreateMonthlyRecurringJobRequest": {
+        "required": [
+          "requestId",
+          "viewerId",
+          "childId",
+          "name",
+          "description",
+          "points",
+          "agendaPeriod",
+          "scheduledTime",
+          "startDate",
+          "endDate",
+          "dayOfMonth"
+        ],
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "viewerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "points": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "agendaPeriod": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scheduledTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "time"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "endDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "dayOfMonth": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },

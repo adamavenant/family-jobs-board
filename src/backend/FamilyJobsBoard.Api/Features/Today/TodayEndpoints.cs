@@ -40,6 +40,12 @@ internal static class TodayEndpoints
             .WithDescription(
                 "Creates an adult-owned weekly series for selected weekdays and materializes duplicate-safe occurrences through an eight-week horizon.");
 
+        group.MapPost("/recurring-jobs/monthly", CreateMonthlyRecurringJobAsync)
+            .WithName("CreateMonthlyRecurringJob")
+            .WithSummary("Create a monthly recurring job for a child.")
+            .WithDescription(
+                "Creates an adult-owned monthly series for a calendar day and uses the final valid day in shorter months.");
+
         group.MapPost("/jobs/{id:guid}/approve", ApproveJobAsync)
             .WithName("ApproveJob")
             .WithSummary("Approve a pending job and award its points.")
@@ -92,6 +98,56 @@ internal static class TodayEndpoints
                 title: "Invalid daily recurring job data");
         }
         catch (DailyRecurringJobRequestConflictException exception)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Recurring job request conflict",
+                Detail = exception.Message,
+                Status = StatusCodes.Status409Conflict,
+            });
+        }
+    }
+
+    private static async Task<Results<
+        Created<RecurringJobResponse>,
+        Ok<RecurringJobResponse>,
+        ValidationProblem,
+        Conflict<ProblemDetails>>> CreateMonthlyRecurringJobAsync(
+        CreateMonthlyRecurringJobRequest request,
+        TodayBoardService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var creation = await service.CreateMonthlyRecurringJobAsync(
+                new CreateMonthlyRecurringJob(
+                    request.RequestId,
+                    request.ViewerId,
+                    request.ChildId,
+                    request.Name,
+                    request.Description,
+                    request.Points,
+                    request.AgendaPeriod,
+                    request.ScheduledTime,
+                    request.StartDate,
+                    request.EndDate,
+                    request.DayOfMonth),
+                cancellationToken);
+            var response = new RecurringJobResponse(
+                creation.SeriesId,
+                creation.GeneratedThrough,
+                creation.OccurrenceCount);
+            return creation.WasCreated
+                ? TypedResults.Created($"/api/recurring-jobs/monthly/{creation.SeriesId}", response)
+                : TypedResults.Ok(response);
+        }
+        catch (InvalidMonthlyRecurringJobException exception)
+        {
+            return TypedResults.ValidationProblem(
+                exception.Errors,
+                title: "Invalid monthly recurring job data");
+        }
+        catch (MonthlyRecurringJobRequestConflictException exception)
         {
             return TypedResults.Conflict(new ProblemDetails
             {

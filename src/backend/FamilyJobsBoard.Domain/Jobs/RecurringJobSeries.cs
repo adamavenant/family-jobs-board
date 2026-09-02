@@ -18,7 +18,8 @@ public sealed class RecurringJobSeries
         DateOnly startDate,
         DateOnly? endDate,
         RecurrenceFrequency frequency,
-        int weekdayMask)
+        int weekdayMask,
+        int? monthlyDay)
     {
         if (id == Guid.Empty)
         {
@@ -66,6 +67,31 @@ public sealed class RecurringJobSeries
             throw new ArgumentOutOfRangeException(nameof(endDate), "The end date cannot precede the start date.");
         }
 
+        if (!Enum.IsDefined(frequency))
+        {
+            throw new ArgumentOutOfRangeException(nameof(frequency), "Choose a valid recurrence frequency.");
+        }
+
+        if (frequency == RecurrenceFrequency.Weekly && weekdayMask == 0)
+        {
+            throw new ArgumentException("A weekly job series needs at least one weekday.", nameof(weekdayMask));
+        }
+
+        if (frequency != RecurrenceFrequency.Weekly && weekdayMask != 0)
+        {
+            throw new ArgumentException("Only weekly job series can select weekdays.", nameof(weekdayMask));
+        }
+
+        if (frequency == RecurrenceFrequency.Monthly && monthlyDay is null or < 1 or > 31)
+        {
+            throw new ArgumentOutOfRangeException(nameof(monthlyDay), "Choose a day of month from 1 through 31.");
+        }
+
+        if (frequency != RecurrenceFrequency.Monthly && monthlyDay is not null)
+        {
+            throw new ArgumentException("Only monthly job series can select a day of month.", nameof(monthlyDay));
+        }
+
         Id = id;
         ChildId = childId;
         CreatedByAdultId = createdByAdultId;
@@ -78,6 +104,7 @@ public sealed class RecurringJobSeries
         EndDate = endDate;
         Frequency = frequency;
         WeekdayMask = weekdayMask;
+        MonthlyDay = monthlyDay;
         GeneratedThrough = startDate.AddDays(-1);
     }
 
@@ -105,6 +132,8 @@ public sealed class RecurringJobSeries
 
     public int WeekdayMask { get; private set; }
 
+    public int? MonthlyDay { get; private set; }
+
     public DateOnly GeneratedThrough { get; private set; }
 
     public static RecurringJobSeries Daily(
@@ -131,7 +160,8 @@ public sealed class RecurringJobSeries
             startDate,
             endDate,
             RecurrenceFrequency.Daily,
-            0);
+            0,
+            null);
     }
 
     public static RecurringJobSeries Weekly(
@@ -181,7 +211,37 @@ public sealed class RecurringJobSeries
             startDate,
             endDate,
             RecurrenceFrequency.Weekly,
-            weekdayMask);
+            weekdayMask,
+            null);
+    }
+
+    public static RecurringJobSeries Monthly(
+        Guid id,
+        Guid childId,
+        Guid createdByAdultId,
+        string name,
+        string description,
+        int points,
+        AgendaPeriod agendaPeriod,
+        TimeOnly? scheduledTime,
+        DateOnly startDate,
+        DateOnly? endDate,
+        int dayOfMonth)
+    {
+        return new RecurringJobSeries(
+            id,
+            childId,
+            createdByAdultId,
+            name,
+            description,
+            points,
+            agendaPeriod,
+            scheduledTime,
+            startDate,
+            endDate,
+            RecurrenceFrequency.Monthly,
+            0,
+            dayOfMonth);
     }
 
     public IReadOnlyList<DayOfWeek> SelectedWeekdays()
@@ -215,7 +275,7 @@ public sealed class RecurringJobSeries
         var dates = new List<DateOnly>();
         for (var date = firstDate; date <= lastDate; date = date.AddDays(1))
         {
-            if (Frequency == RecurrenceFrequency.Daily || Includes(date.DayOfWeek))
+            if (OccursOn(date))
             {
                 dates.Add(date);
             }
@@ -273,6 +333,44 @@ public sealed class RecurringJobSeries
                 startDate,
                 endDate)
             && SelectedWeekdays().Order().SequenceEqual(weekdays.Order());
+    }
+
+    public bool MatchesMonthly(
+        Guid childId,
+        Guid createdByAdultId,
+        string name,
+        string description,
+        int points,
+        AgendaPeriod agendaPeriod,
+        TimeOnly? scheduledTime,
+        DateOnly startDate,
+        DateOnly? endDate,
+        int dayOfMonth)
+    {
+        return Frequency == RecurrenceFrequency.Monthly
+            && MatchesCommon(
+                childId,
+                createdByAdultId,
+                name,
+                description,
+                points,
+                agendaPeriod,
+                scheduledTime,
+                startDate,
+                endDate)
+            && MonthlyDay == dayOfMonth;
+    }
+
+    private bool OccursOn(DateOnly date)
+    {
+        return Frequency switch
+        {
+            RecurrenceFrequency.Daily => true,
+            RecurrenceFrequency.Weekly => Includes(date.DayOfWeek),
+            RecurrenceFrequency.Monthly =>
+                date.Day == Math.Min(MonthlyDay!.Value, DateTime.DaysInMonth(date.Year, date.Month)),
+            _ => throw new InvalidOperationException($"Unknown recurrence frequency '{Frequency}'."),
+        };
     }
 
     private bool Includes(DayOfWeek weekday)

@@ -14,6 +14,27 @@ const weekdays = [
   ["sunday", "Sunday"],
 ] as const;
 
+type RecurrenceFrequency = "daily" | "weekly" | "monthly";
+
+function parseFrequency(value: string): RecurrenceFrequency {
+  if (value === "weekly" || value === "monthly") {
+    return value;
+  }
+
+  return "daily";
+}
+
+function frequencyName(frequency: RecurrenceFrequency): string {
+  if (frequency === "weekly") {
+    return "Weekly";
+  }
+  if (frequency === "monthly") {
+    return "Monthly";
+  }
+
+  return "Daily";
+}
+
 export function RecurringJobForm({
   children,
   viewerId,
@@ -25,11 +46,11 @@ export function RecurringJobForm({
 }) {
   const fetcher = useFetcher<TodayActionResult>();
   const formRef = useRef<HTMLFormElement>(null);
-  const [frequency, setFrequency] = useState<"daily" | "weekly">("daily");
+  const [frequency, setFrequency] = useState<RecurrenceFrequency>("daily");
   const result =
     fetcher.data?.intent === "addRecurring" ? fetcher.data : undefined;
   const isSubmitting = fetcher.state !== "idle";
-  const frequencyLabel = frequency === "weekly" ? "Weekly" : "Daily";
+  const frequencyLabel = frequencyName(frequency);
 
   useEffect(() => {
     if (fetcher.state === "idle" && result?.success) {
@@ -49,7 +70,8 @@ export function RecurringJobForm({
         <div className="add-job__heading">
           <h2 id="add-recurring-job-heading">Add a recurring job</h2>
           <p>
-            Create jobs on a daily or weekly schedule for the next eight weeks.
+            Create jobs on a daily, weekly, or monthly schedule for the next
+            eight weeks.
           </p>
         </div>
         <fetcher.Form
@@ -67,13 +89,12 @@ export function RecurringJobForm({
               name="recurrenceFrequency"
               value={frequency}
               onChange={(event) =>
-                setFrequency(
-                  event.target.value === "weekly" ? "weekly" : "daily",
-                )
+                setFrequency(parseFrequency(event.target.value))
               }
             >
               <option value="daily">Every day</option>
               <option value="weekly">Selected weekdays</option>
+              <option value="monthly">Day of month</option>
             </select>
           </div>
           <div className="form-group">
@@ -104,6 +125,26 @@ export function RecurringJobForm({
                   </label>
                 ))}
               </div>
+            </fieldset>
+          ) : null}
+          {frequency === "monthly" ? (
+            <fieldset className="monthly-picker">
+              <legend>Monthly schedule</legend>
+              <label htmlFor="dayOfMonth">Day of month</label>
+              <input
+                type="number"
+                id="dayOfMonth"
+                name="dayOfMonth"
+                min="1"
+                max="31"
+                step="1"
+                defaultValue={Number(today.slice(8, 10))}
+                aria-describedby="dayOfMonthHint"
+                required
+              />
+              <small id="dayOfMonthHint">
+                In shorter months, the job runs on the final day.
+              </small>
             </fieldset>
           ) : null}
           <div className="form-group">
@@ -191,8 +232,8 @@ export function RecurringJobForm({
           ) : null}
           {result?.success && !isSubmitting ? (
             <p role="status" className="success-message">
-              {result.frequency === "weekly" ? "Weekly" : "Daily"} job created
-              through {result.generatedThrough}.
+              {frequencyName(result.frequency ?? "daily")} job created through{" "}
+              {result.generatedThrough}.
             </p>
           ) : null}
 

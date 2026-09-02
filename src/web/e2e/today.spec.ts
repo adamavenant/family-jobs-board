@@ -74,6 +74,37 @@ test("creates a weekly recurring job for selected weekdays", async ({
   await expect(card.getByText("Weekly · Evening · 18:15")).toBeVisible();
 });
 
+test("creates a monthly recurring job for a calendar day", async ({ page }) => {
+  const jobName = `Monthly Playwright job ${Date.now()}`;
+  const addieId = "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c";
+
+  await page.goto(`/?member=${addieId}`);
+  const recurringTools = page.locator("details.grown-up-tools--recurring");
+  await recurringTools.locator("summary").click();
+  await page.getByLabel("Repeats").selectOption("monthly");
+  await expect(page.getByLabel("Day of month")).toHaveValue(/\d+/);
+  await expect(
+    page.getByText("In shorter months, the job runs on the final day."),
+  ).toBeVisible();
+  await page
+    .getByLabel("Assign monthly job to")
+    .selectOption({ label: "Fredster" });
+  await page.getByLabel("Monthly job name").fill(jobName);
+  await page
+    .getByLabel("Monthly job description")
+    .fill("Created as a monthly routine through the browser.");
+  await page.getByLabel("Monthly job points").fill("5");
+  await page.getByLabel("Monthly job part of day").selectOption("morning");
+  await page.getByLabel("Monthly job time (optional)").fill("09:15");
+  await page.getByRole("button", { name: "Create monthly job" }).click();
+
+  const heading = page.getByRole("heading", { name: jobName, exact: true });
+  await expect(heading).toBeVisible();
+  await expect(page.getByText(/Monthly job created through/)).toBeVisible();
+  const card = page.getByRole("article").filter({ has: heading });
+  await expect(card.getByText("Monthly · Morning · 09:15")).toBeVisible();
+});
+
 test("rejects a completed job, retries it, and then awards points", async ({
   page,
 }) => {

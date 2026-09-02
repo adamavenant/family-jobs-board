@@ -227,7 +227,7 @@ function JobCard({
         <h3>{job.name}</h3>
         {job.recurringJobSeriesId ? (
           <p className="job-card__schedule">
-            {job.recurrenceFrequency === "weekly" ? "Weekly" : "Daily"} ·{" "}
+            {formatRecurrenceFrequency(job.recurrenceFrequency)} ·{" "}
             {formatAgendaPeriod(job.agendaPeriod)}
             {job.scheduledTime ? ` · ${job.scheduledTime.slice(0, 5)}` : ""}
           </p>
@@ -321,4 +321,17 @@ function formatAgendaPeriod(value: TodayJob["agendaPeriod"]) {
     : value === "unscheduled"
       ? "Any time"
       : `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+}
+
+function formatRecurrenceFrequency(
+  value: TodayJob["recurrenceFrequency"],
+): string {
+  if (value === "weekly") {
+    return "Weekly";
+  }
+  if (value === "monthly") {
+    return "Monthly";
+  }
+
+  return "Daily";
 }

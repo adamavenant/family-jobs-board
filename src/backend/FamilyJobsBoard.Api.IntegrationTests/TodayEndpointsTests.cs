@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Npgsql;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -348,6 +349,152 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Monthly_recurring_job_materializes_once_and_survives_restart()
+    {
+        var initial = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}");
+        Assert.NotNull(initial);
+        var requestId = Guid.NewGuid();
+        var secondMonth = initial.Date.AddMonths(1);
+        var expectedDates = new[]
+        {
+            initial.Date,
+            new DateOnly(
+                secondMonth.Year,
+                secondMonth.Month,
+                Math.Min(initial.Date.Day, DateTime.DaysInMonth(secondMonth.Year, secondMonth.Month))),
+        };
+        var request = new
+        {
+            requestId,
+            viewerId = DemoDataIds.Addie,
+            childId = DemoDataIds.Fredster,
+            name = "  Clean the fridge  ",
+            description = "  Check every shelf.  ",
+            points = 5,
+            agendaPeriod = "morning",
+            scheduledTime = "09:15:00",
+            startDate = initial.Date,
+            endDate = expectedDates[^1],
+            dayOfMonth = initial.Date.Day,
+        };
+
+        using var createResponse = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/monthly",
+            request);
+        var created = await createResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        Assert.NotNull(created);
+        Assert.Equal(requestId, created.SeriesId);
+        Assert.Equal(expectedDates[^1], created.GeneratedThrough);
+        Assert.Equal(expectedDates.Length, created.OccurrenceCount);
+
+        var board = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Fredster}");
+        var occurrence = Assert.Single(
+            board!.Jobs,
+            job => job.RecurringJobSeriesId == requestId);
+        Assert.Equal("Clean the fridge", occurrence.Name);
+        Assert.Equal(initial.Date, occurrence.ScheduledDate);
+        Assert.Equal("monthly", occurrence.RecurrenceFrequency);
+        Assert.Equal("morning", occurrence.AgendaPeriod);
+        Assert.Equal(new TimeOnly(9, 15), occurrence.ScheduledTime);
+
+        using var retryResponse = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/monthly",
+            request);
+        var retried = await retryResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
+        Assert.Equal(HttpStatusCode.OK, retryResponse.StatusCode);
+        Assert.Equal(expectedDates.Length, retried?.OccurrenceCount);
+
+        await RestartApplicationAsync();
+        await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Fredster}");
+
+        var factory = _factory ?? throw new InvalidOperationException("Test API was not initialised.");
+        await using var scope = factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var series = await database.RecurringJobSeries.SingleAsync(item => item.Id == requestId);
+        var persistedDates = await database.Jobs
+            .Where(job => job.RecurringJobSeriesId == requestId)
+            .OrderBy(job => job.ScheduledDate)
+            .Select(job => job.ScheduledDate)
+            .ToArrayAsync();
+        Assert.Equal(RecurrenceFrequency.Monthly, series.Frequency);
+        Assert.Equal(initial.Date.Day, series.MonthlyDay);
+        Assert.Equal(expectedDates, persistedDates);
+    }
+
+    [Fact]
+    public async Task Monthly_migration_preserves_existing_recurring_jobs_and_refuses_a_lossy_downgrade()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:18-alpine")
+            .WithDatabase("family_jobs_board_monthly_upgrade_tests")
+            .WithUsername("family_jobs_board")
+            .WithPassword("family_jobs_board")
+            .Build();
+        await postgres.StartAsync();
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(postgres.GetConnectionString())
+            .Options;
+        await using var database = new AppDbContext(options);
+        var migrator = database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260902070811_AddWeeklyRecurringJobs");
+
+        var dailySeriesId = Guid.NewGuid();
+        var weeklySeriesId = Guid.NewGuid();
+        var dailyJobId = Guid.NewGuid();
+        var weeklyJobId = Guid.NewGuid();
+        await database.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO household_members (id, first_name, nickname, is_adult) VALUES ({DemoDataIds.Hellie}, 'Hellie', NULL, TRUE) ON CONFLICT (id) DO NOTHING;");
+        await database.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO recurring_job_series (id, child_id, created_by_adult_id, name, description, points, agenda_period, scheduled_time, start_date, end_date, generated_through, frequency, weekday_mask) VALUES ({dailySeriesId}, {DemoDataIds.Fredster}, {DemoDataIds.Hellie}, 'Daily job', 'Keep daily.', 2, 'Unscheduled', NULL, DATE '2026-09-02', NULL, DATE '2026-09-02', 'Daily', 0), ({weeklySeriesId}, {DemoDataIds.Fredster}, {DemoDataIds.Hellie}, 'Weekly job', 'Keep weekly.', 3, 'Evening', TIME '18:00', DATE '2026-09-02', NULL, DATE '2026-09-02', 'Weekly', 4);");
+        await database.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO jobs (id, child_id, name, description, points, scheduled_date, status, completed_at_utc, approved_at_utc, recurring_job_series_id, agenda_period, scheduled_time, recurrence_frequency) VALUES ({dailyJobId}, {DemoDataIds.Fredster}, 'Daily job', 'Keep daily.', 2, DATE '2026-09-02', 'Open', NULL, NULL, {dailySeriesId}, 'Unscheduled', NULL, 'Daily'), ({weeklyJobId}, {DemoDataIds.Fredster}, 'Weekly job', 'Keep weekly.', 3, DATE '2026-09-02', 'Open', NULL, NULL, {weeklySeriesId}, 'Evening', TIME '18:00', 'Weekly');");
+
+        await migrator.MigrateAsync();
+        database.ChangeTracker.Clear();
+
+        var preservedSeries = await database.RecurringJobSeries
+            .Where(series => series.Id == dailySeriesId || series.Id == weeklySeriesId)
+            .OrderBy(series => series.Name)
+            .ToListAsync();
+        var preservedJobIds = await database.Jobs
+            .Where(job => job.Id == dailyJobId || job.Id == weeklyJobId)
+            .Select(job => job.Id)
+            .ToListAsync();
+
+        Assert.Equal(2, preservedSeries.Count);
+        Assert.Equal(
+            [RecurrenceFrequency.Daily, RecurrenceFrequency.Weekly],
+            preservedSeries.Select(series => series.Frequency));
+        Assert.All(preservedSeries, series => Assert.Null(series.MonthlyDay));
+        Assert.Equal(new[] { dailyJobId, weeklyJobId }.Order(), preservedJobIds.Order());
+
+        var monthlySeries = RecurringJobSeries.Monthly(
+            Guid.NewGuid(),
+            DemoDataIds.Fredster,
+            DemoDataIds.Hellie,
+            "Monthly job",
+            "Prevent a lossy downgrade.",
+            4,
+            AgendaPeriod.Unscheduled,
+            null,
+            new DateOnly(2026, 9, 2),
+            null,
+            2);
+        database.RecurringJobSeries.Add(monthlySeries);
+        await database.SaveChangesAsync();
+
+        var downgradeError = await Assert.ThrowsAsync<PostgresException>(
+            () => migrator.MigrateAsync("20260902070811_AddWeeklyRecurringJobs"));
+        Assert.Equal(PostgresErrorCodes.RaiseException, downgradeError.SqlState);
+        Assert.Contains("Cannot downgrade while monthly recurring jobs exist", downgradeError.MessageText);
+    }
+
+    [Fact]
     public async Task Weekly_recurring_job_rejects_missing_duplicate_and_unknown_weekdays()
     {
         var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
@@ -382,6 +529,37 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             Assert.Equal("Invalid weekly recurring job data", problem?.Title);
             Assert.Contains("Weekdays", problem?.Errors.Keys ?? []);
         }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(32)]
+    public async Task Monthly_recurring_job_rejects_an_invalid_day(int dayOfMonth)
+    {
+        var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.NotNull(initial);
+
+        using var response = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/monthly",
+            new
+            {
+                requestId = Guid.NewGuid(),
+                viewerId = DemoDataIds.Addie,
+                childId = DemoDataIds.Fredster,
+                name = "Clean the fridge",
+                description = "Check every shelf.",
+                points = 5,
+                agendaPeriod = "morning",
+                scheduledTime = (string?)null,
+                startDate = initial.Date,
+                endDate = (DateOnly?)null,
+                dayOfMonth,
+            });
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("Invalid monthly recurring job data", problem?.Title);
+        Assert.Contains("DayOfMonth", problem?.Errors.Keys ?? []);
     }
 
     [Fact]

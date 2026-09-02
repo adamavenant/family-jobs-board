@@ -326,6 +326,119 @@ public sealed class TodayBoardService
             true);
     }
 
+    public async Task<RecurringJobCreation> CreateMonthlyRecurringJobAsync(
+        CreateMonthlyRecurringJob request,
+        CancellationToken cancellationToken)
+    {
+        var name = request.Name?.Trim() ?? string.Empty;
+        var description = request.Description?.Trim() ?? string.Empty;
+        var errors = ValidateNewJob(name, description, request.Points);
+        if (request.RequestId == Guid.Empty)
+        {
+            errors[nameof(CreateMonthlyRecurringJob.RequestId)] = ["A request ID is required."];
+        }
+
+        var viewer = await _repository.GetMemberAsync(request.ViewerId, cancellationToken);
+        if (viewer is null || !viewer.IsAdult)
+        {
+            errors[nameof(CreateMonthlyRecurringJob.ViewerId)] =
+                ["Only an adult in this household can create recurring jobs."];
+        }
+
+        var child = await _repository.GetMemberAsync(request.ChildId, cancellationToken);
+        if (child is null || child.IsAdult)
+        {
+            errors[nameof(CreateMonthlyRecurringJob.ChildId)] = ["Choose a child in this household."];
+        }
+
+        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        {
+            errors[nameof(CreateMonthlyRecurringJob.AgendaPeriod)] =
+                ["Choose morning, arrivingHome, evening, or unscheduled."];
+        }
+
+        if (request.DayOfMonth is < 1 or > 31)
+        {
+            errors[nameof(CreateMonthlyRecurringJob.DayOfMonth)] =
+                ["Choose a day of month from 1 through 31."];
+        }
+
+        if (request.EndDate < request.StartDate)
+        {
+            errors[nameof(CreateMonthlyRecurringJob.EndDate)] =
+                ["The end date cannot precede the start date."];
+        }
+
+        if (request.StartDate < _clock.Today)
+        {
+            errors[nameof(CreateMonthlyRecurringJob.StartDate)] =
+                ["The start date cannot be in the past."];
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new InvalidMonthlyRecurringJobException(errors);
+        }
+
+        var horizon = _clock.Today.AddDays(55);
+        var existing = await _repository.GetRecurringJobSeriesAsync(
+            request.RequestId,
+            cancellationToken);
+        if (existing is not null)
+        {
+            if (!existing.MatchesMonthly(
+                    child!.Id,
+                    viewer!.Id,
+                    name,
+                    description,
+                    request.Points,
+                    agendaPeriod,
+                    request.ScheduledTime,
+                    request.StartDate,
+                    request.EndDate,
+                    request.DayOfMonth))
+            {
+                throw new MonthlyRecurringJobRequestConflictException(request.RequestId);
+            }
+
+            var existingCount = await _repository.GetRecurringJobSeriesOccurrenceCountAsync(
+                existing.Id,
+                cancellationToken);
+            return new RecurringJobCreation(
+                existing.Id,
+                existing.GeneratedThrough,
+                existingCount,
+                false);
+        }
+
+        var series = RecurringJobSeries.Monthly(
+            request.RequestId,
+            child!.Id,
+            viewer!.Id,
+            name,
+            description,
+            request.Points,
+            agendaPeriod,
+            request.ScheduledTime,
+            request.StartDate,
+            request.EndDate,
+            request.DayOfMonth);
+        var occurrences = series
+            .GenerateThrough(horizon)
+            .Select(date => CreateOccurrence(series, date))
+            .ToArray();
+
+        await _repository.AddRecurringJobSeriesAsync(series, cancellationToken);
+        await _repository.AddJobsAsync(occurrences, cancellationToken);
+        await _repository.SaveChangesAsync(cancellationToken);
+
+        return new RecurringJobCreation(
+            series.Id,
+            series.GeneratedThrough,
+            occurrences.Length,
+            true);
+    }
+
     private async Task EnsureRecurringJobsAsync(CancellationToken cancellationToken)
     {
         var horizon = _clock.Today.AddDays(55);
@@ -577,6 +690,7 @@ public sealed class TodayBoardService
         {
             RecurrenceFrequency.Daily => "daily",
             RecurrenceFrequency.Weekly => "weekly",
+            RecurrenceFrequency.Monthly => "monthly",
             _ => throw new InvalidOperationException($"Unknown recurrence frequency '{frequency}'."),
         };
     }

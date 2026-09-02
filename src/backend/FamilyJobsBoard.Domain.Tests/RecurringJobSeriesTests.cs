@@ -67,6 +67,81 @@ public sealed class RecurringJobSeriesTests
     }
 
     [Fact]
+    public void Monthly_series_uses_the_last_valid_day_across_year_and_leap_month_boundaries()
+    {
+        var series = CreateMonthlySeries(
+            startDate: new DateOnly(2027, 12, 31),
+            endDate: new DateOnly(2028, 4, 30),
+            dayOfMonth: 31);
+
+        var dates = series.GenerateThrough(new DateOnly(2028, 4, 30));
+
+        Assert.Equal(
+            [
+                new DateOnly(2027, 12, 31),
+                new DateOnly(2028, 1, 31),
+                new DateOnly(2028, 2, 29),
+                new DateOnly(2028, 3, 31),
+                new DateOnly(2028, 4, 30),
+            ],
+            dates);
+        Assert.Equal(31, series.MonthlyDay);
+        Assert.Empty(series.GenerateThrough(new DateOnly(2028, 4, 30)));
+    }
+
+    [Fact]
+    public void Monthly_series_handles_a_common_february_and_daylight_saving_boundary_as_local_dates()
+    {
+        var commonFebruary = CreateMonthlySeries(
+            startDate: new DateOnly(2027, 1, 31),
+            endDate: new DateOnly(2027, 3, 31),
+            dayOfMonth: 31);
+        var daylightSaving = CreateMonthlySeries(
+            startDate: new DateOnly(2026, 9, 25),
+            endDate: new DateOnly(2026, 11, 25),
+            dayOfMonth: 25);
+
+        Assert.Equal(
+            [
+                new DateOnly(2027, 1, 31),
+                new DateOnly(2027, 2, 28),
+                new DateOnly(2027, 3, 31),
+            ],
+            commonFebruary.GenerateThrough(new DateOnly(2027, 3, 31)));
+        Assert.Equal(
+            [
+                new DateOnly(2026, 9, 25),
+                new DateOnly(2026, 10, 25),
+                new DateOnly(2026, 11, 25),
+            ],
+            daylightSaving.GenerateThrough(new DateOnly(2026, 11, 25)));
+    }
+
+    [Fact]
+    public void Monthly_series_respects_start_and_end_boundaries()
+    {
+        var series = CreateMonthlySeries(
+            startDate: new DateOnly(2026, 1, 16),
+            endDate: new DateOnly(2026, 4, 14),
+            dayOfMonth: 15);
+
+        Assert.Equal(
+            [new DateOnly(2026, 2, 15), new DateOnly(2026, 3, 15)],
+            series.GenerateThrough(new DateOnly(2026, 5, 31)));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(32)]
+    public void Monthly_series_rejects_an_invalid_day(int dayOfMonth)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => CreateMonthlySeries(
+            new DateOnly(2026, 9, 1),
+            null,
+            dayOfMonth));
+    }
+
+    [Fact]
     public void Weekly_series_respects_start_and_end_dates_that_are_not_selected_weekdays()
     {
         var series = CreateWeeklySeries(
@@ -154,5 +229,24 @@ public sealed class RecurringJobSeriesTests
             startDate,
             endDate,
             weekdays);
+    }
+
+    private static RecurringJobSeries CreateMonthlySeries(
+        DateOnly startDate,
+        DateOnly? endDate,
+        int dayOfMonth)
+    {
+        return RecurringJobSeries.Monthly(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Clean the fridge",
+            "Check every shelf.",
+            4,
+            AgendaPeriod.Morning,
+            new TimeOnly(9, 0),
+            startDate,
+            endDate,
+            dayOfMonth);
     }
 }

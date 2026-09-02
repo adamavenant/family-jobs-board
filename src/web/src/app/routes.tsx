@@ -7,6 +7,7 @@ import {
   approveJob,
   completeJob,
   createDailyRecurringJob,
+  createMonthlyRecurringJob,
   createWeeklyRecurringJob,
   getToday,
   rejectJob,
@@ -34,7 +35,7 @@ export interface ApproveActionResult {
 
 export interface AddRecurringJobActionResult {
   intent: "addRecurring";
-  frequency?: "daily" | "weekly";
+  frequency?: "daily" | "weekly" | "monthly";
   success?: boolean;
   generatedThrough?: string;
   error?: string;
@@ -103,6 +104,8 @@ async function addRecurringJobAction(
   const weekdays = form
     .getAll("weekdays")
     .filter((value): value is string => typeof value === "string");
+  const dayOfMonthValue = form.get("dayOfMonth");
+  const dayOfMonth = Number(dayOfMonthValue);
   const points = Number(pointsValue);
   const validAgendaPeriods = [
     "morning",
@@ -113,7 +116,9 @@ async function addRecurringJobAction(
 
   if (
     typeof viewerId !== "string" ||
-    (recurrenceFrequency !== "daily" && recurrenceFrequency !== "weekly") ||
+    (recurrenceFrequency !== "daily" &&
+      recurrenceFrequency !== "weekly" &&
+      recurrenceFrequency !== "monthly") ||
     typeof childId !== "string" ||
     typeof name !== "string" ||
     name.trim().length === 0 ||
@@ -130,7 +135,12 @@ async function addRecurringJobAction(
     (typeof endDate === "string" &&
       endDate.length > 0 &&
       endDate < startDate) ||
-    (recurrenceFrequency === "weekly" && weekdays.length === 0)
+    (recurrenceFrequency === "weekly" && weekdays.length === 0) ||
+    (recurrenceFrequency === "monthly" &&
+      (typeof dayOfMonthValue !== "string" ||
+        !Number.isInteger(dayOfMonth) ||
+        dayOfMonth < 1 ||
+        dayOfMonth > 31))
   ) {
     return {
       intent: "addRecurring",
@@ -155,13 +165,20 @@ async function addRecurringJobAction(
       endDate:
         typeof endDate === "string" && endDate.length > 0 ? endDate : null,
     };
-    const result =
-      recurrenceFrequency === "weekly"
-        ? await createWeeklyRecurringJob({
-            ...recurringRequest,
-            weekdays,
-          })
-        : await createDailyRecurringJob(recurringRequest);
+    let result;
+    if (recurrenceFrequency === "monthly") {
+      result = await createMonthlyRecurringJob({
+        ...recurringRequest,
+        dayOfMonth,
+      });
+    } else if (recurrenceFrequency === "weekly") {
+      result = await createWeeklyRecurringJob({
+        ...recurringRequest,
+        weekdays,
+      });
+    } else {
+      result = await createDailyRecurringJob(recurringRequest);
+    }
     return {
       intent: "addRecurring",
       frequency: recurrenceFrequency,
