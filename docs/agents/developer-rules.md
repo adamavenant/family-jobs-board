@@ -8,6 +8,12 @@
 - Assigned issue blocked: stop; ask user for next steps.
 - Limit changes to acceptance criteria plus required tests, docs, config. Ask before dependencies, restructuring, architectural changes.
 
+## Authorship
+
+- Agent-authored commits: require `git config user.name` = `adamavenagent` and `git config user.email` = `321782925+adamavenagent@users.noreply.github.com` before committing.
+- Before agent-authored push/PR: require `gh api user --jq .login` = `adamavenagent`; mismatch or unavailable: stop before publishing.
+- Do not rewrite or attribute human-authored commits to `adamavenagent`; change identity only when explicitly authorised.
+
 ## During work
 
 - As each acceptance criterion passes, check it off on the GitHub issue.
