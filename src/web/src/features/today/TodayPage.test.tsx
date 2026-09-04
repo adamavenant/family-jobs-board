@@ -348,6 +348,88 @@ describe("Today page", () => {
     ).toHaveAttribute("role", "status");
   });
 
+  it("creates a monthly recurring job for a calendar day", async () => {
+    const recurringJob = {
+      id: "89201fbb-f714-4910-b68d-c98682a83db2",
+      childId: fredster.id,
+      childDisplayName: fredster.displayName,
+      name: "Clean the fridge",
+      description: "Check every shelf.",
+      points: 5,
+      scheduledDate: board.date,
+      agendaPeriod: "morning",
+      scheduledTime: "09:15:00",
+      recurringJobSeriesId: "ba767aa3-dd5d-49fb-9125-4a17d2da46a8",
+      recurrenceFrequency: "monthly",
+      status: "open",
+      completedAtUtc: null,
+      approvedAtUtc: null,
+      latestRejection: null,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(board))
+        .mockResolvedValueOnce(
+          jsonResponse(
+            {
+              seriesId: recurringJob.recurringJobSeriesId,
+              generatedThrough: "2026-10-23",
+              occurrenceCount: 2,
+            },
+            { status: 201 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({ ...board, jobs: [...board.jobs, recurringJob] }),
+        ),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Routines"));
+    await user.selectOptions(screen.getByLabelText("Repeats"), "monthly");
+    expect(screen.getByLabelText("Day of month")).toHaveValue(29);
+    expect(
+      screen.getByText("In shorter months, the job runs on the final day."),
+    ).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("Monthly job name"),
+      "Clean the fridge",
+    );
+    await user.type(
+      screen.getByLabelText("Monthly job description"),
+      "Check every shelf.",
+    );
+    await user.clear(screen.getByLabelText("Monthly job points"));
+    await user.type(screen.getByLabelText("Monthly job points"), "5");
+    await user.selectOptions(
+      screen.getByLabelText("Monthly job part of day"),
+      "morning",
+    );
+    await user.type(
+      screen.getByLabelText("Monthly job time (optional)"),
+      "09:15",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Create monthly job" }),
+    );
+
+    const heading = await screen.findByRole("heading", {
+      name: "Clean the fridge",
+    });
+    const card = heading.closest("article");
+    expect(card).not.toBeNull();
+    expect(
+      within(card as HTMLElement).getByText("Monthly · Morning · 09:15"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Monthly job created through 2026-10-23."),
+    ).toHaveAttribute("role", "status");
+  });
+
   it("reports recurring-job server failures without clearing the form", async () => {
     vi.stubGlobal(
       "fetch",

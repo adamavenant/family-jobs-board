@@ -13,7 +13,7 @@ export interface TodayJob {
   agendaPeriod: "morning" | "arrivingHome" | "evening" | "unscheduled";
   scheduledTime: string | null;
   recurringJobSeriesId: string | null;
-  recurrenceFrequency: "daily" | "weekly" | null;
+  recurrenceFrequency: "daily" | "weekly" | "monthly" | null;
   status: "open" | "pendingApproval" | "approved";
   completedAtUtc: string | null;
   approvedAtUtc: string | null;
@@ -213,6 +213,35 @@ export async function createWeeklyRecurringJob(request: {
   };
 }
 
+export async function createMonthlyRecurringJob(request: {
+  requestId: string;
+  viewerId: string;
+  childId: string;
+  name: string;
+  description: string;
+  points: number;
+  agendaPeriod: "morning" | "arrivingHome" | "evening" | "unscheduled";
+  scheduledTime: string | null;
+  startDate: string;
+  endDate: string | null;
+  dayOfMonth: number;
+}): Promise<RecurringJobCreation> {
+  const client = apiClient();
+  const { data, error } = await client.POST("/api/recurring-jobs/monthly", {
+    body: request,
+  });
+  if (!data) {
+    throw new ApiError(
+      problemMessage(error, "That recurring job couldn't be created."),
+    );
+  }
+
+  return {
+    ...data,
+    occurrenceCount: Number(data.occurrenceCount),
+  };
+}
+
 function apiClient() {
   return createClient<paths>({
     baseUrl: window.location.origin,
@@ -252,7 +281,8 @@ function mapJob(job: {
         : "unscheduled",
     recurrenceFrequency:
       job.recurrenceFrequency === "daily" ||
-      job.recurrenceFrequency === "weekly"
+      job.recurrenceFrequency === "weekly" ||
+      job.recurrenceFrequency === "monthly"
         ? job.recurrenceFrequency
         : null,
     status:

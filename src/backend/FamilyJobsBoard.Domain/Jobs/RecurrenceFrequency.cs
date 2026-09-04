@@ -4,4 +4,5 @@ public enum RecurrenceFrequency
 {
     Daily,
     Weekly,
+    Monthly,
 }

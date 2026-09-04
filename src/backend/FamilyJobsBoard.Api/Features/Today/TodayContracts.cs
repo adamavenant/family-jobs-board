@@ -47,6 +47,19 @@ public sealed record CreateWeeklyRecurringJobRequest(
     DateOnly? EndDate,
     IReadOnlyList<string>? Weekdays);
 
+public sealed record CreateMonthlyRecurringJobRequest(
+    Guid RequestId,
+    Guid ViewerId,
+    Guid ChildId,
+    string? Name,
+    string? Description,
+    int Points,
+    string? AgendaPeriod,
+    TimeOnly? ScheduledTime,
+    DateOnly StartDate,
+    DateOnly? EndDate,
+    int DayOfMonth);
+
 public sealed record RecurringJobResponse(
     Guid SeriesId,
     DateOnly GeneratedThrough,
