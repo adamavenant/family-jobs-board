@@ -1,0 +1,7 @@
+http://{$APP_HOSTNAME:dashboard.home.arpa} {
+	reverse_proxy web:3000
+}
+
+:80 {
+	respond "Not found" 404
+}

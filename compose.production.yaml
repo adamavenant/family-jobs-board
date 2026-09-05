@@ -4,26 +4,51 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in the deployment environment file}
 
   migrate:
+    image: ghcr.io/adamavenant/family-jobs-board-migrate:${IMAGE_TAG:?IMAGE_TAG must be set to a published commit SHA}
+    build: !reset null
     environment:
       ConnectionStrings__Database: Host=db;Port=5432;Database=family_jobs_board;Username=family_jobs_board;Password=${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in the deployment environment file}
       Household__TimeZone: ${HOUSEHOLD_TIME_ZONE:-Africa/Johannesburg}
 
   api:
+    image: ghcr.io/adamavenant/family-jobs-board-api:${IMAGE_TAG:?IMAGE_TAG must be set to a published commit SHA}
+    build: !reset null
     environment:
       ConnectionStrings__Database: Host=db;Port=5432;Database=family_jobs_board;Username=family_jobs_board;Password=${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in the deployment environment file}
       Household__TimeZone: ${HOUSEHOLD_TIME_ZONE:-Africa/Johannesburg}
       ASPNETCORE_ENVIRONMENT: Production
 
   web:
+    image: ghcr.io/adamavenant/family-jobs-board-web:${IMAGE_TAG:?IMAGE_TAG must be set to a published commit SHA}
+    build: !reset null
+
+  proxy:
+    image: caddy:2.11.4-alpine
+    environment:
+      APP_HOSTNAME: ${APP_HOSTNAME:-dashboard.home.arpa}
     ports:
-      - "${WEB_BIND_ADDRESS:-0.0.0.0}:${WEB_PORT:-80}:3000"
+      - "${WEB_BIND_ADDRESS:-0.0.0.0}:${WEB_PORT:-80}:80"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
   app-links:
+    depends_on:
+      proxy:
+        condition: service_healthy
     command:
       - /bin/sh
       - -c
       - |
         echo "Family Jobs Board is ready"
-        echo "Web is published on ${WEB_BIND_ADDRESS:-0.0.0.0}:${WEB_PORT:-80}"
+        echo "Web: http://${APP_HOSTNAME:-dashboard.home.arpa}"
         echo "The API and database are private to the Compose network"
         exec tail -f /dev/null
