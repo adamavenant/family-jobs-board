@@ -13,9 +13,13 @@ sudo sh -c 'password=$(openssl rand -hex 32); sed -i "s/^DATABASE_PASSWORD=.*/DA
 sudo chmod 600 /etc/family-jobs-board/family-jobs-board.env
 ```
 
-The generated hexadecimal password is strong and safe to use inside the PostgreSQL connection string. Leave the other values empty to bind the web app to every LAN interface on port 80 and use the `Africa/Johannesburg` household time zone. Set `WEB_BIND_ADDRESS`, `WEB_PORT`, or `HOUSEHOLD_TIME_ZONE` in the same file to override those defaults.
+The generated hexadecimal password is strong and safe to use inside the PostgreSQL connection string. Set `IMAGE_TAG` to the full commit SHA from a successful `main` build in GitHub Actions. This selects the matching API, migration, and web images published to GHCR. `APP_HOSTNAME` defaults to `dashboard.home.arpa`; create a matching local DNS record that points to the server before deployment. Leave the other values empty to bind the Caddy entry point to every LAN interface on port 80 and use the `Africa/Johannesburg` household time zone. Set `APP_HOSTNAME`, `WEB_BIND_ADDRESS`, `WEB_PORT`, or `HOUSEHOLD_TIME_ZONE` in the same file to override those defaults.
+
+Caddy owns the server's LAN HTTP port and routes requests for `APP_HOSTNAME` to the private web container. This leaves the web container, API, and database unpublished so additional applications can share port 80 through hostname-based routes later.
 
 Anyone with Docker administrator access on the server can inspect container environment variables, including the database password. Restrict Docker access and the environment file to trusted administrators.
+
+The container packages must be public, or Docker must be logged in to GHCR with a token that has `read:packages` permission. If authentication is required, run `docker login ghcr.io --username <github-username>` and enter the token at the prompt. Do not put the token in the repository or deployment environment file.
 
 ## Start the app
 
@@ -26,10 +30,16 @@ docker compose \
   --env-file /etc/family-jobs-board/family-jobs-board.env \
   -f compose.yaml \
   -f compose.production.yaml \
-  up --build --detach --wait
+  pull
+
+docker compose \
+  --env-file /etc/family-jobs-board/family-jobs-board.env \
+  -f compose.yaml \
+  -f compose.production.yaml \
+  up --detach --wait --no-build
 ```
 
-Open `http://<server-address>/` from another device on the LAN. Do not configure router port forwarding for this service.
+Open `http://dashboard.home.arpa/` from another device on the LAN, or use the hostname configured in `APP_HOSTNAME`. Do not configure router port forwarding for this service.
 
 Check service state and the web health endpoint:
 
@@ -40,16 +50,22 @@ docker compose \
   -f compose.production.yaml \
   ps
 
-curl --fail http://127.0.0.1/health
+curl --fail --header "Host: dashboard.home.arpa" http://127.0.0.1/health
 ```
 
-If `WEB_PORT` is not 80, include it in the health URL.
+If `APP_HOSTNAME` differs from the default, use that value in the `Host` header. If `WEB_PORT` is not 80, include it in the health URL.
 
-## Upgrade
+## Deploy or upgrade
 
-Pull the desired revision, then rerun the start command. Compose rebuilds the images, runs migrations, and replaces changed containers. PostgreSQL data remains in the named `postgres-data` volume.
+Fetch the desired revision so the server has its Compose files, then set `IMAGE_TAG` in the deployment environment file to that revision's full commit SHA. The GitHub Actions run for that commit on `main` must have completed successfully. Rerun both start commands: Compose pulls the three matching images, runs forward-only migrations, and replaces changed containers without building on the server. PostgreSQL data remains in the named `postgres-data` volume.
 
 Back up that Docker volume before server maintenance or significant upgrades. Stopping or replacing containers does not remove it.
+
+## Roll back the application
+
+Choose a previously deployed, known-good commit whose images are still available in GHCR. Set `IMAGE_TAG` in the deployment environment file to that full commit SHA, then rerun both start commands. This rolls the API, migration runner, and web app back together.
+
+Do not downgrade the database or restore an older database volume as part of an application rollback. Migrations are forward-only: the rollback deployment leaves the current schema and data in place. Only roll back to an application version that is compatible with the current schema. If it is not compatible, deploy a corrective forward change instead.
 
 ## Reset all data
 
