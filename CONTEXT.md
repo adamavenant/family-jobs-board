@@ -9,10 +9,11 @@ A person who uses the application. A User can be either a Child or an Adult.
 
 #### Characteristics
 - ID (GUID)
-- Name (string)
-- Surname (string)
-- IsAdult (bool)
-- Pin (4 or 6 digit number, hashed)
+- First name (string)
+- Surname (string, required before sign-in is enabled)
+- Nickname (optional string)
+- Role (`Adult` or `Child`)
+- PIN credential state (`NotSet` or `Ready`)
 
 ### Child
 A user who is a minor within the family system. Children can view assigned jobs and accumulate points.
@@ -101,4 +102,8 @@ Functions available to Adult users for managing the system.
 
 - All deletions are soft-deletions with tracking
 - Audit trails maintained for all user actions
-- Children have 4-digit pins, adults have 6-digit pins
+- Children have 4-digit PINs; adults have 6-digit PINs.
+- PINs are strings so leading zeroes are retained. Only a slow, salted,
+  peppered hash is stored; plaintext PINs are never persisted or logged.
+- Authentication uses short-lived access tokens backed by revocable server-side
+  sessions with a ten-minute inactivity timeout.
