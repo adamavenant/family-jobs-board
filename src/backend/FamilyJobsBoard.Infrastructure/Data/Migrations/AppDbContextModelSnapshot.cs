@@ -35,18 +35,185 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("first_name");
 
-                    b.Property<bool>("IsAdult")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_adult");
-
                     b.Property<string>("Nickname")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("nickname");
 
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("role");
+
+                    b.Property<string>("Surname")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("surname");
+
                     b.HasKey("Id");
 
-                    b.ToTable("household_members", (string)null);
+                    b.ToTable("household_members", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_household_members_role", "role IN ('Adult', 'Child')");
+                        });
+                });
+
+            modelBuilder.Entity("FamilyJobsBoard.Domain.Identity.AuthSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<DateTimeOffset>("LastActivityAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_activity_at_utc");
+
+                    b.Property<Guid>("MemberId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("member_id");
+
+                    b.Property<string>("RefreshTokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("refresh_token_hash");
+
+                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at_utc");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("role");
+
+                    b.Property<int>("RotationVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("rotation_version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MemberId");
+
+                    b.ToTable("auth_sessions", (string)null);
+                });
+
+            modelBuilder.Entity("FamilyJobsBoard.Domain.Identity.HouseholdBootstrap", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at_utc");
+
+                    b.Property<Guid?>("FirstAdultId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("first_adult_id");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("state");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FirstAdultId");
+
+                    b.ToTable("household_bootstrap", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_household_bootstrap_singleton", "id = 1");
+                        });
+                });
+
+            modelBuilder.Entity("FamilyJobsBoard.Domain.Identity.MemberCredential", b =>
+                {
+                    b.Property<Guid>("MemberId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("member_id");
+
+                    b.Property<int>("FailedAttemptCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("failed_attempt_count");
+
+                    b.Property<DateTimeOffset?>("FailedWindowStartedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("failed_window_started_at_utc");
+
+                    b.Property<DateTimeOffset?>("LockedUntilUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("locked_until_utc");
+
+                    b.Property<string>("PinHash")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("pin_hash");
+
+                    b.Property<DateTimeOffset?>("PinSetAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("pin_set_at_utc");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("state");
+
+                    b.HasKey("MemberId");
+
+                    b.ToTable("member_credentials", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_member_credentials_ready_hash", "(state = 'Ready' AND pin_hash IS NOT NULL) OR (state = 'NotSet' AND pin_hash IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("FamilyJobsBoard.Domain.Identity.PinSetupToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AuthorizingAdultId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("authorizing_adult_id");
+
+                    b.Property<DateTimeOffset?>("ConsumedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("consumed_at_utc");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at_utc");
+
+                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at_utc");
+
+                    b.Property<Guid>("TargetMemberId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_member_id");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("token_hash");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorizingAdultId");
+
+                    b.HasIndex("TargetMemberId");
+
+                    b.ToTable("pin_setup_tokens", (string)null);
                 });
 
             modelBuilder.Entity("FamilyJobsBoard.Domain.Jobs.Job", b =>
@@ -268,6 +435,47 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasDatabaseName("ux_points_ledger_entries_job_id");
 
                     b.ToTable("points_ledger_entries", (string)null);
+                });
+
+            modelBuilder.Entity("FamilyJobsBoard.Domain.Identity.AuthSession", b =>
+                {
+                    b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("FamilyJobsBoard.Domain.Identity.HouseholdBootstrap", b =>
+                {
+                    b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
+                        .WithMany()
+                        .HasForeignKey("FirstAdultId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("FamilyJobsBoard.Domain.Identity.MemberCredential", b =>
+                {
+                    b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
+                        .WithOne()
+                        .HasForeignKey("FamilyJobsBoard.Domain.Identity.MemberCredential", "MemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("FamilyJobsBoard.Domain.Identity.PinSetupToken", b =>
+                {
+                    b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorizingAdultId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
+                        .WithMany()
+                        .HasForeignKey("TargetMemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("FamilyJobsBoard.Domain.Jobs.Job", b =>

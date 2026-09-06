@@ -1,6 +1,7 @@
 import createClient from "openapi-fetch";
 
 import type { paths } from "./schema";
+import { authenticatedFetch } from "./auth";
 
 export interface TodayJob {
   id: string;
@@ -70,11 +71,9 @@ export class ApiError extends Error {
   }
 }
 
-export async function getToday(memberId: string | null): Promise<TodayBoard> {
+export async function getToday(): Promise<TodayBoard> {
   const client = apiClient();
-  const { data, error } = await client.GET("/api/today", {
-    params: { query: memberId ? { memberId } : {} },
-  });
+  const { data, error } = await client.GET("/api/today");
   if (!data) {
     throw new ApiError(problemMessage(error, "We couldn't load today's jobs."));
   }
@@ -158,7 +157,6 @@ export async function addJob(request: {
 
 export async function createDailyRecurringJob(request: {
   requestId: string;
-  viewerId: string;
   childId: string;
   name: string;
   description: string;
@@ -186,7 +184,6 @@ export async function createDailyRecurringJob(request: {
 
 export async function createWeeklyRecurringJob(request: {
   requestId: string;
-  viewerId: string;
   childId: string;
   name: string;
   description: string;
@@ -215,7 +212,6 @@ export async function createWeeklyRecurringJob(request: {
 
 export async function createMonthlyRecurringJob(request: {
   requestId: string;
-  viewerId: string;
   childId: string;
   name: string;
   description: string;
@@ -245,7 +241,7 @@ export async function createMonthlyRecurringJob(request: {
 function apiClient() {
   return createClient<paths>({
     baseUrl: window.location.origin,
-    fetch: globalThis.fetch,
+    fetch: authenticatedFetch,
   });
 }
 

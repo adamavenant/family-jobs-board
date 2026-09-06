@@ -1,52 +1,30 @@
-import {
-  useFetcher,
-  useLoaderData,
-  useLocation,
-  useNavigate,
-} from "react-router";
+import { useFetcher } from "react-router";
 
-import type { PointEarning, TodayBoard, TodayJob } from "../../api/today";
-import type { TodayActionResult } from "../../app/routes";
+import type {
+  HouseholdMember,
+  PointEarning,
+  TodayBoard,
+  TodayJob,
+} from "../../api/today";
+import type { AppActionResult, TodayActionResult } from "../../app/routes";
 import { AddJobForm } from "./AddJobForm";
 import { RecurringJobForm } from "./RecurringJobForm";
 import { ThemeToggle } from "../theme/ThemeToggle";
 
-export function TodayPage() {
-  const board = useLoaderData() as TodayBoard;
-  const navigate = useNavigate();
-  const location = useLocation();
+export function TodayPage({ board }: { board: TodayBoard }) {
   const children = board.members.filter((member) => !member.isAdult);
   const formattedDate = new Intl.DateTimeFormat("en", {
     weekday: "long",
     day: "numeric",
     month: "long",
   }).format(new Date(`${board.date}T12:00:00`));
-  const selectMember = (memberId: string) => {
-    window.localStorage.setItem("family-jobs-board-member", memberId);
-    const search = new URLSearchParams(location.search);
-    search.set("member", memberId);
-    void navigate(`${location.pathname}?${search.toString()}`);
-  };
-
   return (
     <main>
       <header className="hero">
         <div className="hero__toolbar">
           <p className="eyebrow">Family Jobs Board</p>
           <div className="hero__actions">
-            <label className="member-picker">
-              <span className="member-picker__label">Viewing as</span>
-              <select
-                value={board.viewer.id}
-                onChange={(event) => selectMember(event.target.value)}
-              >
-                {board.members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.displayName} — {member.isAdult ? "Adult" : "Child"}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <IdentityControls viewer={board.viewer} members={board.members} />
             <ThemeToggle />
           </div>
         </div>
@@ -87,11 +65,7 @@ export function TodayPage() {
       {board.viewer.isAdult ? (
         <div className="grown-up-toolbox">
           <AddJobForm children={children} />
-          <RecurringJobForm
-            children={children}
-            viewerId={board.viewer.id}
-            today={board.date}
-          />
+          <RecurringJobForm children={children} today={board.date} />
         </div>
       ) : null}
 
@@ -131,6 +105,79 @@ export function TodayPage() {
         />
       ) : null}
     </main>
+  );
+}
+
+function IdentityControls({
+  viewer,
+  members,
+}: {
+  viewer: HouseholdMember;
+  members: HouseholdMember[];
+}) {
+  const fetcher = useFetcher<AppActionResult>();
+  const candidates = members.filter((member) => member.id !== viewer.id);
+  const error =
+    fetcher.data?.intent === "beginPinSetup" ? fetcher.data.error : undefined;
+  const submitting = fetcher.state !== "idle";
+
+  return (
+    <details className="identity-menu">
+      <summary>{viewer.displayName}</summary>
+      <div className="identity-menu__panel">
+        <p>
+          Signed in as <strong>{viewer.displayName}</strong>
+        </p>
+        {viewer.isAdult && candidates.length > 0 ? (
+          <fetcher.Form method="post" className="handoff-form">
+            <input type="hidden" name="intent" value="beginPinSetup" />
+            <p className="handoff-form__help">
+              Set up a profile that does not have a PIN yet. You will be signed
+              out before handing over.
+            </p>
+            <label>
+              <span>Hand over to</span>
+              <select name="memberId" required defaultValue="">
+                <option value="">Choose a profile</option>
+                {candidates.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.displayName} —{" "}
+                    {member.isAdult ? "Grown-up" : "Child"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Surname if not already set</span>
+              <input
+                name="surname"
+                autoComplete="family-name"
+                maxLength={100}
+              />
+            </label>
+            {error ? (
+              <p className="error-message" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <button type="submit" disabled={submitting}>
+              {submitting ? "Starting…" : "Start private PIN setup"}
+            </button>
+          </fetcher.Form>
+        ) : null}
+        <fetcher.Form method="post">
+          <button
+            type="submit"
+            name="intent"
+            value="logout"
+            className="button--quiet"
+            disabled={submitting}
+          >
+            Sign out
+          </button>
+        </fetcher.Form>
+      </div>
+    </details>
   );
 }
 

@@ -1,4 +1,5 @@
 using FamilyJobsBoard.Domain.Households;
+using FamilyJobsBoard.Domain.Identity;
 using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Domain.Points;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +14,14 @@ public sealed class AppDbContext : DbContext
     }
 
     public DbSet<HouseholdMember> HouseholdMembers => Set<HouseholdMember>();
+
+    public DbSet<HouseholdBootstrap> HouseholdBootstraps => Set<HouseholdBootstrap>();
+
+    public DbSet<MemberCredential> MemberCredentials => Set<MemberCredential>();
+
+    public DbSet<AuthSession> AuthSessions => Set<AuthSession>();
+
+    public DbSet<PinSetupToken> PinSetupTokens => Set<PinSetupToken>();
 
     public DbSet<Job> Jobs => Set<Job>();
 

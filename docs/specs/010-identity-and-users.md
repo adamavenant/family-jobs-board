@@ -299,9 +299,10 @@ returns `204`. Repeated logout is harmless.
 
 ### `POST /api/users/{memberId}/pin-setup`
 
-Adult policy. Returns one-time `setupToken`, `expiresAtUtc`, and target display
-name. Errors are `404 member_not_found`, `409 pin_already_set`, and
-`409 member_not_eligible`.
+Adult policy. Accepts an optional `surname`; it is required when the migrated
+target does not have one and is ignored when their surname is already present.
+Returns one-time `setupToken`, `expiresAtUtc`, and target display name. Errors
+are `404 member_not_found`, `409 pin_already_set`, and `409 member_not_eligible`.
 
 ### `POST /api/auth/setup-pin`
 

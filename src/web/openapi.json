@@ -10,24 +10,310 @@
     }
   ],
   "paths": {
-    "/api/today": {
-      "get": {
+    "/api/users/{memberId}/pin-setup": {
+      "post": {
         "tags": [
-          "Today"
+          "Identity"
         ],
-        "summary": "Get the selected demo family member's board.",
-        "description": "Defaults to Fredster and returns a role-appropriate view for the selected household member.",
-        "operationId": "GetToday",
+        "summary": "Authorize a one-time PIN handoff to an unconfigured member.",
+        "operationId": "StartPinSetup",
         "parameters": [
           {
             "name": "memberId",
-            "in": "query",
+            "in": "path",
+            "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartPinSetupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinSetupResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/auth/start": {
+      "get": {
+        "tags": [
+          "Identity"
+        ],
+        "summary": "Get the household bootstrap or sign-in state.",
+        "operationId": "GetAuthenticationStart",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStartResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/bootstrap": {
+      "post": {
+        "tags": [
+          "Identity"
+        ],
+        "summary": "Create or claim the first household adult.",
+        "operationId": "BootstrapHousehold",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BootstrapRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/sign-in": {
+      "post": {
+        "tags": [
+          "Identity"
+        ],
+        "summary": "Sign in a selected household member with a PIN.",
+        "operationId": "SignIn",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": [
+          "Identity"
+        ],
+        "summary": "Rotate a same-origin refresh token and renew access.",
+        "operationId": "RefreshSession",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "Identity"
+        ],
+        "summary": "Revoke the current session and clear its cookie.",
+        "operationId": "Logout",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/setup-pin": {
+      "post": {
+        "tags": [
+          "Identity"
+        ],
+        "summary": "Consume a one-time handoff and set the target member PIN.",
+        "operationId": "SetupPin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupPinRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/today": {
+      "get": {
+        "tags": [
+          "Today"
+        ],
+        "summary": "Get the authenticated family member's board.",
+        "description": "Returns the child-owned or adult household view from the validated session.",
+        "operationId": "GetToday",
         "responses": {
           "200": {
             "description": "OK",
@@ -39,7 +325,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
       }
     },
     "/api/jobs/{id}/complete": {
@@ -92,7 +383,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
       }
     },
     "/api/today/jobs": {
@@ -134,7 +430,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
       }
     },
     "/api/recurring-jobs/daily": {
@@ -196,7 +497,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
       }
     },
     "/api/recurring-jobs/weekly": {
@@ -258,7 +564,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
       }
     },
     "/api/recurring-jobs/monthly": {
@@ -320,7 +631,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
       }
     },
     "/api/jobs/{id}/approve": {
@@ -373,7 +689,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
       }
     },
     "/api/jobs/{id}/reject": {
@@ -446,7 +767,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
       }
     }
   },
@@ -487,10 +813,118 @@
           }
         }
       },
+      "AuthMemberResponse": {
+        "required": [
+          "id",
+          "displayName",
+          "role"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      },
+      "AuthResponse": {
+        "required": [
+          "accessToken",
+          "accessTokenExpiresAtUtc",
+          "member"
+        ],
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "accessTokenExpiresAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "member": {
+            "$ref": "#/components/schemas/AuthMemberResponse"
+          }
+        }
+      },
+      "AuthStartResponse": {
+        "required": [
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "adults": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/StartMemberResponse"
+            }
+          },
+          "members": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/StartMemberResponse"
+            }
+          }
+        }
+      },
+      "BootstrapRequest": {
+        "required": [
+          "mode",
+          "memberId",
+          "firstName",
+          "surname",
+          "pin"
+        ],
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string"
+          },
+          "memberId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "firstName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "surname": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "pin": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "CreateDailyRecurringJobRequest": {
         "required": [
           "requestId",
-          "viewerId",
           "childId",
           "name",
           "description",
@@ -503,10 +937,6 @@
         "type": "object",
         "properties": {
           "requestId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "viewerId": {
             "type": "string",
             "format": "uuid"
           },
@@ -563,7 +993,6 @@
       "CreateMonthlyRecurringJobRequest": {
         "required": [
           "requestId",
-          "viewerId",
           "childId",
           "name",
           "description",
@@ -577,10 +1006,6 @@
         "type": "object",
         "properties": {
           "requestId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "viewerId": {
             "type": "string",
             "format": "uuid"
           },
@@ -645,7 +1070,6 @@
       "CreateWeeklyRecurringJobRequest": {
         "required": [
           "requestId",
-          "viewerId",
           "childId",
           "name",
           "description",
@@ -659,10 +1083,6 @@
         "type": "object",
         "properties": {
           "requestId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "viewerId": {
             "type": "string",
             "format": "uuid"
           },
@@ -948,6 +1368,30 @@
           }
         }
       },
+      "PinSetupResponse": {
+        "required": [
+          "setupToken",
+          "expiresAtUtc",
+          "targetDisplayName",
+          "targetRole"
+        ],
+        "type": "object",
+        "properties": {
+          "setupToken": {
+            "type": "string"
+          },
+          "expiresAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "targetDisplayName": {
+            "type": "string"
+          },
+          "targetRole": {
+            "type": "string"
+          }
+        }
+      },
       "PointEarningResponse": {
         "required": [
           "id",
@@ -1061,6 +1505,84 @@
           }
         }
       },
+      "SetupPinRequest": {
+        "required": [
+          "setupToken",
+          "pin"
+        ],
+        "type": "object",
+        "properties": {
+          "setupToken": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "pin": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SignInRequest": {
+        "required": [
+          "memberId",
+          "pin"
+        ],
+        "type": "object",
+        "properties": {
+          "memberId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "pin": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "StartMemberResponse": {
+        "required": [
+          "id",
+          "displayName",
+          "role",
+          "requiresSurname"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "requiresSurname": {
+            "type": "boolean"
+          }
+        }
+      },
+      "StartPinSetupRequest": {
+        "required": [
+          "surname"
+        ],
+        "type": "object",
+        "properties": {
+          "surname": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "TodayResponse": {
         "required": [
           "viewer",
@@ -1117,9 +1639,20 @@
           }
         }
       }
+    },
+    "securitySchemes": {
+      "Bearer": {
+        "type": "http",
+        "description": "Short-lived access token returned by the household sign-in flow.",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
     }
   },
   "tags": [
+    {
+      "name": "Identity"
+    },
     {
       "name": "Today"
     }

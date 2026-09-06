@@ -4,6 +4,125 @@
  */
 
 export interface paths {
+    "/api/users/{memberId}/pin-setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Authorize a one-time PIN handoff to an unconfigured member. */
+        post: operations["StartPinSetup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the household bootstrap or sign-in state. */
+        get: operations["GetAuthenticationStart"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/bootstrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create or claim the first household adult. */
+        post: operations["BootstrapHousehold"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign in a selected household member with a PIN. */
+        post: operations["SignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate a same-origin refresh token and renew access. */
+        post: operations["RefreshSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the current session and clear its cookie. */
+        post: operations["Logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/setup-pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Consume a one-time handoff and set the target member PIN. */
+        post: operations["SetupPin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/today": {
         parameters: {
             query?: never;
@@ -12,8 +131,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get the selected demo family member's board.
-         * @description Defaults to Fredster and returns a role-appropriate view for the selected household member.
+         * Get the authenticated family member's board.
+         * @description Returns the child-owned or adult household view from the validated session.
          */
         get: operations["GetToday"];
         put?: never;
@@ -176,11 +295,34 @@ export interface components {
             /** Format: int32 */
             points: number | string;
         };
+        AuthMemberResponse: {
+            /** Format: uuid */
+            id: string;
+            displayName: string;
+            role: string;
+        };
+        AuthResponse: {
+            accessToken: string;
+            /** Format: date-time */
+            accessTokenExpiresAtUtc: string;
+            member: components["schemas"]["AuthMemberResponse"];
+        };
+        AuthStartResponse: {
+            state: string;
+            adults?: null | components["schemas"]["StartMemberResponse"][];
+            members?: null | components["schemas"]["StartMemberResponse"][];
+        };
+        BootstrapRequest: {
+            mode: string;
+            /** Format: uuid */
+            memberId: null | string;
+            firstName: null | string;
+            surname: null | string;
+            pin: null | string;
+        };
         CreateDailyRecurringJobRequest: {
             /** Format: uuid */
             requestId: string;
-            /** Format: uuid */
-            viewerId: string;
             /** Format: uuid */
             childId: string;
             name: null | string;
@@ -198,8 +340,6 @@ export interface components {
         CreateMonthlyRecurringJobRequest: {
             /** Format: uuid */
             requestId: string;
-            /** Format: uuid */
-            viewerId: string;
             /** Format: uuid */
             childId: string;
             name: null | string;
@@ -219,8 +359,6 @@ export interface components {
         CreateWeeklyRecurringJobRequest: {
             /** Format: uuid */
             requestId: string;
-            /** Format: uuid */
-            viewerId: string;
             /** Format: uuid */
             childId: string;
             name: null | string;
@@ -292,6 +430,13 @@ export interface components {
             displayName: string;
             isAdult: boolean;
         };
+        PinSetupResponse: {
+            setupToken: string;
+            /** Format: date-time */
+            expiresAtUtc: string;
+            targetDisplayName: string;
+            targetRole: string;
+        };
         PointEarningResponse: {
             /** Format: uuid */
             id: string;
@@ -322,6 +467,25 @@ export interface components {
         RejectJobRequest: {
             reason: null | string;
         };
+        SetupPinRequest: {
+            setupToken: null | string;
+            pin: null | string;
+        };
+        SignInRequest: {
+            /** Format: uuid */
+            memberId: string;
+            pin: null | string;
+        };
+        StartMemberResponse: {
+            /** Format: uuid */
+            id: string;
+            displayName: string;
+            role: string;
+            requiresSurname: boolean;
+        };
+        StartPinSetupRequest: {
+            surname: null | string;
+        };
         TodayResponse: {
             viewer: components["schemas"]["MemberResponse"];
             members: components["schemas"]["MemberResponse"][];
@@ -343,11 +507,255 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    StartPinSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartPinSetupRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinSetupResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    GetAuthenticationStart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStartResponse"];
+                };
+            };
+        };
+    };
+    BootstrapHousehold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BootstrapRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    SignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignInRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    RefreshSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    Logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    SetupPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupPinRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     GetToday: {
         parameters: {
-            query?: {
-                memberId?: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;

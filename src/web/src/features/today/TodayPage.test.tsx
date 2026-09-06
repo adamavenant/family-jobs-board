@@ -5,6 +5,7 @@ import { RouterProvider } from "react-router/dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { routes } from "../../app/routes";
+import { acceptSession, clearIdentity } from "../../api/auth";
 
 const addie = {
   id: "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c",
@@ -91,6 +92,7 @@ const childBoard = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  clearIdentity();
   window.localStorage.clear();
   delete document.documentElement.dataset.theme;
 });
@@ -534,18 +536,13 @@ describe("Today page", () => {
       ...board,
       jobs: [board.jobs[0], board.jobs[1], rejectedJob],
     };
-    const childRejectedBoard = {
-      ...childBoard,
-      jobs: [board.jobs[0], board.jobs[1], rejectedJob],
-    };
     vi.stubGlobal(
       "fetch",
       vi
         .fn()
         .mockResolvedValueOnce(jsonResponse(board))
         .mockResolvedValueOnce(jsonResponse(rejectedJob))
-        .mockResolvedValueOnce(jsonResponse(rejectedBoard))
-        .mockResolvedValueOnce(jsonResponse(childRejectedBoard)),
+        .mockResolvedValueOnce(jsonResponse(rejectedBoard)),
     );
     const user = userEvent.setup();
     renderApp();
@@ -563,24 +560,8 @@ describe("Today page", () => {
       within(card as HTMLElement).getByRole("button", { name: "Reject job" }),
     );
 
-    await user.selectOptions(screen.getByLabelText("Viewing as"), fredster.id);
-    const childHeading = await screen.findByRole("heading", {
-      name: "Clear the table",
-    });
-    const childCard = childHeading.closest("article");
-    expect(childCard).not.toBeNull();
     expect(
-      within(childCard as HTMLElement).getByText("Needs another go"),
-    ).toBeInTheDocument();
-    expect(
-      within(childCard as HTMLElement).getByText(
-        "Please wipe underneath the table.",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      within(childCard as HTMLElement).getByRole("button", {
-        name: "Mark as done",
-      }),
+      await within(card as HTMLElement).findByText("Ready for Fredster"),
     ).toBeInTheDocument();
   });
 
@@ -701,35 +682,24 @@ describe("Today page", () => {
     );
   });
 
-  it("switches to a child view and persists the selection", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(jsonResponse(board))
-        .mockResolvedValueOnce(jsonResponse(childBoard)),
-    );
-    const user = userEvent.setup();
+  it("shows the authenticated profile without persisting identity", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(jsonResponse(board)));
     renderApp();
 
     await screen.findByRole("heading", { name: "Good day, Addie!" });
-    await user.selectOptions(screen.getByLabelText("Viewing as"), fredster.id);
-
     expect(
-      await screen.findByRole("heading", { name: "Good day, Fredster!" }),
+      screen.getByText("Addie", { selector: "summary" }),
     ).toBeInTheDocument();
-    expect(window.localStorage.getItem("family-jobs-board-member")).toBe(
-      fredster.id,
-    );
-    expect(screen.queryByText("Grown-up tools")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("0 points earned")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /Approve/ }),
-    ).not.toBeInTheDocument();
+    expect(window.localStorage).toHaveLength(0);
   });
 });
 
 function renderApp() {
+  acceptSession({
+    accessToken: "test-access-token",
+    accessTokenExpiresAtUtc: "2099-01-01T00:00:00Z",
+    member: { id: addie.id, displayName: addie.displayName, role: "adult" },
+  });
   const router = createMemoryRouter(routes, { initialEntries: ["/"] });
   return render(<RouterProvider router={router} />);
 }

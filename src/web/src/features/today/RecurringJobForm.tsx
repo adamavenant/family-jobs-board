@@ -37,11 +37,9 @@ function frequencyName(frequency: RecurrenceFrequency): string {
 
 export function RecurringJobForm({
   children,
-  viewerId,
   today,
 }: {
   children: HouseholdMember[];
-  viewerId: string;
   today: string;
 }) {
   const fetcher = useFetcher<TodayActionResult>();
@@ -81,7 +79,6 @@ export function RecurringJobForm({
           onReset={() => setFrequency("daily")}
         >
           <input type="hidden" name="intent" value="addRecurring" />
-          <input type="hidden" name="viewerId" value={viewerId} />
           <div className="form-group">
             <label htmlFor="recurrenceFrequency">Repeats</label>
             <select

@@ -8,7 +8,11 @@ internal sealed class HouseholdMemberConfiguration : IEntityTypeConfiguration<Ho
 {
     public void Configure(EntityTypeBuilder<HouseholdMember> builder)
     {
-        builder.ToTable("household_members");
+        builder.ToTable(
+            "household_members",
+            table => table.HasCheckConstraint(
+                "ck_household_members_role",
+                "role IN ('Adult', 'Child')"));
         builder.HasKey(member => member.Id);
         builder.Property(member => member.Id).HasColumnName("id");
         builder.Ignore(member => member.DisplayName);
@@ -18,6 +22,13 @@ internal sealed class HouseholdMemberConfiguration : IEntityTypeConfiguration<Ho
         builder.Property(member => member.Nickname)
             .HasColumnName("nickname")
             .HasMaxLength(HouseholdMember.MaximumNameLength);
-        builder.Property(member => member.IsAdult).HasColumnName("is_adult");
+        builder.Property(member => member.Surname)
+            .HasColumnName("surname")
+            .HasMaxLength(HouseholdMember.MaximumNameLength);
+        builder.Property(member => member.Role)
+            .HasColumnName("role")
+            .HasConversion<string>()
+            .HasMaxLength(16);
+        builder.Ignore(member => member.IsAdult);
     }
 }

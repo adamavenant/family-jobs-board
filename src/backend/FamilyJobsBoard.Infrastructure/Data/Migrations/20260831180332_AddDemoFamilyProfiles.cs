@@ -12,11 +12,18 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
         {
             migrationBuilder.Sql(
                 """
-                INSERT INTO household_members (id, first_name, nickname, is_adult)
-                VALUES
-                    ('754de05d-b6f6-4626-bbad-79e2079cc5c3', 'Fredster', NULL, FALSE),
-                    ('e22facf5-69ce-45ce-9dad-306eef1852c9', 'Harrie', NULL, FALSE)
-                ON CONFLICT (id) DO NOTHING;
+                DO $$
+                BEGIN
+                    IF to_regclass('"__family_jobs_board_fresh_install"') IS NULL THEN
+                        INSERT INTO household_members (id, first_name, nickname, is_adult)
+                        VALUES
+                            ('754de05d-b6f6-4626-bbad-79e2079cc5c3', 'Fredster', NULL, FALSE),
+                            ('e22facf5-69ce-45ce-9dad-306eef1852c9', 'Harrie', NULL, FALSE)
+                        ON CONFLICT (id) DO NOTHING;
+                    END IF;
+                END $$;
+
+                DROP TABLE IF EXISTS "__family_jobs_board_fresh_install";
 
                 UPDATE household_members
                 SET first_name = 'Addie', nickname = NULL, is_adult = TRUE

@@ -1,6 +1,21 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { useLoaderData } from "react-router";
+import type { ActionFunctionArgs } from "react-router";
 import type { RouteObject } from "react-router";
 
+import {
+  AuthApiError,
+  beginPinSetup,
+  bootstrap,
+  clearIdentity,
+  currentPinSetup,
+  currentSession,
+  getAuthenticationStart,
+  logout,
+  refreshSession,
+  setupPin,
+  signIn,
+} from "../api/auth";
+import type { AuthStart, PendingPinSetup } from "../api/auth";
 import {
   ApiError,
   addJob,
@@ -13,7 +28,9 @@ import {
   rejectJob,
 } from "../api/today";
 import { LoadingPage } from "./LoadingPage";
+import { AuthPage } from "../features/identity/AuthPage";
 import { TodayPage } from "../features/today/TodayPage";
+import type { TodayBoard } from "../api/today";
 
 export interface CompleteActionResult {
   intent: "complete";
@@ -54,19 +71,57 @@ export type TodayActionResult =
   | ApproveActionResult
   | RejectActionResult;
 
-const selectedMemberKey = "family-jobs-board-member";
+export interface IdentityActionResult {
+  intent: "bootstrap" | "signIn" | "logout" | "beginPinSetup" | "setupPin";
+  error?: string;
+}
 
-async function todayLoader({ request }: LoaderFunctionArgs) {
-  const memberFromUrl = new URL(request.url).searchParams.get("member");
-  const memberId =
-    memberFromUrl ?? window.localStorage.getItem(selectedMemberKey);
-  return getToday(memberId);
+export type AppActionResult = TodayActionResult | IdentityActionResult;
+
+export type AppLoaderData =
+  AuthStart | PendingPinSetup | { state: "authenticated"; board: TodayBoard };
+
+async function appLoader(): Promise<AppLoaderData> {
+  const setup = currentPinSetup();
+  if (setup) {
+    return setup;
+  }
+
+  const active = currentSession() ?? (await refreshSession());
+  if (active) {
+    try {
+      return { state: "authenticated", board: await getToday() };
+    } catch (error) {
+      if (!(error instanceof AuthApiError) || error.status !== 401) {
+        throw error;
+      }
+      clearIdentity();
+    }
+  }
+
+  return getAuthenticationStart();
 }
 
 async function todayAction({
   request,
-}: ActionFunctionArgs): Promise<TodayActionResult> {
+}: ActionFunctionArgs): Promise<AppActionResult> {
   const form = await request.formData();
+  if (form.get("intent") === "bootstrap") {
+    return bootstrapAction(form);
+  }
+  if (form.get("intent") === "signIn") {
+    return signInAction(form);
+  }
+  if (form.get("intent") === "logout") {
+    await logout();
+    return { intent: "logout" };
+  }
+  if (form.get("intent") === "beginPinSetup") {
+    return beginPinSetupAction(form);
+  }
+  if (form.get("intent") === "setupPin") {
+    return setupPinAction(form);
+  }
   if (form.get("intent") === "add") {
     return addJobAction(form);
   }
@@ -83,6 +138,143 @@ async function todayAction({
   return completeAction(form);
 }
 
+async function bootstrapAction(form: FormData): Promise<IdentityActionResult> {
+  const mode = form.get("mode");
+  const memberId = form.get("memberId");
+  const firstName = form.get("firstName");
+  const surname = form.get("surname");
+  const pin = form.get("pin");
+  const confirmation = form.get("pinConfirmation");
+  if (
+    (mode !== "createFirstAdult" && mode !== "claimExistingAdult") ||
+    typeof surname !== "string" ||
+    surname.trim().length === 0 ||
+    typeof pin !== "string" ||
+    !/^\d{6}$/.test(pin) ||
+    pin !== confirmation ||
+    (mode === "createFirstAdult" &&
+      (typeof firstName !== "string" || firstName.trim().length === 0)) ||
+    (mode === "claimExistingAdult" &&
+      (typeof memberId !== "string" || memberId.length === 0))
+  ) {
+    return {
+      intent: "bootstrap",
+      error: "Check the names and matching six-digit PIN.",
+    };
+  }
+
+  try {
+    await bootstrap({
+      mode,
+      memberId: mode === "claimExistingAdult" ? String(memberId) : null,
+      firstName: mode === "createFirstAdult" ? String(firstName).trim() : null,
+      surname: surname.trim(),
+      pin,
+    });
+    return { intent: "bootstrap" };
+  } catch (error) {
+    return identityError(
+      "The household could not be set up.",
+      "bootstrap",
+      error,
+    );
+  }
+}
+
+async function signInAction(form: FormData): Promise<IdentityActionResult> {
+  const memberId = form.get("memberId");
+  const pin = form.get("pin");
+  const pinLength = form.get("role") === "adult" ? 6 : 4;
+  if (
+    typeof memberId !== "string" ||
+    typeof pin !== "string" ||
+    !new RegExp(`^\\d{${pinLength}}$`).test(pin)
+  ) {
+    return {
+      intent: "signIn",
+      error: "Choose your profile and enter your PIN.",
+    };
+  }
+
+  try {
+    await signIn(memberId, pin);
+    return { intent: "signIn" };
+  } catch (error) {
+    return identityError(
+      "The profile or PIN was not accepted.",
+      "signIn",
+      error,
+    );
+  }
+}
+
+async function beginPinSetupAction(
+  form: FormData,
+): Promise<IdentityActionResult> {
+  const memberId = form.get("memberId");
+  const surname = form.get("surname");
+  if (typeof memberId !== "string" || memberId.length === 0) {
+    return {
+      intent: "beginPinSetup",
+      error: "Choose who will use the board next.",
+    };
+  }
+
+  try {
+    await beginPinSetup(
+      memberId,
+      typeof surname === "string" && surname.trim().length > 0
+        ? surname.trim()
+        : null,
+    );
+    return { intent: "beginPinSetup" };
+  } catch (error) {
+    return identityError(
+      "PIN setup could not be started.",
+      "beginPinSetup",
+      error,
+    );
+  }
+}
+
+async function setupPinAction(form: FormData): Promise<IdentityActionResult> {
+  const pin = form.get("pin");
+  const confirmation = form.get("pinConfirmation");
+  const pinLength = form.get("role") === "adult" ? 6 : 4;
+  if (
+    typeof pin !== "string" ||
+    !new RegExp(`^\\d{${pinLength}}$`).test(pin) ||
+    pin !== confirmation
+  ) {
+    return {
+      intent: "setupPin",
+      error: `Enter a matching ${pinLength}-digit PIN.`,
+    };
+  }
+
+  try {
+    await setupPin(pin);
+    return { intent: "setupPin" };
+  } catch (error) {
+    return identityError(
+      "This PIN setup has expired. Ask a grown-up to start again.",
+      "setupPin",
+      error,
+    );
+  }
+}
+
+function identityError(
+  fallback: string,
+  intent: IdentityActionResult["intent"],
+  error: unknown,
+): IdentityActionResult {
+  return {
+    intent,
+    error: error instanceof AuthApiError ? error.message : fallback,
+  };
+}
+
 async function addRecurringJobAction(
   form: FormData,
 ): Promise<AddRecurringJobActionResult> {
@@ -91,7 +283,6 @@ async function addRecurringJobAction(
     typeof submittedRequestId === "string" && submittedRequestId.length > 0
       ? submittedRequestId
       : crypto.randomUUID();
-  const viewerId = form.get("viewerId");
   const recurrenceFrequency = form.get("recurrenceFrequency");
   const childId = form.get("childId");
   const name = form.get("name");
@@ -115,7 +306,6 @@ async function addRecurringJobAction(
   ] as const;
 
   if (
-    typeof viewerId !== "string" ||
     (recurrenceFrequency !== "daily" &&
       recurrenceFrequency !== "weekly" &&
       recurrenceFrequency !== "monthly") ||
@@ -151,7 +341,6 @@ async function addRecurringJobAction(
   try {
     const recurringRequest = {
       requestId,
-      viewerId,
       childId,
       name,
       description,
@@ -324,9 +513,9 @@ async function addJobAction(form: FormData): Promise<AddJobActionResult> {
 export const routes: RouteObject[] = [
   {
     path: "/",
-    loader: todayLoader,
+    loader: appLoader,
     action: todayAction,
-    Component: TodayPage,
+    Component: AppPage,
     HydrateFallback: LoadingPage,
     shouldRevalidate: ({ actionResult, defaultShouldRevalidate }) => {
       if (
@@ -342,3 +531,12 @@ export const routes: RouteObject[] = [
     },
   },
 ];
+
+function AppPage() {
+  const data = useLoaderData() as AppLoaderData;
+  return data.state === "authenticated" ? (
+    <TodayPage board={data.board} />
+  ) : (
+    <AuthPage state={data} />
+  );
+}

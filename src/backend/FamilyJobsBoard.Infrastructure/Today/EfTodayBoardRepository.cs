@@ -22,7 +22,7 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
     {
         return await _database.HouseholdMembers
             .AsNoTracking()
-            .OrderByDescending(member => member.IsAdult)
+            .OrderByDescending(member => member.Role == HouseholdRole.Adult)
             .ThenBy(member => member.FirstName)
             .ToListAsync(cancellationToken);
     }

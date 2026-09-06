@@ -1,11 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
 using FamilyJobsBoard.Application.Clock;
+using FamilyJobsBoard.Domain.Identity;
 using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Infrastructure.Data;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -90,6 +93,22 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Explicit_demo_seed_creates_not_set_credentials_for_every_profile()
+    {
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        Assert.Equal(
+            await database.HouseholdMembers.CountAsync(),
+            await database.MemberCredentials.CountAsync());
+        Assert.All(
+            await database.MemberCredentials.ToListAsync(),
+            credential => Assert.Equal(CredentialState.NotSet, credential.State));
+    }
+
+    [Fact]
     public async Task Today_board_prefers_a_persisted_nickname_for_the_display_name()
     {
         var factory = _factory ?? throw new InvalidOperationException("Test API was not initialised.");
@@ -125,6 +144,8 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         await using var database = new AppDbContext(options);
         var migrator = database.GetService<IMigrator>();
         await migrator.MigrateAsync("20260831113745_AddHouseholdMemberNickname");
+        await database.Database.ExecuteSqlRawAsync(
+            "DROP TABLE IF EXISTS \"__family_jobs_board_fresh_install\";");
         await database.Database.ExecuteSqlRawAsync(
             "INSERT INTO household_members (id, first_name, nickname, is_adult) VALUES " +
             "('22eb0cc1-058e-4b2e-bb18-d7aaad564a6c', 'Addie', NULL, FALSE), " +
@@ -185,6 +206,35 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
         Assert.Equal("pendingApproval", completed!.Status);
+    }
+
+    [Fact]
+    public async Task Child_cannot_complete_another_childs_job()
+    {
+        using var created = await Client.PostAsJsonAsync(
+            "/api/today/jobs",
+            new
+            {
+                childId = DemoDataIds.Harrie,
+                name = "Harrie's job",
+                description = "Only Harrie can complete this.",
+                points = 2,
+            });
+        var job = await created.Content.ReadFromJsonAsync<JobResponse>();
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        Assert.NotNull(job);
+
+        using var fredsterClient = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .CreateClient();
+        fredsterClient.DefaultRequestHeaders.Add(
+            "X-Test-Member-Id",
+            DemoDataIds.Fredster.ToString());
+        using var response = await fredsterClient.PostAsync(
+            $"/api/jobs/{job.Id}/complete",
+            null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     [Fact]
@@ -448,7 +498,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var dailyJobId = Guid.NewGuid();
         var weeklyJobId = Guid.NewGuid();
         await database.Database.ExecuteSqlInterpolatedAsync(
-            $"INSERT INTO household_members (id, first_name, nickname, is_adult) VALUES ({DemoDataIds.Hellie}, 'Hellie', NULL, TRUE) ON CONFLICT (id) DO NOTHING;");
+            $"INSERT INTO household_members (id, first_name, nickname, is_adult) VALUES ({DemoDataIds.Hellie}, 'Hellie', NULL, TRUE), ({DemoDataIds.Fredster}, 'Fredster', NULL, FALSE) ON CONFLICT (id) DO NOTHING;");
         await database.Database.ExecuteSqlInterpolatedAsync(
             $"INSERT INTO recurring_job_series (id, child_id, created_by_adult_id, name, description, points, agenda_period, scheduled_time, start_date, end_date, generated_through, frequency, weekday_mask) VALUES ({dailySeriesId}, {DemoDataIds.Fredster}, {DemoDataIds.Hellie}, 'Daily job', 'Keep daily.', 2, 'Unscheduled', NULL, DATE '2026-09-02', NULL, DATE '2026-09-02', 'Daily', 0), ({weeklySeriesId}, {DemoDataIds.Fredster}, {DemoDataIds.Hellie}, 'Weekly job', 'Keep weekly.', 3, 'Evening', TIME '18:00', DATE '2026-09-02', NULL, DATE '2026-09-02', 'Weekly', 4);");
         await database.Database.ExecuteSqlInterpolatedAsync(
@@ -568,7 +618,11 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
         Assert.NotNull(initial);
 
-        using var childViewer = await Client.PostAsJsonAsync(
+        using var childClient = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .CreateClient();
+        childClient.DefaultRequestHeaders.Add("X-Test-Member-Id", DemoDataIds.Fredster.ToString());
+        using var childViewer = await childClient.PostAsJsonAsync(
             "/api/recurring-jobs/daily",
             new
             {
@@ -583,9 +637,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 startDate = initial.Date,
                 endDate = (DateOnly?)null,
             });
-        var childProblem = await childViewer.Content.ReadFromJsonAsync<ValidationProblemDetails>();
-        Assert.Equal(HttpStatusCode.BadRequest, childViewer.StatusCode);
-        Assert.Contains("ViewerId", childProblem?.Errors.Keys ?? []);
+        Assert.Equal(HttpStatusCode.Forbidden, childViewer.StatusCode);
 
         using var invalid = await Client.PostAsJsonAsync(
             "/api/recurring-jobs/daily",
@@ -909,6 +961,8 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         await using var database = new AppDbContext(options);
         var migrator = database.GetService<IMigrator>();
         await migrator.MigrateAsync("20260831113745_AddHouseholdMemberNickname");
+        await database.Database.ExecuteSqlRawAsync(
+            "DROP TABLE IF EXISTS \"__family_jobs_board_fresh_install\";");
         var jobId = Guid.NewGuid();
         var approvedAtUtc = new DateTimeOffset(2026, 8, 31, 10, 30, 0, TimeSpan.Zero);
         await database.Database.ExecuteSqlInterpolatedAsync(
@@ -1116,6 +1170,18 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 services.RemoveAll<DbContextOptions<AppDbContext>>();
                 services.RemoveAll<AppDbContext>();
                 services.AddDbContext<AppDbContext>(options => options.UseNpgsql(_connectionString));
+            });
+            builder.ConfigureTestServices(services =>
+            {
+                services.AddAuthentication(options =>
+                    {
+                        options.DefaultAuthenticateScheme = TestAuthenticationHandler.SchemeName;
+                        options.DefaultChallengeScheme = TestAuthenticationHandler.SchemeName;
+                        options.DefaultForbidScheme = TestAuthenticationHandler.SchemeName;
+                    })
+                    .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(
+                        TestAuthenticationHandler.SchemeName,
+                        _ => { });
             });
         }
     }
