@@ -8,8 +8,19 @@ public sealed class HouseholdMember
     {
     }
 
-    public HouseholdMember(Guid id, string firstName, bool isAdult, string? nickname = null)
-        : this(id, firstName, null, isAdult ? HouseholdRole.Adult : HouseholdRole.Child, nickname)
+    public HouseholdMember(
+        Guid id,
+        string firstName,
+        bool isAdult,
+        string? nickname = null,
+        bool isActive = true)
+        : this(
+            id,
+            firstName,
+            null,
+            isAdult ? HouseholdRole.Adult : HouseholdRole.Child,
+            nickname,
+            isActive)
     {
     }
 
@@ -18,7 +29,8 @@ public sealed class HouseholdMember
         string firstName,
         string? surname,
         HouseholdRole role,
-        string? nickname = null)
+        string? nickname = null,
+        bool isActive = true)
     {
         if (id == Guid.Empty)
         {
@@ -51,6 +63,7 @@ public sealed class HouseholdMember
         Surname = NormalizeOptionalName(surname, nameof(surname));
         Nickname = string.IsNullOrEmpty(trimmedNickname) ? null : trimmedNickname;
         Role = role;
+        IsActive = isActive;
     }
 
     public Guid Id { get; private set; }
@@ -66,6 +79,8 @@ public sealed class HouseholdMember
     public HouseholdRole Role { get; private set; }
 
     public bool IsAdult => Role == HouseholdRole.Adult;
+
+    public bool IsActive { get; private set; }
 
     public void SetSurname(string surname)
     {

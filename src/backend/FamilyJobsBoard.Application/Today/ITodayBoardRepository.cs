@@ -22,12 +22,10 @@ public interface ITodayBoardRepository
         DateOnly scheduledDate,
         CancellationToken cancellationToken);
 
-    Task AddJobAsync(Job job, CancellationToken cancellationToken);
-
     Task AddJobsAsync(IReadOnlyCollection<Job> jobs, CancellationToken cancellationToken);
 
-    Task<RecurringJobSeries?> GetRecurringJobSeriesAsync(
-        Guid seriesId,
+    Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesByRequestAsync(
+        Guid assignmentRequestId,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesNeedingGenerationAsync(
@@ -35,7 +33,7 @@ public interface ITodayBoardRepository
         CancellationToken cancellationToken);
 
     Task AddRecurringJobSeriesAsync(
-        RecurringJobSeries series,
+        IReadOnlyCollection<RecurringJobSeries> series,
         CancellationToken cancellationToken);
 
     Task<int> GetRecurringJobSeriesOccurrenceCountAsync(

@@ -22,6 +22,7 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
     {
         return await _database.HouseholdMembers
             .AsNoTracking()
+            .Where(member => member.IsActive)
             .OrderByDescending(member => member.Role == HouseholdRole.Adult)
             .ThenBy(member => member.FirstName)
             .ToListAsync(cancellationToken);
@@ -33,7 +34,9 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
     {
         return _database.HouseholdMembers
             .AsNoTracking()
-            .SingleOrDefaultAsync(member => member.Id == memberId, cancellationToken);
+            .SingleOrDefaultAsync(
+                member => member.Id == memberId && member.IsActive,
+                cancellationToken);
     }
 
     public async Task<IReadOnlyList<Job>> GetJobsAsync(
@@ -99,11 +102,6 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         }
     }
 
-    public async Task AddJobAsync(Job job, CancellationToken cancellationToken)
-    {
-        await _database.Jobs.AddAsync(job, cancellationToken);
-    }
-
     public async Task AddJobsAsync(
         IReadOnlyCollection<Job> jobs,
         CancellationToken cancellationToken)
@@ -111,13 +109,15 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         await _database.Jobs.AddRangeAsync(jobs, cancellationToken);
     }
 
-    public Task<RecurringJobSeries?> GetRecurringJobSeriesAsync(
-        Guid seriesId,
+    public async Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesByRequestAsync(
+        Guid assignmentRequestId,
         CancellationToken cancellationToken)
     {
-        return _database.RecurringJobSeries
+        return await _database.RecurringJobSeries
             .AsNoTracking()
-            .SingleOrDefaultAsync(series => series.Id == seriesId, cancellationToken);
+            .Where(series => series.AssignmentRequestId == assignmentRequestId)
+            .OrderBy(series => series.ChildId)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesNeedingGenerationAsync(
@@ -132,10 +132,10 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
     }
 
     public async Task AddRecurringJobSeriesAsync(
-        RecurringJobSeries series,
+        IReadOnlyCollection<RecurringJobSeries> series,
         CancellationToken cancellationToken)
     {
-        await _database.RecurringJobSeries.AddAsync(series, cancellationToken);
+        await _database.RecurringJobSeries.AddRangeAsync(series, cancellationToken);
     }
 
     public Task<int> GetRecurringJobSeriesOccurrenceCountAsync(

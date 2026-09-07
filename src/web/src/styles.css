@@ -362,6 +362,47 @@ h1 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
+.assignee-picker {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.assignee-picker legend {
+  margin-bottom: 8px;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.assignee-picker__options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.assignee-option {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--input);
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.assignee-option:has(input:checked) {
+  color: var(--success-text);
+  background: var(--success-bg);
+  border-color: var(--success-text);
+}
+.assignee-option input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.assignee-picker small {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+}
 .weekday-picker {
   grid-column: 1 / -1;
   margin: 0;
@@ -936,6 +977,9 @@ h1 {
   }
   .weekday-picker__options {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .assignee-picker__options {
+    grid-template-columns: 1fr;
   }
   .monthly-picker {
     grid-template-columns: 1fr;

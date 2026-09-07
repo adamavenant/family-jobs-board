@@ -59,9 +59,12 @@ export interface JobApproval {
 }
 
 export interface RecurringJobCreation {
-  seriesId: string;
-  generatedThrough: string;
-  occurrenceCount: number;
+  assignments: {
+    seriesId: string;
+    childId: string;
+    generatedThrough: string;
+    occurrenceCount: number;
+  }[];
 }
 
 export class ApiError extends Error {
@@ -139,11 +142,11 @@ export async function rejectJob(
 }
 
 export async function addJob(request: {
-  childId: string;
+  childIds: string[];
   name: string;
   description: string;
   points: number;
-}): Promise<TodayJob> {
+}): Promise<TodayJob[]> {
   const client = apiClient();
   const { data, error } = await client.POST("/api/today/jobs", {
     body: request,
@@ -152,12 +155,12 @@ export async function addJob(request: {
     throw new ApiError(problemMessage(error, "That job couldn't be added."));
   }
 
-  return mapJob(data);
+  return data.jobs.map(mapJob);
 }
 
 export async function createDailyRecurringJob(request: {
   requestId: string;
-  childId: string;
+  childIds: string[];
   name: string;
   description: string;
   points: number;
@@ -176,15 +179,12 @@ export async function createDailyRecurringJob(request: {
     );
   }
 
-  return {
-    ...data,
-    occurrenceCount: Number(data.occurrenceCount),
-  };
+  return mapRecurringCreation(data);
 }
 
 export async function createWeeklyRecurringJob(request: {
   requestId: string;
-  childId: string;
+  childIds: string[];
   name: string;
   description: string;
   points: number;
@@ -204,15 +204,12 @@ export async function createWeeklyRecurringJob(request: {
     );
   }
 
-  return {
-    ...data,
-    occurrenceCount: Number(data.occurrenceCount),
-  };
+  return mapRecurringCreation(data);
 }
 
 export async function createMonthlyRecurringJob(request: {
   requestId: string;
-  childId: string;
+  childIds: string[];
   name: string;
   description: string;
   points: number;
@@ -232,9 +229,22 @@ export async function createMonthlyRecurringJob(request: {
     );
   }
 
+  return mapRecurringCreation(data);
+}
+
+function mapRecurringCreation(data: {
+  assignments: {
+    seriesId: string;
+    childId: string;
+    generatedThrough: string;
+    occurrenceCount: number | string;
+  }[];
+}): RecurringJobCreation {
   return {
-    ...data,
-    occurrenceCount: Number(data.occurrenceCount),
+    assignments: data.assignments.map((assignment) => ({
+      ...assignment,
+      occurrenceCount: Number(assignment.occurrenceCount),
+    })),
   };
 }
 

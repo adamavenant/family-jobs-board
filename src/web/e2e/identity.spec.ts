@@ -3,6 +3,7 @@ import type { Route } from "@playwright/test";
 
 const addieId = "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c";
 const fredsterId = "754de05d-b6f6-4626-bbad-79e2079cc5c3";
+const harrieId = "e22facf5-69ce-45ce-9dad-306eef1852c9";
 
 test("fresh household creates its first grown-up on a phone", async ({
   page,
@@ -164,6 +165,137 @@ test("pilot claim, child handoff, completion, and adult approval work on a table
   await expect(page.getByText("Approved — 3 points awarded")).toBeVisible();
 });
 
+test("a grown-up assigns one job to both children on a tablet", async ({
+  page,
+}) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.setViewportSize({ width: 820, height: 1180 });
+  let jobs: ReturnType<typeof assignmentJob>[] = [];
+  let submittedChildIds: string[] = [];
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (!path.startsWith("/api/")) {
+      return route.continue();
+    }
+    if (path === "/api/auth/refresh") {
+      return json(route, auth(addieId, "Addie", "adult"));
+    }
+    if (path === "/api/today/jobs" && request.method() === "POST") {
+      const body = request.postDataJSON();
+      submittedChildIds = body.childIds;
+      jobs = [
+        assignmentJob(
+          "5d2f9b94-5c09-4974-8fa2-24a3fad1e80c",
+          fredsterId,
+          "Fredster",
+          body.name,
+        ),
+        assignmentJob(
+          "4262de88-07b2-46ea-9454-2589268c3e57",
+          harrieId,
+          "Harrie",
+          body.name,
+        ),
+      ];
+      return json(route, { jobs }, 201);
+    }
+    if (path === "/api/today") {
+      return json(route, assignmentBoard(jobs));
+    }
+    return problem(route, 404);
+  });
+
+  await page.goto("/");
+  await page.waitForTimeout(250);
+  expect(pageErrors).toEqual([]);
+  const form = page.locator("details.grown-up-tools--one-off");
+  await form.locator("summary").click();
+  await expect(form.getByRole("checkbox", { name: "Fredster" })).toBeChecked();
+  await form.getByRole("checkbox", { name: "Harrie" }).check();
+  await form.getByLabel("Job name").fill("Make the beds");
+  await form.getByRole("button", { name: "Add job" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Make the beds" }),
+  ).toHaveCount(2);
+  expect(submittedChildIds).toEqual([fredsterId, harrieId]);
+  await expect(page.getByText("Ready for Harrie")).toBeVisible();
+});
+
+test("a grown-up assigns a recurring schedule to one child on a phone", async ({
+  page,
+}) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.setViewportSize({ width: 390, height: 844 });
+  let jobs: ReturnType<typeof assignmentJob>[] = [];
+  let submittedChildIds: string[] = [];
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (!path.startsWith("/api/")) {
+      return route.continue();
+    }
+    if (path === "/api/auth/refresh") {
+      return json(route, auth(addieId, "Addie", "adult"));
+    }
+    if (path === "/api/recurring-jobs/daily") {
+      const body = request.postDataJSON();
+      submittedChildIds = body.childIds;
+      const seriesId = "5cd1028f-ea52-4f02-a088-23c6b9cb794c";
+      jobs = [
+        assignmentJob(
+          "0a315edc-0a6a-403a-a41e-d95c69476070",
+          fredsterId,
+          "Fredster",
+          body.name,
+          seriesId,
+        ),
+      ];
+      return json(
+        route,
+        {
+          assignments: [
+            {
+              seriesId,
+              childId: fredsterId,
+              generatedThrough: "2026-11-01",
+              occurrenceCount: 56,
+            },
+          ],
+        },
+        201,
+      );
+    }
+    if (path === "/api/today") {
+      return json(route, assignmentBoard(jobs));
+    }
+    return problem(route, 404);
+  });
+
+  await page.goto("/");
+  await page.waitForTimeout(250);
+  expect(pageErrors).toEqual([]);
+  const form = page.locator("details.grown-up-tools--recurring");
+  await form.locator("summary").click();
+  await expect(form.getByRole("checkbox", { name: "Fredster" })).toBeChecked();
+  await expect(
+    form.getByRole("checkbox", { name: "Harrie" }),
+  ).not.toBeChecked();
+  await form.getByLabel("Daily job name").fill("Feed the fish");
+  await form.getByRole("button", { name: "Create daily job" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Feed the fish" }),
+  ).toBeVisible();
+  expect(submittedChildIds).toEqual([fredsterId]);
+  await expect(
+    page.getByText("Daily job created through 2026-11-01."),
+  ).toBeVisible();
+});
+
 test("an expired remembered session returns to the chooser", async ({
   page,
 }) => {
@@ -260,6 +392,72 @@ function job(status: "open" | "pendingApproval" | "approved") {
     status,
     completedAtUtc: status === "open" ? null : "2026-09-06T08:00:00Z",
     approvedAtUtc: status === "approved" ? "2026-09-06T08:05:00Z" : null,
+    latestRejection: null,
+  };
+}
+
+function assignmentBoard(jobs: ReturnType<typeof assignmentJob>[]) {
+  return {
+    viewer: {
+      id: addieId,
+      firstName: "Addie",
+      nickname: null,
+      displayName: "Addie",
+      isAdult: true,
+    },
+    members: [
+      {
+        id: addieId,
+        firstName: "Addie",
+        nickname: null,
+        displayName: "Addie",
+        isAdult: true,
+      },
+      {
+        id: fredsterId,
+        firstName: "Fredster",
+        nickname: null,
+        displayName: "Fredster",
+        isAdult: false,
+      },
+      {
+        id: harrieId,
+        firstName: "Harrie",
+        nickname: null,
+        displayName: "Harrie",
+        isAdult: false,
+      },
+    ],
+    date: "2026-09-07",
+    jobs,
+    pointsBalance: null,
+    pointEarnings: [],
+    pendingApprovalCount: 0,
+  };
+}
+
+function assignmentJob(
+  id: string,
+  childId: string,
+  childDisplayName: string,
+  name: string,
+  recurringJobSeriesId: string | null = null,
+) {
+  return {
+    id,
+    childId,
+    childDisplayName,
+    name,
+    description: "",
+    points: 1,
+    scheduledDate: "2026-09-07",
+    agendaPeriod: "unscheduled",
+    scheduledTime: null,
+    recurringJobSeriesId,
+    recurrenceFrequency: recurringJobSeriesId ? "daily" : null,
+    status: "open",
+    completedAtUtc: null,
+    approvedAtUtc: null,
     latestRejection: null,
   };
 }

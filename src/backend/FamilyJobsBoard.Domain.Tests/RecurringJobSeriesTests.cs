@@ -170,6 +170,7 @@ public sealed class RecurringJobSeriesTests
     [Fact]
     public void Recurring_series_keeps_schedule_and_trimmed_job_details()
     {
+        var assignmentRequestId = Guid.NewGuid();
         var series = RecurringJobSeries.Daily(
             Guid.NewGuid(),
             Guid.NewGuid(),
@@ -180,13 +181,32 @@ public sealed class RecurringJobSeriesTests
             AgendaPeriod.Morning,
             new TimeOnly(7, 30),
             new DateOnly(2026, 9, 1),
-            null);
+            null,
+            assignmentRequestId);
 
         Assert.Equal("Feed the dog", series.Name);
         Assert.Equal("Fill both bowls.", series.Description);
         Assert.Equal(AgendaPeriod.Morning, series.AgendaPeriod);
         Assert.Equal(new TimeOnly(7, 30), series.ScheduledTime);
         Assert.Equal(RecurrenceFrequency.Daily, series.Frequency);
+        Assert.Equal(assignmentRequestId, series.AssignmentRequestId);
+    }
+
+    [Fact]
+    public void Recurring_series_rejects_an_empty_assignment_request_id()
+    {
+        Assert.Throws<ArgumentException>(() => RecurringJobSeries.Daily(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Feed the dog",
+            "Fill both bowls.",
+            3,
+            AgendaPeriod.Morning,
+            null,
+            new DateOnly(2026, 9, 1),
+            null,
+            Guid.Empty));
     }
 
     [Fact]

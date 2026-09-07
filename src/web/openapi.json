@@ -396,8 +396,8 @@
         "tags": [
           "Today"
         ],
-        "summary": "Add a new job for a child.",
-        "description": "Adds a new job to the selected child's board for today.",
+        "summary": "Add a new job for one or more children.",
+        "description": "Adds an independent job to each selected child's board for today.",
         "operationId": "AddJob",
         "requestBody": {
           "content": {
@@ -415,7 +415,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/JobResponse"
+                  "$ref": "#/components/schemas/AddJobsResponse"
                 }
               }
             }
@@ -443,8 +443,8 @@
         "tags": [
           "Today"
         ],
-        "summary": "Create a daily recurring job for a child.",
-        "description": "Creates an adult-owned daily series and materializes duplicate-safe occurrences through an eight-week horizon.",
+        "summary": "Create a daily recurring job for one or more children.",
+        "description": "Creates an adult-owned child-specific daily series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.",
         "operationId": "CreateDailyRecurringJob",
         "requestBody": {
           "content": {
@@ -510,8 +510,8 @@
         "tags": [
           "Today"
         ],
-        "summary": "Create a weekly recurring job for a child.",
-        "description": "Creates an adult-owned weekly series for selected weekdays and materializes duplicate-safe occurrences through an eight-week horizon.",
+        "summary": "Create a weekly recurring job for one or more children.",
+        "description": "Creates an adult-owned child-specific weekly series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.",
         "operationId": "CreateWeeklyRecurringJob",
         "requestBody": {
           "content": {
@@ -577,8 +577,8 @@
         "tags": [
           "Today"
         ],
-        "summary": "Create a monthly recurring job for a child.",
-        "description": "Creates an adult-owned monthly series for a calendar day and uses the final valid day in shorter months.",
+        "summary": "Create a monthly recurring job for one or more children.",
+        "description": "Creates an adult-owned child-specific monthly series for each assignee and uses the final valid day in shorter months.",
         "operationId": "CreateMonthlyRecurringJob",
         "requestBody": {
           "content": {
@@ -780,16 +780,22 @@
     "schemas": {
       "AddJobRequest": {
         "required": [
-          "childId",
+          "childIds",
           "name",
           "description",
           "points"
         ],
         "type": "object",
         "properties": {
-          "childId": {
-            "type": "string",
-            "format": "uuid"
+          "childIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           "name": {
             "type": [
@@ -810,6 +816,20 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "AddJobsResponse": {
+        "required": [
+          "jobs"
+        ],
+        "type": "object",
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobResponse"
+            }
           }
         }
       },
@@ -925,7 +945,7 @@
       "CreateDailyRecurringJobRequest": {
         "required": [
           "requestId",
-          "childId",
+          "childIds",
           "name",
           "description",
           "points",
@@ -940,9 +960,15 @@
             "type": "string",
             "format": "uuid"
           },
-          "childId": {
-            "type": "string",
-            "format": "uuid"
+          "childIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           "name": {
             "type": [
@@ -993,7 +1019,7 @@
       "CreateMonthlyRecurringJobRequest": {
         "required": [
           "requestId",
-          "childId",
+          "childIds",
           "name",
           "description",
           "points",
@@ -1009,9 +1035,15 @@
             "type": "string",
             "format": "uuid"
           },
-          "childId": {
-            "type": "string",
-            "format": "uuid"
+          "childIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           "name": {
             "type": [
@@ -1070,7 +1102,7 @@
       "CreateWeeklyRecurringJobRequest": {
         "required": [
           "requestId",
-          "childId",
+          "childIds",
           "name",
           "description",
           "points",
@@ -1086,9 +1118,15 @@
             "type": "string",
             "format": "uuid"
           },
-          "childId": {
-            "type": "string",
-            "format": "uuid"
+          "childIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           "name": {
             "type": [
@@ -1465,15 +1503,20 @@
           }
         }
       },
-      "RecurringJobResponse": {
+      "RecurringJobAssignmentResponse": {
         "required": [
           "seriesId",
+          "childId",
           "generatedThrough",
           "occurrenceCount"
         ],
         "type": "object",
         "properties": {
           "seriesId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childId": {
             "type": "string",
             "format": "uuid"
           },
@@ -1488,6 +1531,20 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "RecurringJobResponse": {
+        "required": [
+          "assignments"
+        ],
+        "type": "object",
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecurringJobAssignmentResponse"
+            }
           }
         }
       },

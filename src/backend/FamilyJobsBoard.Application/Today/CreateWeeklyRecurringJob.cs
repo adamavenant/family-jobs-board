@@ -3,7 +3,7 @@ namespace FamilyJobsBoard.Application.Today;
 public sealed record CreateWeeklyRecurringJob(
     Guid RequestId,
     Guid ViewerId,
-    Guid ChildId,
+    IReadOnlyCollection<Guid>? ChildIds,
     string? Name,
     string? Description,
     int Points,

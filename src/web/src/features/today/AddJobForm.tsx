@@ -3,6 +3,7 @@ import { useFetcher } from "react-router";
 
 import type { TodayActionResult } from "../../app/routes";
 import type { HouseholdMember } from "../../api/today";
+import { ChildAssignmentPicker } from "./ChildAssignmentPicker";
 
 export function AddJobForm({ children }: { children: HouseholdMember[] }) {
   const fetcher = useFetcher<TodayActionResult>();
@@ -31,21 +32,7 @@ export function AddJobForm({ children }: { children: HouseholdMember[] }) {
         </div>
         <fetcher.Form method="post" className="add-job__form" ref={formRef}>
           <input type="hidden" name="intent" value="add" />
-          <div className="form-group">
-            <label htmlFor="childId">Assign to</label>
-            <select
-              id="childId"
-              name="childId"
-              required
-              defaultValue={children[0]?.id}
-            >
-              {children.map((child) => (
-                <option key={child.id} value={child.id}>
-                  {child.displayName}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ChildAssignmentPicker children={children} legend="Assign to" />
           <div className="form-group">
             <label htmlFor="name">Job name</label>
             <input type="text" id="name" name="name" required maxLength={160} />
