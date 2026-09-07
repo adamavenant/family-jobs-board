@@ -16,10 +16,7 @@ public sealed class TodayBoardService
         _clock = clock;
     }
 
-    public async Task<TodayBoard> GetAsync(
-        Guid defaultViewerId,
-        Guid? viewerId,
-        CancellationToken cancellationToken)
+    public async Task<TodayBoard> GetAsync(Guid viewerId, CancellationToken cancellationToken)
     {
         await EnsureRecurringJobsAsync(cancellationToken);
         var members = await _repository.GetMembersAsync(cancellationToken);
@@ -28,9 +25,8 @@ public sealed class TodayBoardService
             throw new TodayBoardNotAvailableException();
         }
 
-        var selectedId = viewerId ?? defaultViewerId;
-        var viewer = members.SingleOrDefault(member => member.Id == selectedId)
-            ?? throw new HouseholdMemberNotFoundException(selectedId);
+        var viewer = members.SingleOrDefault(member => member.Id == viewerId)
+            ?? throw new HouseholdMemberNotFoundException(viewerId);
         var children = members.Where(member => !member.IsAdult).ToArray();
         var visibleChildren = viewer.IsAdult
             ? children
@@ -65,9 +61,17 @@ public sealed class TodayBoardService
             jobs.Count(job => job.Status == JobStatus.PendingApproval));
     }
 
-    public async Task<TodayJob> CompleteAsync(Guid jobId, CancellationToken cancellationToken)
+    public async Task<TodayJob> CompleteAsync(
+        Guid jobId,
+        Guid childId,
+        CancellationToken cancellationToken)
     {
         var job = await GetJobAsync(jobId, cancellationToken);
+        if (job.ChildId != childId)
+        {
+            throw new JobOwnershipRejectedException();
+        }
+
         var child = await GetChildAsync(job.ChildId, cancellationToken);
 
         job.MarkComplete(_clock.UtcNow);

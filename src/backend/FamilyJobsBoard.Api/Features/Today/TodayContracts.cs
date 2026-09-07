@@ -24,7 +24,6 @@ public sealed record AddJobRequest(
 
 public sealed record CreateDailyRecurringJobRequest(
     Guid RequestId,
-    Guid ViewerId,
     Guid ChildId,
     string? Name,
     string? Description,
@@ -36,7 +35,6 @@ public sealed record CreateDailyRecurringJobRequest(
 
 public sealed record CreateWeeklyRecurringJobRequest(
     Guid RequestId,
-    Guid ViewerId,
     Guid ChildId,
     string? Name,
     string? Description,
@@ -49,7 +47,6 @@ public sealed record CreateWeeklyRecurringJobRequest(
 
 public sealed record CreateMonthlyRecurringJobRequest(
     Guid RequestId,
-    Guid ViewerId,
     Guid ChildId,
     string? Name,
     string? Description,

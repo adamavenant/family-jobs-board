@@ -17,6 +17,9 @@ services:
       ConnectionStrings__Database: Host=db;Port=5432;Database=family_jobs_board;Username=family_jobs_board;Password=${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in the deployment environment file}
       Household__TimeZone: ${HOUSEHOLD_TIME_ZONE:-Africa/Johannesburg}
       ASPNETCORE_ENVIRONMENT: Production
+      Authentication__PinPepper: ${AUTHENTICATION_PIN_PEPPER:?AUTHENTICATION_PIN_PEPPER must be set to at least 32 random bytes encoded as base64}
+      Authentication__JwtSigningKey: ${AUTHENTICATION_JWT_SIGNING_KEY:?AUTHENTICATION_JWT_SIGNING_KEY must be set to at least 32 random bytes encoded as base64}
+      Authentication__AllowedOrigin: ${APPLICATION_ORIGIN:?APPLICATION_ORIGIN must be set to the exact dashboard origin}
 
   web:
     image: ghcr.io/adamavenant/family-jobs-board-web:${IMAGE_TAG:?IMAGE_TAG must be set to a published commit SHA}

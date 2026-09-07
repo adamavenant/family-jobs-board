@@ -1,6 +1,6 @@
 # LAN deployment
 
-This deployment keeps the database and API private to Docker's internal network. Only the web app is published to the LAN. It does not add authentication or make the app safe to expose to the internet.
+This deployment keeps the database and API private to Docker's internal network. Only the PIN-protected web app is published to the LAN. The PIN boundary does not make the app safe to expose to the internet.
 
 ## Prepare the server
 
@@ -10,8 +10,25 @@ Install Docker Engine with the Compose plugin, clone the repository, and create 
 sudo install -d -m 700 /etc/family-jobs-board
 sudo cp .env.example /etc/family-jobs-board/family-jobs-board.env
 sudo sh -c 'password=$(openssl rand -hex 32); sed -i "s/^DATABASE_PASSWORD=.*/DATABASE_PASSWORD=$password/" /etc/family-jobs-board/family-jobs-board.env'
+sudo sh -c 'secret=$(openssl rand -base64 32); sed -i "s|^AUTHENTICATION_PIN_PEPPER=.*|AUTHENTICATION_PIN_PEPPER=$secret|" /etc/family-jobs-board/family-jobs-board.env'
+sudo sh -c 'secret=$(openssl rand -base64 32); sed -i "s|^AUTHENTICATION_JWT_SIGNING_KEY=.*|AUTHENTICATION_JWT_SIGNING_KEY=$secret|" /etc/family-jobs-board/family-jobs-board.env'
 sudo chmod 600 /etc/family-jobs-board/family-jobs-board.env
 ```
+
+For an existing deployment environment file, add the three new settings before
+upgrading, then run the same two `openssl` commands above to fill the secret
+values:
+
+```sh
+sudo sh -c 'grep -q "^AUTHENTICATION_PIN_PEPPER=" /etc/family-jobs-board/family-jobs-board.env || printf "\nAUTHENTICATION_PIN_PEPPER=\n" >> /etc/family-jobs-board/family-jobs-board.env'
+sudo sh -c 'grep -q "^AUTHENTICATION_JWT_SIGNING_KEY=" /etc/family-jobs-board/family-jobs-board.env || printf "AUTHENTICATION_JWT_SIGNING_KEY=\n" >> /etc/family-jobs-board/family-jobs-board.env'
+sudo sh -c 'grep -q "^APPLICATION_ORIGIN=" /etc/family-jobs-board/family-jobs-board.env || printf "APPLICATION_ORIGIN=http://dashboard.home.arpa\n" >> /etc/family-jobs-board/family-jobs-board.env'
+```
+
+Keep the generated authentication secrets stable across deployments. Losing the
+PIN pepper requires every PIN to be set again; changing the JWT key signs out
+active sessions. `APPLICATION_ORIGIN` must exactly match the browser origin,
+including a non-default port when one is configured.
 
 The generated hexadecimal password is strong and safe to use inside the PostgreSQL connection string. Set `IMAGE_TAG` to the full commit SHA from a successful `main` build in GitHub Actions. This selects the matching API, migration, and web images published to GHCR. `APP_HOSTNAME` defaults to `dashboard.home.arpa`; create a matching local DNS record that points to the server before deployment. Leave the other values empty to bind the Caddy entry point to every LAN interface on port 80 and use the `Africa/Johannesburg` household time zone. Set `APP_HOSTNAME`, `WEB_BIND_ADDRESS`, `WEB_PORT`, or `HOUSEHOLD_TIME_ZONE` in the same file to override those defaults.
 

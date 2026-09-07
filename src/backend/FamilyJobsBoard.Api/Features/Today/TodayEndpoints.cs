@@ -1,7 +1,7 @@
 using FamilyJobsBoard.Application.Today;
+using FamilyJobsBoard.Api.Features.Identity;
 using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Domain.Points;
-using FamilyJobsBoard.Infrastructure.Data;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,47 +11,54 @@ internal static class TodayEndpoints
 {
     public static IEndpointRouteBuilder MapTodayEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api").WithTags("Today");
+        var group = endpoints.MapGroup("/api").WithTags("Today").RequireAuthorization();
 
         group.MapGet("/today", GetTodayAsync)
             .WithName("GetToday")
-            .WithSummary("Get the selected demo family member's board.")
-            .WithDescription("Defaults to Fredster and returns a role-appropriate view for the selected household member.");
+            .WithSummary("Get the authenticated family member's board.")
+            .WithDescription("Returns the child-owned or adult household view from the validated session.");
 
         group.MapPost("/jobs/{id:guid}/complete", CompleteJobAsync)
+            .RequireAuthorization("Child")
             .WithName("CompleteJob")
             .WithSummary("Mark an open job complete and pending approval.")
             .WithDescription("Returns 409 when the job has already been completed.");
 
         group.MapPost("/today/jobs", AddJobAsync)
+            .RequireAuthorization("Adult")
             .WithName("AddJob")
             .WithSummary("Add a new job for a child.")
             .WithDescription("Adds a new job to the selected child's board for today.");
 
         group.MapPost("/recurring-jobs/daily", CreateDailyRecurringJobAsync)
+            .RequireAuthorization("Adult")
             .WithName("CreateDailyRecurringJob")
             .WithSummary("Create a daily recurring job for a child.")
             .WithDescription(
                 "Creates an adult-owned daily series and materializes duplicate-safe occurrences through an eight-week horizon.");
 
         group.MapPost("/recurring-jobs/weekly", CreateWeeklyRecurringJobAsync)
+            .RequireAuthorization("Adult")
             .WithName("CreateWeeklyRecurringJob")
             .WithSummary("Create a weekly recurring job for a child.")
             .WithDescription(
                 "Creates an adult-owned weekly series for selected weekdays and materializes duplicate-safe occurrences through an eight-week horizon.");
 
         group.MapPost("/recurring-jobs/monthly", CreateMonthlyRecurringJobAsync)
+            .RequireAuthorization("Adult")
             .WithName("CreateMonthlyRecurringJob")
             .WithSummary("Create a monthly recurring job for a child.")
             .WithDescription(
                 "Creates an adult-owned monthly series for a calendar day and uses the final valid day in shorter months.");
 
         group.MapPost("/jobs/{id:guid}/approve", ApproveJobAsync)
+            .RequireAuthorization("Adult")
             .WithName("ApproveJob")
             .WithSummary("Approve a pending job and award its points.")
             .WithDescription("Returns 409 unless the job is pending approval or its points were already awarded.");
 
         group.MapPost("/jobs/{id:guid}/reject", RejectJobAsync)
+            .RequireAuthorization("Adult")
             .WithName("RejectJob")
             .WithSummary("Reject a pending job and return it for another try.")
             .WithDescription("Records optional feedback and returns 409 unless the job is pending approval.");
@@ -65,6 +72,7 @@ internal static class TodayEndpoints
         ValidationProblem,
         Conflict<ProblemDetails>>> CreateDailyRecurringJobAsync(
         CreateDailyRecurringJobRequest request,
+        HttpContext context,
         TodayBoardService service,
         CancellationToken cancellationToken)
     {
@@ -73,7 +81,7 @@ internal static class TodayEndpoints
             var creation = await service.CreateDailyRecurringJobAsync(
                 new CreateDailyRecurringJob(
                     request.RequestId,
-                    request.ViewerId,
+                    IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
                     request.ChildId,
                     request.Name,
                     request.Description,
@@ -114,6 +122,7 @@ internal static class TodayEndpoints
         ValidationProblem,
         Conflict<ProblemDetails>>> CreateMonthlyRecurringJobAsync(
         CreateMonthlyRecurringJobRequest request,
+        HttpContext context,
         TodayBoardService service,
         CancellationToken cancellationToken)
     {
@@ -122,7 +131,7 @@ internal static class TodayEndpoints
             var creation = await service.CreateMonthlyRecurringJobAsync(
                 new CreateMonthlyRecurringJob(
                     request.RequestId,
-                    request.ViewerId,
+                    IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
                     request.ChildId,
                     request.Name,
                     request.Description,
@@ -164,6 +173,7 @@ internal static class TodayEndpoints
         ValidationProblem,
         Conflict<ProblemDetails>>> CreateWeeklyRecurringJobAsync(
         CreateWeeklyRecurringJobRequest request,
+        HttpContext context,
         TodayBoardService service,
         CancellationToken cancellationToken)
     {
@@ -172,7 +182,7 @@ internal static class TodayEndpoints
             var creation = await service.CreateWeeklyRecurringJobAsync(
                 new CreateWeeklyRecurringJob(
                     request.RequestId,
-                    request.ViewerId,
+                    IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
                     request.ChildId,
                     request.Name,
                     request.Description,
@@ -209,16 +219,14 @@ internal static class TodayEndpoints
     }
 
     private static async Task<Results<Ok<TodayResponse>, ProblemHttpResult>> GetTodayAsync(
-        Guid? memberId,
+        HttpContext context,
         TodayBoardService service,
         CancellationToken cancellationToken)
     {
         try
         {
-            var board = await service.GetAsync(
-                DemoDataIds.Fredster,
-                memberId,
-                cancellationToken);
+            var memberId = IdentityEndpoints.PrincipalMemberId(context.User)!.Value;
+            var board = await service.GetAsync(memberId, cancellationToken);
             return TypedResults.Ok(MapBoard(board));
         }
         catch (HouseholdMemberNotFoundException exception)
@@ -268,15 +276,17 @@ internal static class TodayEndpoints
         }
     }
 
-    private static async Task<Results<Ok<JobResponse>, NotFound<ProblemDetails>, Conflict<ProblemDetails>>>
+    private static async Task<Results<Ok<JobResponse>, NotFound<ProblemDetails>, Conflict<ProblemDetails>, ForbidHttpResult>>
         CompleteJobAsync(
             Guid id,
+            HttpContext context,
             TodayBoardService service,
             CancellationToken cancellationToken)
     {
         try
         {
-            var job = await service.CompleteAsync(id, cancellationToken);
+            var memberId = IdentityEndpoints.PrincipalMemberId(context.User)!.Value;
+            var job = await service.CompleteAsync(id, memberId, cancellationToken);
             return TypedResults.Ok(MapJob(job));
         }
         catch (JobNotFoundException exception)
@@ -296,6 +306,10 @@ internal static class TodayEndpoints
                 Detail = exception.Message,
                 Status = StatusCodes.Status409Conflict,
             });
+        }
+        catch (JobOwnershipRejectedException)
+        {
+            return TypedResults.Forbid();
         }
     }
 

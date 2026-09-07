@@ -52,11 +52,17 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                 name: "IX_jobs_child_id_scheduled_date",
                 table: "jobs",
                 columns: new[] { "child_id", "scheduled_date" });
+
+            migrationBuilder.Sql(
+                "CREATE TABLE \"__family_jobs_board_fresh_install\" (id smallint PRIMARY KEY);");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.Sql(
+                "DROP TABLE IF EXISTS \"__family_jobs_board_fresh_install\";");
+
             migrationBuilder.DropTable(
                 name: "jobs");
 

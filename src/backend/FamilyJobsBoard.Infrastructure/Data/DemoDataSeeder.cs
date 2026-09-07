@@ -1,4 +1,5 @@
 using FamilyJobsBoard.Domain.Households;
+using FamilyJobsBoard.Domain.Identity;
 using FamilyJobsBoard.Domain.Jobs;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,6 +20,10 @@ public sealed class DemoDataSeeder
         await AddMemberIfMissingAsync(DemoDataIds.Hellie, "Hellie", true, cancellationToken);
         await AddMemberIfMissingAsync(DemoDataIds.Fredster, "Fredster", false, cancellationToken);
         await AddMemberIfMissingAsync(DemoDataIds.Harrie, "Harrie", false, cancellationToken);
+        await AddCredentialIfMissingAsync(DemoDataIds.Addie, cancellationToken);
+        await AddCredentialIfMissingAsync(DemoDataIds.Hellie, cancellationToken);
+        await AddCredentialIfMissingAsync(DemoDataIds.Fredster, cancellationToken);
+        await AddCredentialIfMissingAsync(DemoDataIds.Harrie, cancellationToken);
 
         await UpsertJobAsync(
             DemoDataIds.FeedDog,
@@ -43,6 +48,18 @@ public sealed class DemoDataSeeder
             cancellationToken);
 
         await _database.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task AddCredentialIfMissingAsync(
+        Guid memberId,
+        CancellationToken cancellationToken)
+    {
+        if (!await _database.MemberCredentials.AnyAsync(
+                credential => credential.MemberId == memberId,
+                cancellationToken))
+        {
+            _database.MemberCredentials.Add(new MemberCredential(memberId));
+        }
     }
 
     private async Task AddMemberIfMissingAsync(
