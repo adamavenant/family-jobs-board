@@ -27,29 +27,29 @@ internal static class TodayEndpoints
         group.MapPost("/today/jobs", AddJobAsync)
             .RequireAuthorization("Adult")
             .WithName("AddJob")
-            .WithSummary("Add a new job for a child.")
-            .WithDescription("Adds a new job to the selected child's board for today.");
+            .WithSummary("Add a new job for one or more children.")
+            .WithDescription("Adds an independent job to each selected child's board for today.");
 
         group.MapPost("/recurring-jobs/daily", CreateDailyRecurringJobAsync)
             .RequireAuthorization("Adult")
             .WithName("CreateDailyRecurringJob")
-            .WithSummary("Create a daily recurring job for a child.")
+            .WithSummary("Create a daily recurring job for one or more children.")
             .WithDescription(
-                "Creates an adult-owned daily series and materializes duplicate-safe occurrences through an eight-week horizon.");
+                "Creates an adult-owned child-specific daily series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.");
 
         group.MapPost("/recurring-jobs/weekly", CreateWeeklyRecurringJobAsync)
             .RequireAuthorization("Adult")
             .WithName("CreateWeeklyRecurringJob")
-            .WithSummary("Create a weekly recurring job for a child.")
+            .WithSummary("Create a weekly recurring job for one or more children.")
             .WithDescription(
-                "Creates an adult-owned weekly series for selected weekdays and materializes duplicate-safe occurrences through an eight-week horizon.");
+                "Creates an adult-owned child-specific weekly series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.");
 
         group.MapPost("/recurring-jobs/monthly", CreateMonthlyRecurringJobAsync)
             .RequireAuthorization("Adult")
             .WithName("CreateMonthlyRecurringJob")
-            .WithSummary("Create a monthly recurring job for a child.")
+            .WithSummary("Create a monthly recurring job for one or more children.")
             .WithDescription(
-                "Creates an adult-owned monthly series for a calendar day and uses the final valid day in shorter months.");
+                "Creates an adult-owned child-specific monthly series for each assignee and uses the final valid day in shorter months.");
 
         group.MapPost("/jobs/{id:guid}/approve", ApproveJobAsync)
             .RequireAuthorization("Adult")
@@ -82,7 +82,7 @@ internal static class TodayEndpoints
                 new CreateDailyRecurringJob(
                     request.RequestId,
                     IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
-                    request.ChildId,
+                    request.ChildIds,
                     request.Name,
                     request.Description,
                     request.Points,
@@ -91,12 +91,9 @@ internal static class TodayEndpoints
                     request.StartDate,
                     request.EndDate),
                 cancellationToken);
-            var response = new RecurringJobResponse(
-                creation.SeriesId,
-                creation.GeneratedThrough,
-                creation.OccurrenceCount);
+            var response = MapRecurringCreation(creation);
             return creation.WasCreated
-                ? TypedResults.Created($"/api/recurring-jobs/daily/{creation.SeriesId}", response)
+                ? TypedResults.Created($"/api/recurring-jobs/daily/{request.RequestId}", response)
                 : TypedResults.Ok(response);
         }
         catch (InvalidDailyRecurringJobException exception)
@@ -132,7 +129,7 @@ internal static class TodayEndpoints
                 new CreateMonthlyRecurringJob(
                     request.RequestId,
                     IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
-                    request.ChildId,
+                    request.ChildIds,
                     request.Name,
                     request.Description,
                     request.Points,
@@ -142,12 +139,9 @@ internal static class TodayEndpoints
                     request.EndDate,
                     request.DayOfMonth),
                 cancellationToken);
-            var response = new RecurringJobResponse(
-                creation.SeriesId,
-                creation.GeneratedThrough,
-                creation.OccurrenceCount);
+            var response = MapRecurringCreation(creation);
             return creation.WasCreated
-                ? TypedResults.Created($"/api/recurring-jobs/monthly/{creation.SeriesId}", response)
+                ? TypedResults.Created($"/api/recurring-jobs/monthly/{request.RequestId}", response)
                 : TypedResults.Ok(response);
         }
         catch (InvalidMonthlyRecurringJobException exception)
@@ -183,7 +177,7 @@ internal static class TodayEndpoints
                 new CreateWeeklyRecurringJob(
                     request.RequestId,
                     IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
-                    request.ChildId,
+                    request.ChildIds,
                     request.Name,
                     request.Description,
                     request.Points,
@@ -193,12 +187,9 @@ internal static class TodayEndpoints
                     request.EndDate,
                     request.Weekdays),
                 cancellationToken);
-            var response = new RecurringJobResponse(
-                creation.SeriesId,
-                creation.GeneratedThrough,
-                creation.OccurrenceCount);
+            var response = MapRecurringCreation(creation);
             return creation.WasCreated
-                ? TypedResults.Created($"/api/recurring-jobs/weekly/{creation.SeriesId}", response)
+                ? TypedResults.Created($"/api/recurring-jobs/weekly/{request.RequestId}", response)
                 : TypedResults.Ok(response);
         }
         catch (InvalidWeeklyRecurringJobException exception)
@@ -245,21 +236,23 @@ internal static class TodayEndpoints
         }
     }
 
-    private static async Task<Results<Created<JobResponse>, ValidationProblem, ProblemHttpResult>> AddJobAsync(
+    private static async Task<Results<Created<AddJobsResponse>, ValidationProblem, ProblemHttpResult>> AddJobAsync(
         AddJobRequest request,
         TodayBoardService service,
         CancellationToken cancellationToken)
     {
         try
         {
-            var job = await service.AddJobAsync(
+            var jobs = await service.AddJobAsync(
                 new AddTodayJob(
-                    request.ChildId,
+                    request.ChildIds,
                     request.Name,
                     request.Description,
                     request.Points),
                 cancellationToken);
-            return TypedResults.Created("/api/today", MapJob(job));
+            return TypedResults.Created(
+                "/api/today",
+                new AddJobsResponse(jobs.Select(MapJob).ToArray()));
         }
         catch (InvalidTodayJobException exception)
         {
@@ -395,6 +388,17 @@ internal static class TodayEndpoints
             board.PointsBalance,
             board.PointEarnings.Select(MapPointEarning).ToArray(),
             board.PendingApprovalCount);
+    }
+
+    private static RecurringJobResponse MapRecurringCreation(RecurringJobCreation creation)
+    {
+        return new RecurringJobResponse(
+            creation.Assignments.Select(assignment => new RecurringJobAssignmentResponse(
+                assignment.SeriesId,
+                assignment.ChildId,
+                assignment.GeneratedThrough,
+                assignment.OccurrenceCount))
+                .ToArray());
     }
 
     private static MemberResponse MapMember(TodayMember member)

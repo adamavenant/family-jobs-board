@@ -18,6 +18,9 @@ internal sealed class RecurringJobSeriesConfiguration : IEntityTypeConfiguration
                 "(frequency = 'Monthly' AND weekday_mask = 0 AND monthly_day BETWEEN 1 AND 31)"));
         builder.HasKey(series => series.Id);
         builder.Property(series => series.Id).HasColumnName("id").ValueGeneratedNever();
+        builder.Property(series => series.AssignmentRequestId)
+            .HasColumnName("assignment_request_id")
+            .ValueGeneratedNever();
         builder.Property(series => series.ChildId).HasColumnName("child_id");
         builder.Property(series => series.CreatedByAdultId).HasColumnName("created_by_adult_id");
         builder.Property(series => series.Name)
@@ -41,6 +44,9 @@ internal sealed class RecurringJobSeriesConfiguration : IEntityTypeConfiguration
         builder.Property(series => series.WeekdayMask).HasColumnName("weekday_mask");
         builder.Property(series => series.MonthlyDay).HasColumnName("monthly_day");
         builder.Property(series => series.GeneratedThrough).HasColumnName("generated_through");
+        builder.HasIndex(series => new { series.AssignmentRequestId, series.ChildId })
+            .IsUnique()
+            .HasDatabaseName("ux_recurring_job_series_assignment_request_child");
         builder.HasIndex(series => new { series.ChildId, series.StartDate });
         builder.HasOne<HouseholdMember>()
             .WithMany()

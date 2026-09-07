@@ -3,6 +3,7 @@ import { useFetcher } from "react-router";
 
 import type { TodayActionResult } from "../../app/routes";
 import type { HouseholdMember } from "../../api/today";
+import { ChildAssignmentPicker } from "./ChildAssignmentPicker";
 
 const weekdays = [
   ["monday", "Monday"],
@@ -94,23 +95,10 @@ export function RecurringJobForm({
               <option value="monthly">Day of month</option>
             </select>
           </div>
-          <div className="form-group">
-            <label htmlFor="recurringChildId">
-              Assign {frequencyLabel.toLowerCase()} job to
-            </label>
-            <select
-              id="recurringChildId"
-              name="childId"
-              required
-              defaultValue={children[0]?.id}
-            >
-              {children.map((child) => (
-                <option key={child.id} value={child.id}>
-                  {child.displayName}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ChildAssignmentPicker
+            children={children}
+            legend={`Assign ${frequencyLabel.toLowerCase()} job to`}
+          />
           {frequency === "weekly" ? (
             <fieldset className="weekday-picker">
               <legend>Repeat on</legend>

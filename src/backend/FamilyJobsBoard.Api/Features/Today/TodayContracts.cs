@@ -17,14 +17,14 @@ public sealed record MemberResponse(
     bool IsAdult);
 
 public sealed record AddJobRequest(
-    Guid ChildId,
+    IReadOnlyList<Guid>? ChildIds,
     string? Name,
     string? Description,
     int Points);
 
 public sealed record CreateDailyRecurringJobRequest(
     Guid RequestId,
-    Guid ChildId,
+    IReadOnlyList<Guid>? ChildIds,
     string? Name,
     string? Description,
     int Points,
@@ -35,7 +35,7 @@ public sealed record CreateDailyRecurringJobRequest(
 
 public sealed record CreateWeeklyRecurringJobRequest(
     Guid RequestId,
-    Guid ChildId,
+    IReadOnlyList<Guid>? ChildIds,
     string? Name,
     string? Description,
     int Points,
@@ -47,7 +47,7 @@ public sealed record CreateWeeklyRecurringJobRequest(
 
 public sealed record CreateMonthlyRecurringJobRequest(
     Guid RequestId,
-    Guid ChildId,
+    IReadOnlyList<Guid>? ChildIds,
     string? Name,
     string? Description,
     int Points,
@@ -57,10 +57,16 @@ public sealed record CreateMonthlyRecurringJobRequest(
     DateOnly? EndDate,
     int DayOfMonth);
 
-public sealed record RecurringJobResponse(
+public sealed record RecurringJobAssignmentResponse(
     Guid SeriesId,
+    Guid ChildId,
     DateOnly GeneratedThrough,
     int OccurrenceCount);
+
+public sealed record RecurringJobResponse(
+    IReadOnlyList<RecurringJobAssignmentResponse> Assignments);
+
+public sealed record AddJobsResponse(IReadOnlyList<JobResponse> Jobs);
 
 public sealed record RejectJobRequest(string? Reason);
 

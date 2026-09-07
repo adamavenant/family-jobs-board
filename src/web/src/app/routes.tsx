@@ -284,7 +284,9 @@ async function addRecurringJobAction(
       ? submittedRequestId
       : crypto.randomUUID();
   const recurrenceFrequency = form.get("recurrenceFrequency");
-  const childId = form.get("childId");
+  const childIds = form
+    .getAll("childIds")
+    .filter((value): value is string => typeof value === "string");
   const name = form.get("name");
   const description = form.get("description");
   const pointsValue = form.get("points");
@@ -309,7 +311,8 @@ async function addRecurringJobAction(
     (recurrenceFrequency !== "daily" &&
       recurrenceFrequency !== "weekly" &&
       recurrenceFrequency !== "monthly") ||
-    typeof childId !== "string" ||
+    childIds.length === 0 ||
+    new Set(childIds).size !== childIds.length ||
     typeof name !== "string" ||
     name.trim().length === 0 ||
     name.trim().length > 160 ||
@@ -341,7 +344,7 @@ async function addRecurringJobAction(
   try {
     const recurringRequest = {
       requestId,
-      childId,
+      childIds,
       name,
       description,
       points,
@@ -368,11 +371,15 @@ async function addRecurringJobAction(
     } else {
       result = await createDailyRecurringJob(recurringRequest);
     }
+    const generatedThrough = result.assignments[0]?.generatedThrough;
+    if (!generatedThrough) {
+      throw new Error("The recurring job response contained no assignments.");
+    }
     return {
       intent: "addRecurring",
       frequency: recurrenceFrequency,
       success: true,
-      generatedThrough: result.generatedThrough,
+      generatedThrough,
     };
   } catch (error) {
     return {
@@ -465,11 +472,13 @@ async function addJobAction(form: FormData): Promise<AddJobActionResult> {
   const name = form.get("name");
   const description = form.get("description");
   const pointsValue = form.get("points");
-  const childId = form.get("childId");
+  const childIds = form
+    .getAll("childIds")
+    .filter((value): value is string => typeof value === "string");
   const points = Number(pointsValue);
 
-  if (typeof childId !== "string" || childId.length === 0) {
-    return { intent: "add", error: "Choose a child." };
+  if (childIds.length === 0 || new Set(childIds).size !== childIds.length) {
+    return { intent: "add", error: "Choose one or more children." };
   }
 
   if (typeof name !== "string" || name.trim().length === 0) {
@@ -497,7 +506,7 @@ async function addJobAction(form: FormData): Promise<AddJobActionResult> {
   }
 
   try {
-    await addJob({ childId, name, description, points });
+    await addJob({ childIds, name, description, points });
     return { intent: "add", success: true };
   } catch (error) {
     return {

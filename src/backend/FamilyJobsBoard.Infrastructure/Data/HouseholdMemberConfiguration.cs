@@ -29,6 +29,9 @@ internal sealed class HouseholdMemberConfiguration : IEntityTypeConfiguration<Ho
             .HasColumnName("role")
             .HasConversion<string>()
             .HasMaxLength(16);
+        builder.Property(member => member.IsActive)
+            .HasColumnName("is_active")
+            .HasDefaultValue(true);
         builder.Ignore(member => member.IsAdult);
     }
 }

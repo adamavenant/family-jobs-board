@@ -173,8 +173,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Add a new job for a child.
-         * @description Adds a new job to the selected child's board for today.
+         * Add a new job for one or more children.
+         * @description Adds an independent job to each selected child's board for today.
          */
         post: operations["AddJob"];
         delete?: never;
@@ -193,8 +193,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create a daily recurring job for a child.
-         * @description Creates an adult-owned daily series and materializes duplicate-safe occurrences through an eight-week horizon.
+         * Create a daily recurring job for one or more children.
+         * @description Creates an adult-owned child-specific daily series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.
          */
         post: operations["CreateDailyRecurringJob"];
         delete?: never;
@@ -213,8 +213,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create a weekly recurring job for a child.
-         * @description Creates an adult-owned weekly series for selected weekdays and materializes duplicate-safe occurrences through an eight-week horizon.
+         * Create a weekly recurring job for one or more children.
+         * @description Creates an adult-owned child-specific weekly series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.
          */
         post: operations["CreateWeeklyRecurringJob"];
         delete?: never;
@@ -233,8 +233,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create a monthly recurring job for a child.
-         * @description Creates an adult-owned monthly series for a calendar day and uses the final valid day in shorter months.
+         * Create a monthly recurring job for one or more children.
+         * @description Creates an adult-owned child-specific monthly series for each assignee and uses the final valid day in shorter months.
          */
         post: operations["CreateMonthlyRecurringJob"];
         delete?: never;
@@ -288,12 +288,14 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AddJobRequest: {
-            /** Format: uuid */
-            childId: string;
+            childIds: null | string[];
             name: null | string;
             description: null | string;
             /** Format: int32 */
             points: number | string;
+        };
+        AddJobsResponse: {
+            jobs: components["schemas"]["JobResponse"][];
         };
         AuthMemberResponse: {
             /** Format: uuid */
@@ -323,8 +325,7 @@ export interface components {
         CreateDailyRecurringJobRequest: {
             /** Format: uuid */
             requestId: string;
-            /** Format: uuid */
-            childId: string;
+            childIds: null | string[];
             name: null | string;
             description: null | string;
             /** Format: int32 */
@@ -340,8 +341,7 @@ export interface components {
         CreateMonthlyRecurringJobRequest: {
             /** Format: uuid */
             requestId: string;
-            /** Format: uuid */
-            childId: string;
+            childIds: null | string[];
             name: null | string;
             description: null | string;
             /** Format: int32 */
@@ -359,8 +359,7 @@ export interface components {
         CreateWeeklyRecurringJobRequest: {
             /** Format: uuid */
             requestId: string;
-            /** Format: uuid */
-            childId: string;
+            childIds: null | string[];
             name: null | string;
             description: null | string;
             /** Format: int32 */
@@ -456,13 +455,18 @@ export interface components {
             detail?: null | string;
             instance?: null | string;
         };
-        RecurringJobResponse: {
+        RecurringJobAssignmentResponse: {
             /** Format: uuid */
             seriesId: string;
+            /** Format: uuid */
+            childId: string;
             /** Format: date */
             generatedThrough: string;
             /** Format: int32 */
             occurrenceCount: number | string;
+        };
+        RecurringJobResponse: {
+            assignments: components["schemas"]["RecurringJobAssignmentResponse"][];
         };
         RejectJobRequest: {
             reason: null | string;
@@ -832,7 +836,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["JobResponse"];
+                    "application/json": components["schemas"]["AddJobsResponse"];
                 };
             };
             /** @description Bad Request */

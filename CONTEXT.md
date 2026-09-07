@@ -30,7 +30,9 @@ A user with administrative privileges within the family system. Adults can manag
 - Full administrative capabilities including user management, job creation, good behaviour logging, and point adjustments
 
 ### Job
-A task or chore assigned to a specific user within the family system. 
+A task or chore assigned to one child within the family system. An adult may
+assign the same details to multiple children in one action; this creates one
+independent Job per child so completion, review, and points remain separate.
 
 #### Characteristics
 - ID (GUID)
@@ -102,6 +104,8 @@ Functions available to Adult users for managing the system.
 
 - All deletions are soft-deletions with tracking
 - Audit trails maintained for all user actions
+- A job or recurring schedule assignment targets one or more distinct, active
+  children and persists all child-specific copies atomically.
 - Children have 4-digit PINs; adults have 6-digit PINs.
 - PINs are strings so leading zeroes are retained. Only a slow, salted,
   peppered hash is stored; plaintext PINs are never persisted or logged.

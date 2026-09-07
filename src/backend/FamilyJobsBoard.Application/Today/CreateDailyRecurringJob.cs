@@ -3,7 +3,7 @@ namespace FamilyJobsBoard.Application.Today;
 public sealed record CreateDailyRecurringJob(
     Guid RequestId,
     Guid ViewerId,
-    Guid ChildId,
+    IReadOnlyCollection<Guid>? ChildIds,
     string? Name,
     string? Description,
     int Points,
@@ -12,8 +12,12 @@ public sealed record CreateDailyRecurringJob(
     DateOnly StartDate,
     DateOnly? EndDate);
 
-public sealed record RecurringJobCreation(
+public sealed record RecurringJobAssignment(
     Guid SeriesId,
+    Guid ChildId,
     DateOnly GeneratedThrough,
-    int OccurrenceCount,
+    int OccurrenceCount);
+
+public sealed record RecurringJobCreation(
+    IReadOnlyList<RecurringJobAssignment> Assignments,
     bool WasCreated);

@@ -147,6 +147,33 @@ describe("Today page", () => {
     expect(screen.getByRole("spinbutton", { name: "Points" })).toHaveValue(1);
   });
 
+  it("requires at least one child for a new job", async () => {
+    const fetch = vi.fn().mockResolvedValue(jsonResponse(board));
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+
+    renderApp();
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await openGrownUpTools(user);
+    const tools = screen.getByText("Grown-up tools").closest("details");
+    expect(tools).not.toBeNull();
+    await user.click(
+      within(tools as HTMLElement).getByRole("checkbox", {
+        name: "Fredster",
+      }),
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "Job name" }),
+      "Tidy up",
+    );
+    await user.click(screen.getByRole("button", { name: "Add job" }));
+
+    expect(
+      await screen.findByText("Choose one or more children."),
+    ).toHaveAttribute("role", "alert");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("adds a job for the selected child", async () => {
     const addedJob = {
       id: "f75612ce-4253-4ca7-8d13-52636e825d98",
@@ -166,7 +193,9 @@ describe("Today page", () => {
       vi
         .fn()
         .mockResolvedValueOnce(jsonResponse(board))
-        .mockResolvedValueOnce(jsonResponse(addedJob, { status: 201 }))
+        .mockResolvedValueOnce(
+          jsonResponse({ jobs: [addedJob] }, { status: 201 }),
+        )
         .mockResolvedValueOnce(jsonResponse(boardWithAddedJob)),
     );
     const user = userEvent.setup();
@@ -198,6 +227,61 @@ describe("Today page", () => {
     ).toBeInTheDocument();
   });
 
+  it("assigns one job to both children with an accessible multi-selection", async () => {
+    const jobs = [
+      {
+        ...board.jobs[0],
+        id: "012ece40-d2df-496b-ae4b-99102aa24880",
+        childId: fredster.id,
+        childDisplayName: fredster.displayName,
+        name: "Make the beds",
+      },
+      {
+        ...board.jobs[0],
+        id: "a0e4556e-0ea4-40e2-8e8f-58a03d13e907",
+        childId: harrie.id,
+        childDisplayName: harrie.displayName,
+        name: "Make the beds",
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(board))
+        .mockResolvedValueOnce(jsonResponse({ jobs }, { status: 201 }))
+        .mockResolvedValueOnce(
+          jsonResponse({ ...board, jobs: [...board.jobs, ...jobs] }),
+        ),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await openGrownUpTools(user);
+    const oneOffTools = screen.getByText("Grown-up tools").closest("details");
+    expect(oneOffTools).not.toBeNull();
+    const fredsterOption = within(oneOffTools as HTMLElement).getByRole(
+      "checkbox",
+      { name: "Fredster" },
+    );
+    const harrieOption = within(oneOffTools as HTMLElement).getByRole(
+      "checkbox",
+      { name: "Harrie" },
+    );
+    expect(fredsterOption).toBeChecked();
+    expect(harrieOption).not.toBeChecked();
+    await user.click(harrieOption);
+    await user.type(screen.getByLabelText("Job name"), "Make the beds");
+    await user.click(screen.getByRole("button", { name: "Add job" }));
+
+    expect(
+      await screen.findAllByRole("heading", { name: "Make the beds" }),
+    ).toHaveLength(2);
+    expect(screen.getAllByText("Ready for Fredster").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Ready for Harrie")).toHaveLength(1);
+  });
+
   it("creates a daily recurring job and refreshes today's board", async () => {
     const recurringJob = {
       id: "667b50fd-447d-4320-8390-ea82f5bb9145",
@@ -216,6 +300,13 @@ describe("Today page", () => {
       approvedAtUtc: null,
       latestRejection: null,
     };
+    const harrieRecurringJob = {
+      ...recurringJob,
+      id: "8a9ea890-7f2c-48d4-a08a-3fdccad19a53",
+      childId: harrie.id,
+      childDisplayName: harrie.displayName,
+      recurringJobSeriesId: "a40700dd-17a9-4733-8207-4fc4096516e3",
+    };
     vi.stubGlobal(
       "fetch",
       vi
@@ -224,15 +315,29 @@ describe("Today page", () => {
         .mockResolvedValueOnce(
           jsonResponse(
             {
-              seriesId: recurringJob.recurringJobSeriesId,
-              generatedThrough: "2026-10-23",
-              occurrenceCount: 56,
+              assignments: [
+                {
+                  seriesId: recurringJob.recurringJobSeriesId,
+                  childId: fredster.id,
+                  generatedThrough: "2026-10-23",
+                  occurrenceCount: 56,
+                },
+                {
+                  seriesId: harrieRecurringJob.recurringJobSeriesId,
+                  childId: harrie.id,
+                  generatedThrough: "2026-10-23",
+                  occurrenceCount: 56,
+                },
+              ],
             },
             { status: 201 },
           ),
         )
         .mockResolvedValueOnce(
-          jsonResponse({ ...board, jobs: [...board.jobs, recurringJob] }),
+          jsonResponse({
+            ...board,
+            jobs: [...board.jobs, recurringJob, harrieRecurringJob],
+          }),
         ),
     );
     const user = userEvent.setup();
@@ -242,6 +347,11 @@ describe("Today page", () => {
     const recurringTools = screen.getByText("Routines").closest("details");
     expect(recurringTools).not.toBeNull();
     await user.click(screen.getByText("Routines"));
+    await user.click(
+      within(recurringTools as HTMLElement).getByRole("checkbox", {
+        name: "Harrie",
+      }),
+    );
     await user.type(screen.getByLabelText("Daily job name"), "Feed the fish");
     await user.type(
       screen.getByLabelText("Daily job description"),
@@ -259,10 +369,11 @@ describe("Today page", () => {
     );
     await user.click(screen.getByRole("button", { name: "Create daily job" }));
 
-    const heading = await screen.findByRole("heading", {
+    const headings = await screen.findAllByRole("heading", {
       name: "Feed the fish",
     });
-    const card = heading.closest("article");
+    expect(headings).toHaveLength(2);
+    const card = headings[0]!.closest("article");
     expect(card).not.toBeNull();
     expect(
       within(card as HTMLElement).getByText("Daily · Morning · 07:30"),
@@ -298,9 +409,14 @@ describe("Today page", () => {
         .mockResolvedValueOnce(
           jsonResponse(
             {
-              seriesId: recurringJob.recurringJobSeriesId,
-              generatedThrough: "2026-10-23",
-              occurrenceCount: 16,
+              assignments: [
+                {
+                  seriesId: recurringJob.recurringJobSeriesId,
+                  childId: fredster.id,
+                  generatedThrough: "2026-10-23",
+                  occurrenceCount: 16,
+                },
+              ],
             },
             { status: 201 },
           ),
@@ -376,9 +492,14 @@ describe("Today page", () => {
         .mockResolvedValueOnce(
           jsonResponse(
             {
-              seriesId: recurringJob.recurringJobSeriesId,
-              generatedThrough: "2026-10-23",
-              occurrenceCount: 2,
+              assignments: [
+                {
+                  seriesId: recurringJob.recurringJobSeriesId,
+                  childId: fredster.id,
+                  generatedThrough: "2026-10-23",
+                  occurrenceCount: 2,
+                },
+              ],
             },
             { status: 201 },
           ),

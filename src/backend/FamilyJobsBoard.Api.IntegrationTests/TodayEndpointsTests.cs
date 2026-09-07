@@ -164,6 +164,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.True(members.Single(member => member.Id == DemoDataIds.Hellie).IsAdult);
         Assert.False(members.Single(member => member.Id == DemoDataIds.Fredster).IsAdult);
         Assert.False(members.Single(member => member.Id == DemoDataIds.Harrie).IsAdult);
+        Assert.All(members, member => Assert.True(member.IsActive));
         Assert.Equal(DemoDataIds.Fredster, job.ChildId);
     }
 
@@ -175,15 +176,15 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             "/api/today/jobs",
             new
             {
-                childId = DemoDataIds.Fredster,
+                childIds = new[] { DemoDataIds.Fredster },
                 name = "  Put toys away  ",
                 description = "  Return every toy to its box.  ",
                 points = 4,
             });
-        var created = await createResponse.Content.ReadFromJsonAsync<JobResponse>();
+        var createdJobs = await createResponse.Content.ReadFromJsonAsync<AddJobsResponse>();
 
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
-        Assert.NotNull(created);
+        var created = Assert.Single(createdJobs!.Jobs);
         Assert.NotEqual(Guid.Empty, created.Id);
         Assert.Equal("Put toys away", created.Name);
         Assert.Equal("Return every toy to its box.", created.Description);
@@ -209,20 +210,133 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Job_for_both_children_creates_independent_copies()
+    {
+        using var createResponse = await Client.PostAsJsonAsync(
+            "/api/today/jobs",
+            new
+            {
+                childIds = new[] { DemoDataIds.Fredster, DemoDataIds.Harrie },
+                name = "Make the beds",
+                description = "Straighten the duvet and pillows.",
+                points = 3,
+            });
+        var created = await createResponse.Content.ReadFromJsonAsync<AddJobsResponse>();
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        Assert.NotNull(created);
+        Assert.Equal(2, created.Jobs.Count);
+        Assert.Equal(
+            new[] { DemoDataIds.Fredster, DemoDataIds.Harrie }.Order(),
+            created.Jobs.Select(job => job.ChildId).Order());
+        Assert.Equal(2, created.Jobs.Select(job => job.Id).Distinct().Count());
+        Assert.All(created.Jobs, job =>
+        {
+            Assert.Equal("Make the beds", job.Name);
+            Assert.Equal("open", job.Status);
+        });
+
+        var fredsterJob = created.Jobs.Single(job => job.ChildId == DemoDataIds.Fredster);
+        using var fredsterClient = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .CreateClient();
+        fredsterClient.DefaultRequestHeaders.Add(
+            "X-Test-Member-Id",
+            DemoDataIds.Fredster.ToString());
+        using var completeResponse = await fredsterClient.PostAsync(
+            $"/api/jobs/{fredsterJob.Id}/complete",
+            null);
+        Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
+
+        var adultBoard = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}");
+        Assert.Equal(
+            "pendingApproval",
+            adultBoard!.Jobs.Single(job => job.Id == fredsterJob.Id).Status);
+        var harrieJob = created.Jobs.Single(job => job.ChildId == DemoDataIds.Harrie);
+        Assert.Equal(
+            "open",
+            adultBoard.Jobs.Single(job => job.Id == harrieJob.Id).Status);
+    }
+
+    [Fact]
+    public async Task Invalid_assignee_set_persists_no_jobs()
+    {
+        await using (var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await database.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE household_members SET is_active = FALSE WHERE id = {DemoDataIds.Harrie}");
+        }
+
+        using var response = await Client.PostAsJsonAsync(
+            "/api/today/jobs",
+            new
+            {
+                childIds = new[] { DemoDataIds.Fredster, DemoDataIds.Harrie },
+                name = "Do not create me",
+                description = "The assignee set is invalid.",
+                points = 1,
+            });
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("ChildIds", problem?.Errors.Keys ?? []);
+        await using var verificationScope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var verificationDatabase = verificationScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await verificationDatabase.Jobs.AnyAsync(job => job.Name == "Do not create me"));
+    }
+
+    [Fact]
+    public async Task Empty_and_duplicate_assignee_sets_are_rejected()
+    {
+        foreach (var childIds in new[]
+                 {
+                     Array.Empty<Guid>(),
+                     new[] { DemoDataIds.Fredster, DemoDataIds.Fredster },
+                 })
+        {
+            using var response = await Client.PostAsJsonAsync(
+                "/api/today/jobs",
+                new
+                {
+                    childIds,
+                    name = "Invalid assignees",
+                    description = "Do not persist this job.",
+                    points = 1,
+                });
+            var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains("ChildIds", problem?.Errors.Keys ?? []);
+        }
+
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await database.Jobs.AnyAsync(job => job.Name == "Invalid assignees"));
+    }
+
+    [Fact]
     public async Task Child_cannot_complete_another_childs_job()
     {
         using var created = await Client.PostAsJsonAsync(
             "/api/today/jobs",
             new
             {
-                childId = DemoDataIds.Harrie,
+                childIds = new[] { DemoDataIds.Harrie },
                 name = "Harrie's job",
                 description = "Only Harrie can complete this.",
                 points = 2,
             });
-        var job = await created.Content.ReadFromJsonAsync<JobResponse>();
+        var createdJobs = await created.Content.ReadFromJsonAsync<AddJobsResponse>();
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        Assert.NotNull(job);
+        var job = Assert.Single(createdJobs!.Jobs);
 
         using var fredsterClient = (_factory
             ?? throw new InvalidOperationException("Test API was not initialised."))
@@ -249,7 +363,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         {
             requestId,
             viewerId = DemoDataIds.Addie,
-            childId = DemoDataIds.Fredster,
+            childIds = new[] { DemoDataIds.Fredster },
             name = "  Feed the fish  ",
             description = "  Add one small scoop.  ",
             points = 3,
@@ -266,14 +380,17 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         Assert.NotNull(created);
-        Assert.Equal(requestId, created.SeriesId);
-        Assert.Equal(endDate, created.GeneratedThrough);
-        Assert.Equal(3, created.OccurrenceCount);
+        var assignment = Assert.Single(created.Assignments);
+        Assert.Equal(DemoDataIds.Fredster, assignment.ChildId);
+        Assert.Equal(endDate, assignment.GeneratedThrough);
+        Assert.Equal(3, assignment.OccurrenceCount);
 
         var board = await Client.GetFromJsonAsync<TodayResponse>(
             $"/api/today?memberId={DemoDataIds.Fredster}");
         Assert.NotNull(board);
-        var occurrence = Assert.Single(board.Jobs, job => job.RecurringJobSeriesId == requestId);
+        var occurrence = Assert.Single(
+            board.Jobs,
+            job => job.RecurringJobSeriesId == assignment.SeriesId);
         Assert.Equal("Feed the fish", occurrence.Name);
         Assert.Equal("Add one small scoop.", occurrence.Description);
         Assert.Equal(initial.Date, occurrence.ScheduledDate);
@@ -286,14 +403,20 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             request);
         var retried = await retryResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
         Assert.Equal(HttpStatusCode.OK, retryResponse.StatusCode);
-        Assert.Equal(3, retried?.OccurrenceCount);
+        Assert.Equal(3, Assert.Single(retried!.Assignments).OccurrenceCount);
 
         var factory = _factory ?? throw new InvalidOperationException("Test API was not initialised.");
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            Assert.Equal(1, await database.RecurringJobSeries.CountAsync(series => series.Id == requestId));
-            Assert.Equal(3, await database.Jobs.CountAsync(job => job.RecurringJobSeriesId == requestId));
+            Assert.Equal(
+                1,
+                await database.RecurringJobSeries.CountAsync(
+                    series => series.AssignmentRequestId == requestId));
+            Assert.Equal(
+                3,
+                await database.Jobs.CountAsync(
+                    job => job.RecurringJobSeriesId == assignment.SeriesId));
         }
 
         await RestartApplicationAsync();
@@ -302,7 +425,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             $"/api/today?memberId={DemoDataIds.Fredster}");
         var persistedOccurrence = Assert.Single(
             persisted!.Jobs,
-            job => job.RecurringJobSeriesId == requestId);
+            job => job.RecurringJobSeriesId == assignment.SeriesId);
         using var completeResponse = await Client.PostAsync(
             $"/api/jobs/{persistedOccurrence.Id}/complete",
             null);
@@ -315,6 +438,105 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var awarded = await Client.GetFromJsonAsync<TodayResponse>(
             $"/api/today?memberId={DemoDataIds.Fredster}");
         Assert.Contains(awarded!.PointEarnings, earning => earning.JobId == persistedOccurrence.Id);
+    }
+
+    [Theory]
+    [InlineData("daily")]
+    [InlineData("weekly")]
+    [InlineData("monthly")]
+    public async Task Recurring_schedule_for_both_children_is_atomic_and_idempotent(
+        string frequency)
+    {
+        var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.NotNull(initial);
+        var requestId = Guid.NewGuid();
+        var request = new
+        {
+            requestId,
+            childIds = new[] { DemoDataIds.Fredster, DemoDataIds.Harrie },
+            name = $"Both children {frequency}",
+            description = "Each child gets an independent copy.",
+            points = 4,
+            agendaPeriod = "morning",
+            scheduledTime = (string?)null,
+            startDate = initial.Date,
+            endDate = initial.Date,
+            weekdays = new[] { initial.Date.DayOfWeek.ToString().ToLowerInvariant() },
+            dayOfMonth = initial.Date.Day,
+        };
+
+        using var createResponse = await Client.PostAsJsonAsync(
+            $"/api/recurring-jobs/{frequency}",
+            request);
+        var created = await createResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        Assert.NotNull(created);
+        Assert.Equal(2, created.Assignments.Count);
+        Assert.Equal(
+            new[] { DemoDataIds.Fredster, DemoDataIds.Harrie }.Order(),
+            created.Assignments.Select(assignment => assignment.ChildId).Order());
+        Assert.Equal(2, created.Assignments.Select(assignment => assignment.SeriesId).Distinct().Count());
+        Assert.All(created.Assignments, assignment => Assert.Equal(1, assignment.OccurrenceCount));
+
+        using var retryResponse = await Client.PostAsJsonAsync(
+            $"/api/recurring-jobs/{frequency}",
+            request);
+        var retried = await retryResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
+        Assert.Equal(HttpStatusCode.OK, retryResponse.StatusCode);
+        Assert.Equal(
+            created.Assignments.Select(assignment => assignment.SeriesId).Order(),
+            retried!.Assignments.Select(assignment => assignment.SeriesId).Order());
+
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var series = await database.RecurringJobSeries
+            .Where(item => item.AssignmentRequestId == requestId)
+            .ToListAsync();
+        Assert.Equal(2, series.Count);
+        var seriesIds = series.Select(item => item.Id).ToArray();
+        var occurrenceCounts = await database.Jobs
+            .Where(job => job.RecurringJobSeriesId != null
+                && seriesIds.Contains(job.RecurringJobSeriesId.Value))
+            .GroupBy(job => job.RecurringJobSeriesId!.Value)
+            .ToDictionaryAsync(group => group.Key, group => group.Count());
+        Assert.All(seriesIds, seriesId => Assert.Equal(1, occurrenceCounts[seriesId]));
+    }
+
+    [Fact]
+    public async Task Invalid_recurring_assignee_set_persists_no_series_or_occurrences()
+    {
+        var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.NotNull(initial);
+        var requestId = Guid.NewGuid();
+
+        using var response = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/daily",
+            new
+            {
+                requestId,
+                childIds = new[] { DemoDataIds.Fredster, DemoDataIds.Addie },
+                name = "Do not schedule me",
+                description = "One assignee is an adult.",
+                points = 2,
+                agendaPeriod = "morning",
+                scheduledTime = (string?)null,
+                startDate = initial.Date,
+                endDate = initial.Date,
+            });
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("ChildIds", problem?.Errors.Keys ?? []);
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await database.RecurringJobSeries.AnyAsync(
+            series => series.AssignmentRequestId == requestId));
+        Assert.False(await database.Jobs.AnyAsync(job => job.Name == "Do not schedule me"));
     }
 
     [Fact]
@@ -338,7 +560,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         {
             requestId,
             viewerId = DemoDataIds.Addie,
-            childId = DemoDataIds.Fredster,
+            childIds = new[] { DemoDataIds.Fredster },
             name = "  Pack sports kit  ",
             description = "  Check the kit bag.  ",
             points = 4,
@@ -358,15 +580,16 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         Assert.NotNull(created);
-        Assert.Equal(requestId, created.SeriesId);
-        Assert.Equal(endDate, created.GeneratedThrough);
-        Assert.Equal(expectedDates.Length, created.OccurrenceCount);
+        var assignment = Assert.Single(created.Assignments);
+        Assert.Equal(DemoDataIds.Fredster, assignment.ChildId);
+        Assert.Equal(endDate, assignment.GeneratedThrough);
+        Assert.Equal(expectedDates.Length, assignment.OccurrenceCount);
 
         var board = await Client.GetFromJsonAsync<TodayResponse>(
             $"/api/today?memberId={DemoDataIds.Fredster}");
         var occurrence = Assert.Single(
             board!.Jobs,
-            job => job.RecurringJobSeriesId == requestId);
+            job => job.RecurringJobSeriesId == assignment.SeriesId);
         Assert.Equal("Pack sports kit", occurrence.Name);
         Assert.Equal(initial.Date, occurrence.ScheduledDate);
         Assert.Equal("weekly", occurrence.RecurrenceFrequency);
@@ -378,7 +601,9 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             request);
         var retried = await retryResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
         Assert.Equal(HttpStatusCode.OK, retryResponse.StatusCode);
-        Assert.Equal(expectedDates.Length, retried?.OccurrenceCount);
+        Assert.Equal(
+            expectedDates.Length,
+            Assert.Single(retried!.Assignments).OccurrenceCount);
 
         await RestartApplicationAsync();
         await Client.GetFromJsonAsync<TodayResponse>(
@@ -387,9 +612,10 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var factory = _factory ?? throw new InvalidOperationException("Test API was not initialised.");
         await using var scope = factory.Services.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var series = await database.RecurringJobSeries.SingleAsync(item => item.Id == requestId);
+        var series = await database.RecurringJobSeries.SingleAsync(
+            item => item.AssignmentRequestId == requestId);
         var persistedDates = await database.Jobs
-            .Where(job => job.RecurringJobSeriesId == requestId)
+            .Where(job => job.RecurringJobSeriesId == assignment.SeriesId)
             .OrderBy(job => job.ScheduledDate)
             .Select(job => job.ScheduledDate)
             .ToArrayAsync();
@@ -418,7 +644,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         {
             requestId,
             viewerId = DemoDataIds.Addie,
-            childId = DemoDataIds.Fredster,
+            childIds = new[] { DemoDataIds.Fredster },
             name = "  Clean the fridge  ",
             description = "  Check every shelf.  ",
             points = 5,
@@ -436,15 +662,16 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         Assert.NotNull(created);
-        Assert.Equal(requestId, created.SeriesId);
-        Assert.Equal(expectedDates[^1], created.GeneratedThrough);
-        Assert.Equal(expectedDates.Length, created.OccurrenceCount);
+        var assignment = Assert.Single(created.Assignments);
+        Assert.Equal(DemoDataIds.Fredster, assignment.ChildId);
+        Assert.Equal(expectedDates[^1], assignment.GeneratedThrough);
+        Assert.Equal(expectedDates.Length, assignment.OccurrenceCount);
 
         var board = await Client.GetFromJsonAsync<TodayResponse>(
             $"/api/today?memberId={DemoDataIds.Fredster}");
         var occurrence = Assert.Single(
             board!.Jobs,
-            job => job.RecurringJobSeriesId == requestId);
+            job => job.RecurringJobSeriesId == assignment.SeriesId);
         Assert.Equal("Clean the fridge", occurrence.Name);
         Assert.Equal(initial.Date, occurrence.ScheduledDate);
         Assert.Equal("monthly", occurrence.RecurrenceFrequency);
@@ -456,7 +683,9 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             request);
         var retried = await retryResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
         Assert.Equal(HttpStatusCode.OK, retryResponse.StatusCode);
-        Assert.Equal(expectedDates.Length, retried?.OccurrenceCount);
+        Assert.Equal(
+            expectedDates.Length,
+            Assert.Single(retried!.Assignments).OccurrenceCount);
 
         await RestartApplicationAsync();
         await Client.GetFromJsonAsync<TodayResponse>(
@@ -465,9 +694,10 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var factory = _factory ?? throw new InvalidOperationException("Test API was not initialised.");
         await using var scope = factory.Services.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var series = await database.RecurringJobSeries.SingleAsync(item => item.Id == requestId);
+        var series = await database.RecurringJobSeries.SingleAsync(
+            item => item.AssignmentRequestId == requestId);
         var persistedDates = await database.Jobs
-            .Where(job => job.RecurringJobSeriesId == requestId)
+            .Where(job => job.RecurringJobSeriesId == assignment.SeriesId)
             .OrderBy(job => job.ScheduledDate)
             .Select(job => job.ScheduledDate)
             .ToArrayAsync();
@@ -521,6 +751,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             [RecurrenceFrequency.Daily, RecurrenceFrequency.Weekly],
             preservedSeries.Select(series => series.Frequency));
         Assert.All(preservedSeries, series => Assert.Null(series.MonthlyDay));
+        Assert.All(preservedSeries, series => Assert.Equal(series.Id, series.AssignmentRequestId));
         Assert.Equal(new[] { dailyJobId, weeklyJobId }.Order(), preservedJobIds.Order());
 
         var monthlySeries = RecurringJobSeries.Monthly(
@@ -563,7 +794,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 {
                     requestId = Guid.NewGuid(),
                     viewerId = DemoDataIds.Addie,
-                    childId = DemoDataIds.Fredster,
+                    childIds = new[] { DemoDataIds.Fredster },
                     name = "Pack sports kit",
                     description = "Check the kit bag.",
                     points = 4,
@@ -595,7 +826,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             {
                 requestId = Guid.NewGuid(),
                 viewerId = DemoDataIds.Addie,
-                childId = DemoDataIds.Fredster,
+                childIds = new[] { DemoDataIds.Fredster },
                 name = "Clean the fridge",
                 description = "Check every shelf.",
                 points = 5,
@@ -628,7 +859,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             {
                 requestId = Guid.NewGuid(),
                 viewerId = DemoDataIds.Fredster,
-                childId = DemoDataIds.Fredster,
+                childIds = new[] { DemoDataIds.Fredster },
                 name = "Feed the fish",
                 description = "One scoop.",
                 points = 2,
@@ -645,7 +876,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             {
                 requestId = Guid.NewGuid(),
                 viewerId = DemoDataIds.Addie,
-                childId = Guid.NewGuid(),
+                childIds = new[] { Guid.NewGuid() },
                 name = "Feed the fish",
                 description = "One scoop.",
                 points = -1,
@@ -658,7 +889,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         Assert.NotNull(invalidProblem);
         Assert.Equal("Invalid daily recurring job data", invalidProblem.Title);
-        Assert.Contains("ChildId", invalidProblem.Errors.Keys);
+        Assert.Contains("ChildIds", invalidProblem.Errors.Keys);
         Assert.Contains("Points", invalidProblem.Errors.Keys);
         Assert.Contains("AgendaPeriod", invalidProblem.Errors.Keys);
         Assert.Contains("EndDate", invalidProblem.Errors.Keys);
@@ -677,7 +908,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             {
                 requestId,
                 viewerId = DemoDataIds.Addie,
-                childId = DemoDataIds.Fredster,
+                childIds = new[] { DemoDataIds.Fredster },
                 name = "Feed the fish",
                 description = "One scoop.",
                 points = 2,
@@ -694,7 +925,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             {
                 requestId,
                 viewerId = DemoDataIds.Addie,
-                childId = DemoDataIds.Fredster,
+                childIds = new[] { DemoDataIds.Fredster },
                 name = "Different job",
                 description = "One scoop.",
                 points = 2,
@@ -714,7 +945,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             "/api/today/jobs",
             new
             {
-                childId = DemoDataIds.Harrie,
+                childIds = new[] { DemoDataIds.Harrie },
                 name = "Water the plants",
                 description = "Give each plant a small drink.",
                 points = 2,
@@ -759,14 +990,14 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             "/api/today/jobs",
             new
             {
-                childId = DemoDataIds.Addie,
+                childIds = new[] { DemoDataIds.Addie },
                 name = "Invalid assignment",
                 description = "Adults cannot be job assignees.",
                 points = 1,
             });
         var problem = await adultAssignee.Content.ReadFromJsonAsync<ValidationProblemDetails>();
         Assert.Equal(HttpStatusCode.BadRequest, adultAssignee.StatusCode);
-        Assert.Contains("ChildId", problem?.Errors.Keys ?? []);
+        Assert.Contains("ChildIds", problem?.Errors.Keys ?? []);
     }
 
     [Fact]
@@ -1047,7 +1278,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     {
         using var response = await Client.PostAsJsonAsync(
             "/api/today/jobs",
-            new { childId = DemoDataIds.Fredster, name, description, points });
+            new { childIds = new[] { DemoDataIds.Fredster }, name, description, points });
         var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -1133,8 +1364,14 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
     private sealed record JobApprovalResponse(JobResponse Job, int PointsBalance);
 
+    private sealed record AddJobsResponse(IReadOnlyList<JobResponse> Jobs);
+
     private sealed record RecurringJobResponse(
+        IReadOnlyList<RecurringJobAssignmentResponse> Assignments);
+
+    private sealed record RecurringJobAssignmentResponse(
         Guid SeriesId,
+        Guid ChildId,
         DateOnly GeneratedThrough,
         int OccurrenceCount);
 

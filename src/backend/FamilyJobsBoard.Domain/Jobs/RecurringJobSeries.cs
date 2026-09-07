@@ -8,6 +8,7 @@ public sealed class RecurringJobSeries
 
     private RecurringJobSeries(
         Guid id,
+        Guid assignmentRequestId,
         Guid childId,
         Guid createdByAdultId,
         string name,
@@ -24,6 +25,13 @@ public sealed class RecurringJobSeries
         if (id == Guid.Empty)
         {
             throw new ArgumentException("A recurring job series needs an ID.", nameof(id));
+        }
+
+        if (assignmentRequestId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "A recurring job series needs an assignment request ID.",
+                nameof(assignmentRequestId));
         }
 
         if (childId == Guid.Empty)
@@ -93,6 +101,7 @@ public sealed class RecurringJobSeries
         }
 
         Id = id;
+        AssignmentRequestId = assignmentRequestId;
         ChildId = childId;
         CreatedByAdultId = createdByAdultId;
         Name = trimmedName;
@@ -109,6 +118,8 @@ public sealed class RecurringJobSeries
     }
 
     public Guid Id { get; private set; }
+
+    public Guid AssignmentRequestId { get; private set; }
 
     public Guid ChildId { get; private set; }
 
@@ -146,10 +157,12 @@ public sealed class RecurringJobSeries
         AgendaPeriod agendaPeriod,
         TimeOnly? scheduledTime,
         DateOnly startDate,
-        DateOnly? endDate)
+        DateOnly? endDate,
+        Guid? assignmentRequestId = null)
     {
         return new RecurringJobSeries(
             id,
+            assignmentRequestId ?? id,
             childId,
             createdByAdultId,
             name,
@@ -175,7 +188,8 @@ public sealed class RecurringJobSeries
         TimeOnly? scheduledTime,
         DateOnly startDate,
         DateOnly? endDate,
-        IReadOnlyCollection<DayOfWeek> weekdays)
+        IReadOnlyCollection<DayOfWeek> weekdays,
+        Guid? assignmentRequestId = null)
     {
         ArgumentNullException.ThrowIfNull(weekdays);
         if (weekdays.Count == 0)
@@ -201,6 +215,7 @@ public sealed class RecurringJobSeries
 
         return new RecurringJobSeries(
             id,
+            assignmentRequestId ?? id,
             childId,
             createdByAdultId,
             name,
@@ -226,10 +241,12 @@ public sealed class RecurringJobSeries
         TimeOnly? scheduledTime,
         DateOnly startDate,
         DateOnly? endDate,
-        int dayOfMonth)
+        int dayOfMonth,
+        Guid? assignmentRequestId = null)
     {
         return new RecurringJobSeries(
             id,
+            assignmentRequestId ?? id,
             childId,
             createdByAdultId,
             name,
