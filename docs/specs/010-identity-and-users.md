@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted for the first-adult bootstrap and PIN sign-in implementation slice.
-Later user administration remains specified at a boundary level only.
+Accepted for the first-adult bootstrap, PIN sign-in, and family-member
+list/create/onboarding implementation slices. Editing, soft deletion,
+restoration, and PIN reset remain specified at a boundary level only.
 
 ## Outcome and user value
 
@@ -59,10 +60,21 @@ slice.
 - retirement of the production demo profile switcher; and
 - a non-destructive migration from the deployed pilot data.
 
+### Family-member onboarding slice
+
+- an authenticated adult can list every active profile, including members whose
+  credential is `NotSet`;
+- an authenticated adult can create an `Adult` or `Child` with required first
+  name and surname, optional nickname, and a `NotSet` credential;
+- creation never accepts a PIN and commits the member and credential together;
+- the adult can deliberately start the existing one-time PIN handoff immediately
+  or return to it later; and
+- anonymous and child callers cannot list or create household members.
+
 ### Out of scope
 
-- creating, editing, deleting, restoring, or resetting users beyond the
-  existing-profile PIN handoff;
+- editing, deleting, restoring, or resetting users beyond the existing-profile
+  PIN handoff;
 - multiple households or tenants;
 - email, passwords, recovery links, external identity providers, biometrics,
   multi-factor authentication, or device trust;

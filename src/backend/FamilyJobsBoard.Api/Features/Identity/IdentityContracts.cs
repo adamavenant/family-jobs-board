@@ -13,6 +13,21 @@ internal sealed record SetupPinRequest(string? SetupToken, string? Pin);
 
 internal sealed record StartPinSetupRequest(string? Surname);
 
+internal sealed record CreateFamilyMemberRequest(
+    string? FirstName,
+    string? Surname,
+    string? Nickname,
+    string? Role);
+
+internal sealed record FamilyMemberResponse(
+    Guid Id,
+    string FirstName,
+    string? Surname,
+    string? Nickname,
+    string DisplayName,
+    string Role,
+    bool IsCredentialReady);
+
 internal sealed record AuthMemberResponse(
     Guid Id,
     string DisplayName,

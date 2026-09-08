@@ -18,6 +18,12 @@ public sealed record IdentityMember(
     HouseholdRole Role,
     bool IsCredentialReady);
 
+public sealed record CreateFamilyMember(
+    string? FirstName,
+    string? Surname,
+    string? Nickname,
+    string? Role);
+
 public sealed record IdentityStartState(
     IdentityStartMode Mode,
     IReadOnlyList<IdentityMember> Members);
@@ -103,6 +109,7 @@ public enum IdentityError
     PinAlreadySet,
     MemberNotEligible,
     InvalidOrExpiredSetup,
+    InvalidMember,
 }
 
 public sealed class IdentityOperationException : Exception

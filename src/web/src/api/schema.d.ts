@@ -4,23 +4,6 @@
  */
 
 export interface paths {
-    "/api/users/{memberId}/pin-setup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Authorize a one-time PIN handoff to an unconfigured member. */
-        post: operations["StartPinSetup"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/auth/start": {
         parameters: {
             query?: never;
@@ -117,6 +100,41 @@ export interface paths {
         put?: never;
         /** Consume a one-time handoff and set the target member PIN. */
         post: operations["SetupPin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List active household members for administration. */
+        get: operations["GetFamilyMembers"];
+        put?: never;
+        /** Create an active household member awaiting PIN setup. */
+        post: operations["CreateFamilyMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{memberId}/pin-setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Authorize a one-time PIN handoff to an unconfigured member. */
+        post: operations["StartPinSetup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -338,6 +356,12 @@ export interface components {
             /** Format: date */
             endDate: null | string;
         };
+        CreateFamilyMemberRequest: {
+            firstName: null | string;
+            surname: null | string;
+            nickname: null | string;
+            role: null | string;
+        };
         CreateMonthlyRecurringJobRequest: {
             /** Format: uuid */
             requestId: string;
@@ -372,6 +396,16 @@ export interface components {
             /** Format: date */
             endDate: null | string;
             weekdays: null | string[];
+        };
+        FamilyMemberResponse: {
+            /** Format: uuid */
+            id: string;
+            firstName: string;
+            surname: null | string;
+            nickname: null | string;
+            displayName: string;
+            role: string;
+            isCredentialReady: boolean;
         };
         HttpValidationProblemDetails: {
             type?: null | string;
@@ -511,50 +545,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    StartPinSetup: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                memberId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StartPinSetupRequest"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PinSetupResponse"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-        };
-    };
     GetAuthenticationStart: {
         parameters: {
             query?: never;
@@ -748,6 +738,103 @@ export interface operations {
             };
             /** @description Bad Request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    GetFamilyMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FamilyMemberResponse"][];
+                };
+            };
+        };
+    };
+    CreateFamilyMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFamilyMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FamilyMemberResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    StartPinSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartPinSetupRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinSetupResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

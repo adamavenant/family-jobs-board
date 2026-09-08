@@ -813,6 +813,91 @@ describe("Today page", () => {
     ).toBeInTheDocument();
     expect(window.localStorage).toHaveLength(0);
   });
+
+  it("loads active family members on demand and shows PIN readiness", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestPath(input);
+        if (path === "/api/users") {
+          return jsonResponse([
+            managedMember(addie, true, "Avenant"),
+            managedMember(fredster, false, "Avenant"),
+          ]);
+        }
+        return jsonResponse(board);
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Manage family"));
+
+    expect(
+      await screen.findByRole("heading", { name: "Family members" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("PIN ready")).toBeInTheDocument();
+    expect(screen.getByText("PIN not set")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Set up PIN now" }),
+    ).toBeInTheDocument();
+  });
+
+  it("creates a child and offers a deliberate private PIN handoff", async () => {
+    let created = false;
+    const fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = input instanceof Request ? input : null;
+        const path = requestPath(input);
+        const method = request?.method ?? init?.method ?? "GET";
+        if (path === "/api/users" && method === "POST") {
+          created = true;
+          return jsonResponse(managedMember(fredster, false, "Avenant"), {
+            status: 201,
+          });
+        }
+        if (path === "/api/users") {
+          return jsonResponse([
+            managedMember(addie, true, "Avenant"),
+            ...(created ? [managedMember(fredster, false, "Avenant")] : []),
+          ]);
+        }
+        return jsonResponse(board);
+      },
+    );
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Manage family"));
+    await screen.findByRole("heading", { name: "Family members" });
+    await screen.findByText("PIN ready");
+    await user.type(screen.getByLabelText("First name"), "Fred");
+    await user.type(screen.getByLabelText("Surname"), "Avenant");
+    await user.type(screen.getByLabelText("Nickname (optional)"), "Fredster");
+    await user.click(screen.getByRole("button", { name: "Add family member" }));
+
+    expect(await screen.findByText(/Fredster was added/)).toHaveAttribute(
+      "role",
+      "status",
+    );
+    expect(
+      screen.getByRole("button", { name: "Set up PIN now" }),
+    ).toBeInTheDocument();
+    const createRequest = fetch.mock.calls.find(([input]) => {
+      const request = input instanceof Request ? input : null;
+      return requestPath(input) === "/api/users" && request?.method === "POST";
+    })?.[0];
+    expect(createRequest).toBeInstanceOf(Request);
+    expect(await (createRequest as Request).clone().json()).toEqual({
+      firstName: "Fred",
+      surname: "Avenant",
+      nickname: "Fredster",
+      role: "child",
+    });
+  });
 });
 
 function renderApp() {
@@ -839,4 +924,30 @@ function jsonResponse(body: unknown, init?: ResponseInit) {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
+}
+
+function requestPath(input: RequestInfo | URL) {
+  const value =
+    typeof input === "string"
+      ? input
+      : "url" in input
+        ? input.url
+        : input.toString();
+  return new URL(value, window.location.origin).pathname;
+}
+
+function managedMember(
+  member: typeof addie,
+  isCredentialReady: boolean,
+  surname: string | null,
+) {
+  return {
+    id: member.id,
+    firstName: member.firstName,
+    surname,
+    nickname: member.nickname,
+    displayName: member.displayName,
+    role: member.isAdult ? "adult" : "child",
+    isCredentialReady,
+  };
 }

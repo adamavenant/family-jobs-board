@@ -155,37 +155,62 @@ describe("Identity flow", () => {
       displayName: "Fredster",
       isAdult: false,
     });
+    let childSignedIn = false;
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(jsonResponse(adultBoard))
-        .mockResolvedValueOnce(
-          jsonResponse({
+      vi.fn(async (input: RequestInfo | URL) => {
+        const request = input instanceof Request ? input : undefined;
+        const path = new URL(
+          request?.url ?? String(input),
+          window.location.origin,
+        ).pathname;
+        if (path === "/api/users" && request?.method === "GET") {
+          return jsonResponse([
+            {
+              id: addieId,
+              firstName: "Addie",
+              surname: "Avenant",
+              nickname: null,
+              displayName: "Addie",
+              role: "adult",
+              isCredentialReady: true,
+            },
+            {
+              id: fredsterId,
+              firstName: "Fredster",
+              surname: null,
+              nickname: null,
+              displayName: "Fredster",
+              role: "child",
+              isCredentialReady: false,
+            },
+          ]);
+        }
+        if (path === `/api/users/${fredsterId}/pin-setup`) {
+          return jsonResponse({
             setupToken: "one-time-token",
             expiresAtUtc: "2099-01-01T00:05:00Z",
             targetDisplayName: "Fredster",
             targetRole: "child",
-          }),
-        )
-        .mockResolvedValueOnce(
-          jsonResponse(authResponse(fredsterId, "Fredster", "child")),
-        )
-        .mockResolvedValueOnce(jsonResponse(board("Fredster", false))),
+          });
+        }
+        if (path === "/api/auth/setup-pin") {
+          childSignedIn = true;
+          return jsonResponse(authResponse(fredsterId, "Fredster", "child"));
+        }
+        return jsonResponse(
+          childSignedIn ? board("Fredster", false) : adultBoard,
+        );
+      }),
     );
     const user = userEvent.setup();
     const router = renderApp();
 
     await screen.findByRole("heading", { name: "Good day, Addie!" });
-    await user.click(screen.getByText("Addie", { selector: "summary" }));
-    await user.selectOptions(screen.getByLabelText("Hand over to"), fredsterId);
-    await user.type(
-      screen.getByLabelText("Surname if not already set"),
-      "Avenant",
-    );
-    await user.click(
-      screen.getByRole("button", { name: "Start private PIN setup" }),
-    );
+    await user.click(screen.getByText("Manage family"));
+    await screen.findByText("PIN not set");
+    await user.type(screen.getAllByLabelText("Surname").at(-1)!, "Avenant");
+    await user.click(screen.getByRole("button", { name: "Set up PIN now" }));
 
     expect(
       await screen.findByRole("heading", { name: "Over to Fredster" }),

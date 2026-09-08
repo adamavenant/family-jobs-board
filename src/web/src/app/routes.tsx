@@ -31,6 +31,12 @@ import { LoadingPage } from "./LoadingPage";
 import { AuthPage } from "../features/identity/AuthPage";
 import { TodayPage } from "../features/today/TodayPage";
 import type { TodayBoard } from "../api/today";
+import {
+  createFamilyMember,
+  FamilyMemberApiError,
+  getFamilyMembers,
+} from "../api/members";
+import type { FamilyMember } from "../api/members";
 
 export interface CompleteActionResult {
   intent: "complete";
@@ -73,6 +79,13 @@ export type TodayActionResult =
 
 export interface IdentityActionResult {
   intent: "bootstrap" | "signIn" | "logout" | "beginPinSetup" | "setupPin";
+  error?: string;
+}
+
+export interface FamilyMembersActionResult {
+  intent?: "createMember";
+  members?: FamilyMember[];
+  createdMemberId?: string;
   error?: string;
 }
 
@@ -136,6 +149,68 @@ async function todayAction({
   }
 
   return completeAction(form);
+}
+
+async function familyLoader(): Promise<FamilyMembersActionResult> {
+  try {
+    return { members: await getFamilyMembers() };
+  } catch (error) {
+    return {
+      error:
+        error instanceof FamilyMemberApiError
+          ? error.message
+          : "We couldn't load the family members.",
+    };
+  }
+}
+
+async function familyAction({
+  request,
+}: ActionFunctionArgs): Promise<FamilyMembersActionResult> {
+  const form = await request.formData();
+  const firstName = form.get("firstName");
+  const surname = form.get("surname");
+  const nickname = form.get("nickname");
+  const role = form.get("role");
+  if (
+    typeof firstName !== "string" ||
+    firstName.trim().length === 0 ||
+    firstName.trim().length > 100 ||
+    typeof surname !== "string" ||
+    surname.trim().length === 0 ||
+    surname.trim().length > 100 ||
+    typeof nickname !== "string" ||
+    nickname.trim().length > 100 ||
+    (role !== "adult" && role !== "child")
+  ) {
+    return {
+      intent: "createMember",
+      members: await getFamilyMembers(),
+      error: "Check the family member details.",
+    };
+  }
+
+  try {
+    const created = await createFamilyMember({
+      firstName: firstName.trim(),
+      surname: surname.trim(),
+      nickname: nickname.trim() || null,
+      role,
+    });
+    return {
+      intent: "createMember",
+      members: await getFamilyMembers(),
+      createdMemberId: created.id,
+    };
+  } catch (error) {
+    return {
+      intent: "createMember",
+      error:
+        error instanceof FamilyMemberApiError
+          ? error.message
+          : "That family member couldn't be created.",
+    };
+  }
 }
 
 async function bootstrapAction(form: FormData): Promise<IdentityActionResult> {
@@ -538,6 +613,11 @@ export const routes: RouteObject[] = [
 
       return defaultShouldRevalidate;
     },
+  },
+  {
+    path: "/family",
+    loader: familyLoader,
+    action: familyAction,
   },
 ];
 

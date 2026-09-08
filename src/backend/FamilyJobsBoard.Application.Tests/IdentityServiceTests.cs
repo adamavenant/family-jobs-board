@@ -61,6 +61,64 @@ public sealed class IdentityServiceTests
         Assert.Equal(1, repository.CreatedSessionCount);
     }
 
+    [Fact]
+    public async Task Creating_a_member_normalizes_names_and_starts_without_a_PIN()
+    {
+        var repository = new RecordingRepository();
+        var service = NewService(repository, new RecordingHasher());
+
+        var created = await service.CreateMemberAsync(
+            new CreateFamilyMember("  Fred  ", "  Avenant ", "   ", "child"),
+            CancellationToken.None);
+
+        Assert.Equal("Fred", created.FirstName);
+        Assert.Equal("Avenant", created.Surname);
+        Assert.Null(created.Nickname);
+        Assert.Equal(HouseholdRole.Child, created.Role);
+        Assert.False(created.IsCredentialReady);
+        Assert.NotNull(repository.CreatedMember);
+    }
+
+    [Theory]
+    [InlineData("", "Avenant", "child")]
+    [InlineData("Fred", "", "child")]
+    [InlineData("Fred", "Avenant", "visitor")]
+    public async Task Invalid_member_details_are_rejected_before_persistence(
+        string firstName,
+        string surname,
+        string role)
+    {
+        var repository = new RecordingRepository();
+        var service = NewService(repository, new RecordingHasher());
+
+        var error = await Assert.ThrowsAsync<IdentityOperationException>(() =>
+            service.CreateMemberAsync(
+                new CreateFamilyMember(firstName, surname, null, role),
+                CancellationToken.None));
+
+        Assert.Equal(IdentityError.InvalidMember, error.Error);
+        Assert.Null(repository.CreatedMember);
+    }
+
+    [Fact]
+    public async Task Over_length_member_names_are_rejected_before_persistence()
+    {
+        var repository = new RecordingRepository();
+        var service = NewService(repository, new RecordingHasher());
+
+        var error = await Assert.ThrowsAsync<IdentityOperationException>(() =>
+            service.CreateMemberAsync(
+                new CreateFamilyMember(
+                    new string('x', HouseholdMember.MaximumNameLength + 1),
+                    "Avenant",
+                    null,
+                    "child"),
+                CancellationToken.None));
+
+        Assert.Equal(IdentityError.InvalidMember, error.Error);
+        Assert.Null(repository.CreatedMember);
+    }
+
     private static IdentityService NewService(RecordingRepository repository, RecordingHasher hasher) =>
         new(repository, hasher, new StubTokens(), new FixedClock());
 
@@ -105,6 +163,26 @@ public sealed class IdentityServiceTests
         public int FailedAttemptCount { get; private set; }
         public int CreatedSessionCount { get; private set; }
         public string? ReplacementHash { get; private set; }
+        public HouseholdMember? CreatedMember { get; private set; }
+
+        public Task<IReadOnlyList<IdentityMember>> GetActiveMembersAsync(
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<IdentityMember>>([]);
+
+        public Task<IdentityMember> CreateMemberAsync(
+            HouseholdMember member,
+            CancellationToken cancellationToken)
+        {
+            CreatedMember = member;
+            return Task.FromResult(new IdentityMember(
+                member.Id,
+                member.FirstName,
+                member.Surname,
+                member.Nickname,
+                member.DisplayName,
+                member.Role,
+                false));
+        }
 
         public Task<CredentialCandidate?> GetCredentialAsync(Guid memberId, CancellationToken cancellationToken) =>
             Task.FromResult(Candidate);

@@ -104,6 +104,8 @@ public sealed class IdentityEndpointsTests : IAsyncLifetime
     [InlineData("POST", "/api/recurring-jobs/daily")]
     [InlineData("POST", "/api/recurring-jobs/weekly")]
     [InlineData("POST", "/api/recurring-jobs/monthly")]
+    [InlineData("GET", "/api/users")]
+    [InlineData("POST", "/api/users")]
     [InlineData("POST", "/api/users/7009b529-733c-4770-ae56-1f6fa69f6363/pin-setup")]
     public async Task Application_endpoints_reject_anonymous_requests(string method, string path)
     {
@@ -276,6 +278,130 @@ public sealed class IdentityEndpointsTests : IAsyncLifetime
             childAuth.AccessToken,
             new { childId, name = "No", description = "Forbidden", points = 1 });
         Assert.Equal(HttpStatusCode.Forbidden, childAdd.StatusCode);
+    }
+
+    [Fact]
+    public async Task Adult_creates_lists_and_onboards_a_child_across_restart()
+    {
+        var bootstrap = await BootstrapAdultAsync("123456");
+        using var createdResponse = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            "/api/users",
+            bootstrap.Body.AccessToken,
+            new { firstName = "  Fred  ", surname = " Avenant ", nickname = " Fredster ", role = "child" });
+        Assert.Equal(HttpStatusCode.Created, createdResponse.StatusCode);
+        var created = (await createdResponse.Content.ReadFromJsonAsync<FamilyMemberBody>())!;
+        Assert.Equal("Fred", created.FirstName);
+        Assert.Equal("Avenant", created.Surname);
+        Assert.Equal("Fredster", created.Nickname);
+        Assert.Equal("child", created.Role);
+        Assert.False(created.IsCredentialReady);
+        Assert.Equal($"/api/users/{created.Id}", createdResponse.Headers.Location?.OriginalString);
+
+        await RestartApplicationAsync();
+        using var listedResponse = await SendAuthorizedAsync(
+            HttpMethod.Get,
+            "/api/users",
+            bootstrap.Body.AccessToken);
+        Assert.Equal(HttpStatusCode.OK, listedResponse.StatusCode);
+        var listed = (await listedResponse.Content.ReadFromJsonAsync<IReadOnlyList<FamilyMemberBody>>())!;
+        Assert.Contains(listed, member => member.Id == created.Id && !member.IsCredentialReady);
+        Assert.Contains(listed, member => member.Id == bootstrap.Body.Member.Id && member.IsCredentialReady);
+
+        using var handoff = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            $"/api/users/{created.Id}/pin-setup",
+            bootstrap.Body.AccessToken,
+            new { surname = (string?)null });
+        var grant = (await handoff.Content.ReadFromJsonAsync<PinSetupGrantResponse>())!;
+        using var setup = await Client.PostAsJsonAsync(
+            "/api/auth/setup-pin",
+            new { setupToken = grant.SetupToken, pin = "0123" });
+        var child = (await setup.Content.ReadFromJsonAsync<AuthBody>())!;
+
+        using var childList = await SendAuthorizedAsync(HttpMethod.Get, "/api/users", child.AccessToken);
+        Assert.Equal(HttpStatusCode.Forbidden, childList.StatusCode);
+        using var childCreate = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            "/api/users",
+            child.AccessToken,
+            new { firstName = "No", surname = "Access", nickname = (string?)null, role = "child" });
+        Assert.Equal(HttpStatusCode.Forbidden, childCreate.StatusCode);
+    }
+
+    [Fact]
+    public async Task Duplicate_display_names_are_allowed_and_disambiguated_in_the_list()
+    {
+        var bootstrap = await BootstrapAdultAsync("123456");
+        foreach (var surname in new[] { "Avenant", "Smith" })
+        {
+            using var response = await SendAuthorizedJsonAsync(
+                HttpMethod.Post,
+                "/api/users",
+                bootstrap.Body.AccessToken,
+                new { firstName = "Sam", surname, nickname = (string?)null, role = "child" });
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        }
+
+        using var listedResponse = await SendAuthorizedAsync(
+            HttpMethod.Get,
+            "/api/users",
+            bootstrap.Body.AccessToken);
+        var members = (await listedResponse.Content.ReadFromJsonAsync<IReadOnlyList<FamilyMemberBody>>())!;
+        Assert.Contains(members, member => member.DisplayName == "Sam Avenant");
+        Assert.Contains(members, member => member.DisplayName == "Sam Smith");
+    }
+
+    [Fact]
+    public async Task Inactive_member_cannot_receive_a_PIN_handoff()
+    {
+        var bootstrap = await BootstrapAdultAsync("123456");
+        var inactiveId = Guid.NewGuid();
+        await using (var scope = Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            database.HouseholdMembers.Add(new HouseholdMember(
+                inactiveId,
+                "Archived",
+                "Member",
+                HouseholdRole.Child,
+                isActive: false));
+            database.MemberCredentials.Add(new MemberCredential(inactiveId));
+            await database.SaveChangesAsync();
+        }
+
+        using var response = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            $"/api/users/{inactiveId}/pin-setup",
+            bootstrap.Body.AccessToken,
+            new { surname = (string?)null });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("member_not_eligible", await ProblemCodeAsync(response));
+    }
+
+    [Theory]
+    [InlineData("", "Avenant", "child")]
+    [InlineData("Fred", "", "child")]
+    [InlineData("Fred", "Avenant", "visitor")]
+    public async Task Invalid_member_creation_is_atomic_and_returns_a_stable_problem(
+        string firstName,
+        string surname,
+        string role)
+    {
+        var bootstrap = await BootstrapAdultAsync("123456");
+        using var response = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            "/api/users",
+            bootstrap.Body.AccessToken,
+            new { firstName, surname, nickname = (string?)null, role });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("invalid_member", await ProblemCodeAsync(response));
+        await using var scope = Factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(1, await database.HouseholdMembers.CountAsync());
+        Assert.Equal(1, await database.MemberCredentials.CountAsync());
     }
 
     [Fact]
@@ -459,6 +585,14 @@ public sealed class IdentityEndpointsTests : IAsyncLifetime
         DateTimeOffset ExpiresAtUtc,
         string TargetDisplayName,
         string TargetRole);
+    private sealed record FamilyMemberBody(
+        Guid Id,
+        string FirstName,
+        string? Surname,
+        string? Nickname,
+        string DisplayName,
+        string Role,
+        bool IsCredentialReady);
 
     private sealed class IdentityApiFactory : WebApplicationFactory<Program>
     {
