@@ -54,16 +54,63 @@ internal static class IdentityEndpoints
             .WithName("SetupPin")
             .WithSummary("Consume a one-time handoff and set the target member PIN.");
 
-        endpoints.MapPost("/api/users/{memberId:guid}/pin-setup", StartPinSetupAsync)
-            .RequireAuthorization("Adult")
+        var users = endpoints.MapGroup("/api/users")
+            .WithTags("Users")
+            .RequireAuthorization("Adult");
+        users.MapGet("", GetMembersAsync)
+            .Produces<IReadOnlyList<FamilyMemberResponse>>()
+            .WithName("GetFamilyMembers")
+            .WithSummary("List active household members for administration.");
+        users.MapPost("", CreateMemberAsync)
+            .Produces<FamilyMemberResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .WithName("CreateFamilyMember")
+            .WithSummary("Create an active household member awaiting PIN setup.");
+        users.MapPost("/{memberId:guid}/pin-setup", StartPinSetupAsync)
             .Produces<PinSetupResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
-            .WithTags("Identity")
             .WithName("StartPinSetup")
             .WithSummary("Authorize a one-time PIN handoff to an unconfigured member.");
 
         return endpoints;
+    }
+
+    private static async Task<IResult> GetMembersAsync(
+        IdentityService service,
+        CancellationToken cancellationToken)
+    {
+        var members = await service.GetActiveMembersAsync(cancellationToken);
+        return TypedResults.Ok(members.Select(MapFamilyMember).ToArray());
+    }
+
+    private static async Task<IResult> CreateMemberAsync(
+        CreateFamilyMemberRequest request,
+        HttpContext context,
+        IdentityService service,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var member = await service.CreateMemberAsync(
+                new CreateFamilyMember(
+                    request.FirstName,
+                    request.Surname,
+                    request.Nickname,
+                    request.Role),
+                cancellationToken);
+            loggerFactory.CreateLogger("IdentityAudit").LogInformation(
+                "FamilyMemberCreated ActorId={ActorId} TargetId={TargetId} Role={Role}",
+                PrincipalMemberId(context.User),
+                member.Id,
+                member.Role);
+            return TypedResults.Created($"/api/users/{member.Id}", MapFamilyMember(member));
+        }
+        catch (IdentityOperationException exception)
+        {
+            return MapError(exception.Error);
+        }
     }
 
     private static async Task<IResult> GetStartAsync(
@@ -278,6 +325,16 @@ internal static class IdentityEndpoints
             MapRole(member.Role),
             member.Surname is null);
 
+    private static FamilyMemberResponse MapFamilyMember(IdentityMember member) =>
+        new(
+            member.Id,
+            member.FirstName,
+            member.Surname,
+            member.Nickname,
+            member.DisplayName,
+            MapRole(member.Role),
+            member.IsCredentialReady);
+
     private static string MapRole(Domain.Households.HouseholdRole role) =>
         role == Domain.Households.HouseholdRole.Adult ? "adult" : "child";
 
@@ -334,6 +391,7 @@ internal static class IdentityEndpoints
         IdentityError.MemberNotFound => Problem(404, "member_not_found", "The member was not found."),
         IdentityError.PinAlreadySet => Problem(409, "pin_already_set", "That member already has a PIN."),
         IdentityError.MemberNotEligible => Problem(409, "member_not_eligible", "That member is not eligible for PIN setup."),
+        IdentityError.InvalidMember => Problem(400, "invalid_member", "Check the family member details."),
         _ => Problem(400, "invalid_or_expired_setup", "The setup request is invalid or expired."),
     };
 

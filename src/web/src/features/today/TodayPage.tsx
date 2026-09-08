@@ -10,6 +10,7 @@ import type { AppActionResult, TodayActionResult } from "../../app/routes";
 import { AddJobForm } from "./AddJobForm";
 import { RecurringJobForm } from "./RecurringJobForm";
 import { ThemeToggle } from "../theme/ThemeToggle";
+import { FamilyMembersPanel } from "../identity/FamilyMembersPanel";
 
 export function TodayPage({ board }: { board: TodayBoard }) {
   const children = board.members.filter((member) => !member.isAdult);
@@ -24,7 +25,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
         <div className="hero__toolbar">
           <p className="eyebrow">Family Jobs Board</p>
           <div className="hero__actions">
-            <IdentityControls viewer={board.viewer} members={board.members} />
+            <IdentityControls viewer={board.viewer} />
             <ThemeToggle />
           </div>
         </div>
@@ -64,6 +65,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
 
       {board.viewer.isAdult ? (
         <div className="grown-up-toolbox">
+          <FamilyMembersPanel />
           <AddJobForm children={children} />
           <RecurringJobForm children={children} today={board.date} />
         </div>
@@ -108,17 +110,8 @@ export function TodayPage({ board }: { board: TodayBoard }) {
   );
 }
 
-function IdentityControls({
-  viewer,
-  members,
-}: {
-  viewer: HouseholdMember;
-  members: HouseholdMember[];
-}) {
+function IdentityControls({ viewer }: { viewer: HouseholdMember }) {
   const fetcher = useFetcher<AppActionResult>();
-  const candidates = members.filter((member) => member.id !== viewer.id);
-  const error =
-    fetcher.data?.intent === "beginPinSetup" ? fetcher.data.error : undefined;
   const submitting = fetcher.state !== "idle";
 
   return (
@@ -128,43 +121,6 @@ function IdentityControls({
         <p>
           Signed in as <strong>{viewer.displayName}</strong>
         </p>
-        {viewer.isAdult && candidates.length > 0 ? (
-          <fetcher.Form method="post" className="handoff-form">
-            <input type="hidden" name="intent" value="beginPinSetup" />
-            <p className="handoff-form__help">
-              Set up a profile that does not have a PIN yet. You will be signed
-              out before handing over.
-            </p>
-            <label>
-              <span>Hand over to</span>
-              <select name="memberId" required defaultValue="">
-                <option value="">Choose a profile</option>
-                {candidates.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.displayName} —{" "}
-                    {member.isAdult ? "Grown-up" : "Child"}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Surname if not already set</span>
-              <input
-                name="surname"
-                autoComplete="family-name"
-                maxLength={100}
-              />
-            </label>
-            {error ? (
-              <p className="error-message" role="alert">
-                {error}
-              </p>
-            ) : null}
-            <button type="submit" disabled={submitting}>
-              {submitting ? "Starting…" : "Start private PIN setup"}
-            </button>
-          </fetcher.Form>
-        ) : null}
         <fetcher.Form method="post">
           <button
             type="submit"

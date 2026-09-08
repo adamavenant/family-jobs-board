@@ -16,6 +16,36 @@ public sealed class EfIdentityRepository : IIdentityRepository
         _database = database;
     }
 
+    public async Task<IReadOnlyList<IdentityMember>> GetActiveMembersAsync(
+        CancellationToken cancellationToken)
+    {
+        var members = await _database.HouseholdMembers
+            .AsNoTracking()
+            .Where(member => member.IsActive)
+            .ToListAsync(cancellationToken);
+        var readyIds = await _database.MemberCredentials
+            .AsNoTracking()
+            .Where(credential => credential.State == CredentialState.Ready)
+            .Select(credential => credential.MemberId)
+            .ToListAsync(cancellationToken);
+        return MapMembers(members, readyIds.ToHashSet());
+    }
+
+    public async Task<IdentityMember> CreateMemberAsync(
+        HouseholdMember member,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await _database.Database.BeginTransactionAsync(cancellationToken);
+        _database.HouseholdMembers.Add(member);
+        _database.MemberCredentials.Add(new MemberCredential(member.Id));
+        await _database.SaveChangesAsync(cancellationToken);
+
+        var members = await GetActiveMembersAsync(cancellationToken);
+        var created = members.Single(candidate => candidate.Id == member.Id);
+        await transaction.CommitAsync(cancellationToken);
+        return created;
+    }
+
     public async Task<IdentityStartState> GetStartAsync(CancellationToken cancellationToken)
     {
         var bootstrap = await _database.HouseholdBootstraps
@@ -313,6 +343,11 @@ public sealed class EfIdentityRepository : IIdentityRepository
         if (target is null)
         {
             return new PinSetupIssueResult(PinSetupIssueStatus.MemberNotFound, null, null);
+        }
+
+        if (!target.IsActive)
+        {
+            return new PinSetupIssueResult(PinSetupIssueStatus.MemberNotEligible, null, null);
         }
 
         var credential = await LockedCredentialAsync(targetMemberId, cancellationToken);

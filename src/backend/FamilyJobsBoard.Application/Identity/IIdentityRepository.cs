@@ -4,6 +4,13 @@ namespace FamilyJobsBoard.Application.Identity;
 
 public interface IIdentityRepository
 {
+    Task<IReadOnlyList<IdentityMember>> GetActiveMembersAsync(
+        CancellationToken cancellationToken);
+
+    Task<IdentityMember> CreateMemberAsync(
+        HouseholdMember member,
+        CancellationToken cancellationToken);
+
     Task<IdentityStartState> GetStartAsync(CancellationToken cancellationToken);
 
     Task<BootstrapStoreResult> BootstrapAsync(

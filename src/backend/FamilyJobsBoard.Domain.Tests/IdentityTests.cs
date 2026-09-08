@@ -6,6 +6,23 @@ namespace FamilyJobsBoard.Domain.Tests;
 
 public sealed class IdentityTests
 {
+    [Fact]
+    public void Household_member_normalizes_administration_names()
+    {
+        var member = new HouseholdMember(
+            Guid.NewGuid(),
+            "  Fred  ",
+            "  Avenant  ",
+            HouseholdRole.Child,
+            "  Fredster  ");
+
+        Assert.Equal("Fred", member.FirstName);
+        Assert.Equal("Avenant", member.Surname);
+        Assert.Equal("Fredster", member.Nickname);
+        Assert.Equal(HouseholdRole.Child, member.Role);
+        Assert.True(member.IsActive);
+    }
+
     [Theory]
     [InlineData("0123", HouseholdRole.Child, true)]
     [InlineData("123", HouseholdRole.Child, false)]

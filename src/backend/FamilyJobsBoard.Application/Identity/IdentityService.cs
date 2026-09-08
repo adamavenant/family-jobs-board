@@ -26,6 +26,29 @@ public sealed class IdentityService
     public Task<IdentityStartState> GetStartAsync(CancellationToken cancellationToken) =>
         _repository.GetStartAsync(cancellationToken);
 
+    public Task<IReadOnlyList<IdentityMember>> GetActiveMembersAsync(
+        CancellationToken cancellationToken) =>
+        _repository.GetActiveMembersAsync(cancellationToken);
+
+    public Task<IdentityMember> CreateMemberAsync(
+        CreateFamilyMember request,
+        CancellationToken cancellationToken)
+    {
+        var firstName = RequiredName(request.FirstName);
+        var surname = RequiredName(request.Surname);
+        var nickname = OptionalName(request.Nickname);
+        var role = request.Role?.Trim().ToLowerInvariant() switch
+        {
+            "adult" => HouseholdRole.Adult,
+            "child" => HouseholdRole.Child,
+            _ => throw new IdentityOperationException(IdentityError.InvalidMember),
+        };
+
+        return _repository.CreateMemberAsync(
+            new HouseholdMember(Guid.NewGuid(), firstName, surname, role, nickname),
+            cancellationToken);
+    }
+
     public async Task<AuthenticatedIdentity> BootstrapAsync(
         BootstrapIdentity request,
         CancellationToken cancellationToken)
@@ -282,4 +305,26 @@ public sealed class IdentityService
     }
 
     public static bool IsValidPin(string? pin, HouseholdRole role) => PinPolicy.IsValid(pin, role);
+
+    private static string RequiredName(string? value)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrEmpty(normalized) || normalized.Length > HouseholdMember.MaximumNameLength)
+        {
+            throw new IdentityOperationException(IdentityError.InvalidMember);
+        }
+
+        return normalized;
+    }
+
+    private static string? OptionalName(string? value)
+    {
+        var normalized = value?.Trim();
+        if (normalized?.Length > HouseholdMember.MaximumNameLength)
+        {
+            throw new IdentityOperationException(IdentityError.InvalidMember);
+        }
+
+        return string.IsNullOrEmpty(normalized) ? null : normalized;
+    }
 }

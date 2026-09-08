@@ -102,6 +102,12 @@ test("pilot claim, child handoff, completion, and adult approval work on a table
         targetRole: "child",
       });
     }
+    if (path === "/api/users" && request.method() === "GET") {
+      return json(route, [
+        familyMember(addieId, "Addie", "Avenant", "adult", true),
+        familyMember(fredsterId, "Fredster", null, "child", false),
+      ]);
+    }
     if (path === "/api/auth/setup-pin") {
       signedIn = "child";
       return json(route, auth(fredsterId, "Fredster", "child"));
@@ -142,10 +148,9 @@ test("pilot claim, child handoff, completion, and adult approval work on a table
   await page.getByLabel("Confirm PIN").fill("012345");
   await page.getByRole("button", { name: "Set up and continue" }).click();
 
-  await page.locator(".identity-menu summary").click();
-  await page.getByLabel("Hand over to").selectOption(fredsterId);
-  await page.getByLabel("Surname if not already set").fill("Avenant");
-  await page.getByRole("button", { name: "Start private PIN setup" }).click();
+  await page.getByText("Manage family").click();
+  await page.getByLabel("Surname", { exact: true }).last().fill("Avenant");
+  await page.getByRole("button", { name: "Set up PIN now" }).click();
   await expect(
     page.getByRole("heading", { name: "Over to Fredster" }),
   ).toBeVisible();
@@ -163,6 +168,93 @@ test("pilot claim, child handoff, completion, and adult approval work on a table
   await page.getByRole("button", { name: "Open my board" }).click();
   await page.getByRole("button", { name: "Approve +3 points" }).click();
   await expect(page.getByText("Approved — 3 points awarded")).toBeVisible();
+});
+
+test("a grown-up creates a child and hands over PIN setup on a phone", async ({
+  page,
+}) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.setViewportSize({ width: 390, height: 844 });
+  let childCreated = false;
+  let signedIn: "adult" | "child" = "adult";
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (!path.startsWith("/api/")) {
+      return route.continue();
+    }
+    if (path === "/api/auth/refresh") {
+      return json(route, auth(addieId, "Addie", "adult"));
+    }
+    if (path === "/api/users" && request.method() === "GET") {
+      return json(route, [
+        familyMember(addieId, "Addie", "Avenant", "adult", true),
+        ...(childCreated
+          ? [familyMember(harrieId, "Harrie", "Avenant", "child", false)]
+          : []),
+      ]);
+    }
+    if (path === "/api/users" && request.method() === "POST") {
+      const body = request.postDataJSON();
+      expect(body).toEqual({
+        firstName: "Harriet",
+        surname: "Avenant",
+        nickname: "Harrie",
+        role: "child",
+      });
+      childCreated = true;
+      return json(
+        route,
+        familyMember(harrieId, "Harrie", "Avenant", "child", false),
+        201,
+      );
+    }
+    if (path === `/api/users/${harrieId}/pin-setup`) {
+      signedIn = "child";
+      return json(route, {
+        setupToken: "new-child-one-time-token",
+        expiresAtUtc: "2099-01-01T00:05:00Z",
+        targetDisplayName: "Harrie",
+        targetRole: "child",
+      });
+    }
+    if (path === "/api/auth/setup-pin") {
+      expect(request.postDataJSON().pin).toBe("0123");
+      return json(route, auth(harrieId, "Harrie", "child"));
+    }
+    if (path === "/api/today") {
+      return json(
+        route,
+        board(
+          signedIn === "child" ? "Harrie" : "Addie",
+          signedIn === "adult",
+          "open",
+        ),
+      );
+    }
+    return problem(route, 404);
+  });
+
+  await page.goto("/");
+  await page.waitForTimeout(250);
+  expect(pageErrors).toEqual([]);
+  await page.getByText("Manage family").click();
+  await page.getByLabel("First name").fill("Harriet");
+  await page.getByLabel("Surname", { exact: true }).first().fill("Avenant");
+  await page.getByLabel("Nickname (optional)").fill("Harrie");
+  await page.getByRole("button", { name: "Add family member" }).click();
+  await expect(page.getByText(/Harrie was added/)).toBeVisible();
+  await page.getByRole("button", { name: "Set up PIN now" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Over to Harrie" }),
+  ).toBeVisible();
+  await page.getByLabel("4-digit PIN").fill("0123");
+  await page.getByLabel("Confirm PIN").fill("0123");
+  await page.getByRole("button", { name: "Save PIN and open board" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Good day, Harrie!" }),
+  ).toBeVisible();
 });
 
 test("a grown-up assigns one job to both children on a tablet", async ({
@@ -346,6 +438,24 @@ function auth(id: string, displayName: string, role: "adult" | "child") {
   };
 }
 
+function familyMember(
+  id: string,
+  displayName: string,
+  surname: string | null,
+  role: "adult" | "child",
+  isCredentialReady: boolean,
+) {
+  return {
+    id,
+    firstName: displayName,
+    surname,
+    nickname: null,
+    displayName,
+    role,
+    isCredentialReady,
+  };
+}
+
 function board(
   displayName: string,
   isAdult: boolean,
@@ -358,16 +468,16 @@ function board(
     displayName: "Addie",
     isAdult: true,
   };
-  const fredster = {
-    id: fredsterId,
-    firstName: "Fredster",
+  const child = {
+    id: displayName === "Harrie" ? harrieId : fredsterId,
+    firstName: displayName === "Harrie" ? "Harriet" : "Fredster",
     nickname: null,
-    displayName: "Fredster",
+    displayName,
     isAdult: false,
   };
   return {
-    viewer: isAdult ? addie : fredster,
-    members: [addie, fredster],
+    viewer: isAdult ? addie : child,
+    members: [addie, child],
     date: "2026-09-06",
     jobs: [job(status)],
     pointsBalance: isAdult ? null : status === "approved" ? 3 : 0,
