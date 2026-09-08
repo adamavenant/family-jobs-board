@@ -25,7 +25,22 @@ dev_web=$(printf '%s\n' "$dev_config" | service_block web)
 printf '%s\n' "$dev_api" | grep -q 'published: "8080"' || fail "development API port 8080 is not published"
 printf '%s\n' "$dev_web" | grep -q 'published: "3000"' || fail "development web port 3000 is not published"
 
-auth_environment='AUTHENTICATION_PIN_PEPPER=Y29tcG9zZS12YWxpZGF0aW9uLXBpbi1wZXBwZXItMzItYnl0ZXM= AUTHENTICATION_JWT_SIGNING_KEY=Y29tcG9zZS12YWxpZGF0aW9uLWp3dC1zaWduaW5nLWtleQ== APPLICATION_ORIGIN=http://dashboard.home.arpa'
+generate_validation_value() {
+  od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
+}
+
+validation_pin_pepper=$(generate_validation_value)
+validation_jwt_signing_key=$(generate_validation_value)
+case "$validation_pin_pepper$validation_jwt_signing_key" in
+  '' | *[!0-9a-f]*) fail "could not generate isolated validation credentials" ;;
+esac
+[ "${#validation_pin_pepper}" -eq 64 ] || fail "could not generate isolated validation credentials"
+[ "${#validation_jwt_signing_key}" -eq 64 ] || fail "could not generate isolated validation credentials"
+[ "$validation_pin_pepper" != "$validation_jwt_signing_key" ] || fail "validation credentials must be independent"
+
+# These fresh values exist only for this Compose model check. They are never
+# printed, persisted, or used by a running application.
+auth_environment="AUTHENTICATION_PIN_PEPPER=$validation_pin_pepper AUTHENTICATION_JWT_SIGNING_KEY=$validation_jwt_signing_key APPLICATION_ORIGIN=http://dashboard.home.arpa"
 
 if env $auth_environment DATABASE_PASSWORD= IMAGE_TAG=deployment-image-tag docker compose -f compose.yaml -f compose.production.yaml config >/dev/null 2>&1; then
   fail "production configuration accepted an empty database password"
