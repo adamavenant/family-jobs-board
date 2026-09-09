@@ -119,11 +119,62 @@ public sealed class IdentityServiceTests
         Assert.Null(repository.CreatedMember);
     }
 
+    [Fact]
+    public async Task Updating_a_member_normalizes_names_and_records_the_actor()
+    {
+        var member = Adult();
+        var actorId = Guid.NewGuid();
+        var repository = new RecordingRepository { MemberResult = member };
+        var service = NewService(repository, new RecordingHasher());
+
+        var updated = await service.UpdateMemberAsync(
+            member.Id,
+            new UpdateFamilyMember(" Addie ", " Avenant ", " Ads "),
+            actorId,
+            CancellationToken.None);
+
+        Assert.Equal(member.Id, updated.Id);
+        Assert.Equal(("Addie", "Avenant", "Ads"), repository.UpdatedNames);
+        Assert.Equal(actorId, repository.ActorMemberId);
+        Assert.Equal(Now, repository.MutationTime);
+    }
+
+    [Fact]
+    public async Task Invalid_member_update_is_rejected_before_persistence()
+    {
+        var repository = new RecordingRepository { MemberResult = Adult() };
+        var service = NewService(repository, new RecordingHasher());
+
+        var error = await Assert.ThrowsAsync<IdentityOperationException>(() =>
+            service.UpdateMemberAsync(
+                Guid.NewGuid(),
+                new UpdateFamilyMember("", "Avenant", null),
+                Guid.NewGuid(),
+                CancellationToken.None));
+
+        Assert.Equal(IdentityError.InvalidMember, error.Error);
+        Assert.Null(repository.UpdatedNames);
+    }
+
+    [Fact]
+    public async Task An_adult_cannot_deactivate_their_own_profile()
+    {
+        var memberId = Guid.NewGuid();
+        var repository = new RecordingRepository { MemberResult = Adult() };
+        var service = NewService(repository, new RecordingHasher());
+
+        var error = await Assert.ThrowsAsync<IdentityOperationException>(() =>
+            service.DeactivateMemberAsync(memberId, memberId, CancellationToken.None));
+
+        Assert.Equal(IdentityError.CannotDeactivateSelf, error.Error);
+        Assert.Null(repository.RequestedActiveState);
+    }
+
     private static IdentityService NewService(RecordingRepository repository, RecordingHasher hasher) =>
         new(repository, hasher, new StubTokens(), new FixedClock());
 
     private static IdentityMember Adult() =>
-        new(Guid.NewGuid(), "Addie", "Avenant", null, "Addie", HouseholdRole.Adult, true);
+        new(Guid.NewGuid(), "Addie", "Avenant", null, "Addie", HouseholdRole.Adult, true, true);
 
     private sealed class RecordingHasher : IPinHasher
     {
@@ -164,8 +215,14 @@ public sealed class IdentityServiceTests
         public int CreatedSessionCount { get; private set; }
         public string? ReplacementHash { get; private set; }
         public HouseholdMember? CreatedMember { get; private set; }
+        public IdentityMember? MemberResult { get; init; }
+        public (string FirstName, string Surname, string? Nickname)? UpdatedNames { get; private set; }
+        public bool? RequestedActiveState { get; private set; }
+        public Guid? ActorMemberId { get; private set; }
+        public DateTimeOffset? MutationTime { get; private set; }
 
-        public Task<IReadOnlyList<IdentityMember>> GetActiveMembersAsync(
+        public Task<IReadOnlyList<IdentityMember>> GetMembersAsync(
+            bool includeInactive,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<IdentityMember>>([]);
 
@@ -181,7 +238,36 @@ public sealed class IdentityServiceTests
                 member.Nickname,
                 member.DisplayName,
                 member.Role,
-                false));
+                false,
+                true));
+        }
+
+        public Task<IdentityMember?> UpdateMemberAsync(
+            Guid memberId,
+            string firstName,
+            string surname,
+            string? nickname,
+            Guid actorMemberId,
+            DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
+            UpdatedNames = (firstName, surname, nickname);
+            ActorMemberId = actorMemberId;
+            MutationTime = now;
+            return Task.FromResult(MemberResult);
+        }
+
+        public Task<IdentityMember?> SetMemberActiveAsync(
+            Guid memberId,
+            bool isActive,
+            Guid actorMemberId,
+            DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
+            RequestedActiveState = isActive;
+            ActorMemberId = actorMemberId;
+            MutationTime = now;
+            return Task.FromResult(MemberResult);
         }
 
         public Task<CredentialCandidate?> GetCredentialAsync(Guid memberId, CancellationToken cancellationToken) =>

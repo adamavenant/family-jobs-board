@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { routes } from "../../app/routes";
 import { acceptSession, clearIdentity } from "../../api/auth";
+import type { FamilyMember } from "../../api/members";
 
 const addie = {
   id: "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c",
@@ -839,6 +840,7 @@ describe("Today page", () => {
     ).toBeInTheDocument();
     expect(await screen.findByText("PIN ready")).toBeInTheDocument();
     expect(screen.getByText("PIN not set")).toBeInTheDocument();
+    expect(screen.getByText("No inactive profiles.")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Set up PIN now" }),
     ).toBeInTheDocument();
@@ -874,10 +876,19 @@ describe("Today page", () => {
     await user.click(screen.getByText("Manage family"));
     await screen.findByRole("heading", { name: "Family members" });
     await screen.findByText("PIN ready");
-    await user.type(screen.getByLabelText("First name"), "Fred");
-    await user.type(screen.getByLabelText("Surname"), "Avenant");
-    await user.type(screen.getByLabelText("Nickname (optional)"), "Fredster");
-    await user.click(screen.getByRole("button", { name: "Add family member" }));
+    const addButton = screen.getByRole("button", {
+      name: "Add family member",
+    });
+    const createForm = addButton.closest("form");
+    expect(createForm).not.toBeNull();
+    const createMember = within(createForm as HTMLFormElement);
+    await user.type(createMember.getByLabelText("First name"), "Fred");
+    await user.type(createMember.getByLabelText("Surname"), "Avenant");
+    await user.type(
+      createMember.getByLabelText("Nickname (optional)"),
+      "Fredster",
+    );
+    await user.click(addButton);
 
     expect(await screen.findByText(/Fredster was added/)).toHaveAttribute(
       "role",
@@ -897,6 +908,149 @@ describe("Today page", () => {
       nickname: "Fredster",
       role: "child",
     });
+  });
+
+  it("edits, deliberately deactivates, and restores a family profile", async () => {
+    let members = [
+      managedMember(addie, true, "Avenant"),
+      managedMember(fredster, true, "Avenant"),
+    ];
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const request = input instanceof Request ? input : null;
+      const path = requestPath(input);
+      const method = request?.method ?? "GET";
+      if (path === `/api/users/${fredster.id}` && method === "PATCH") {
+        const names = (await request!.clone().json()) as {
+          firstName: string;
+          surname: string;
+          nickname: string | null;
+        };
+        members = members.map((member) =>
+          member.id === fredster.id
+            ? {
+                ...member,
+                ...names,
+                displayName: names.nickname ?? names.firstName,
+              }
+            : member,
+        );
+        return jsonResponse(members[1]);
+      }
+      if (path === `/api/users/${fredster.id}` && method === "DELETE") {
+        members = members.map((member) =>
+          member.id === fredster.id ? { ...member, isActive: false } : member,
+        );
+        return jsonResponse(members[1]);
+      }
+      if (path === `/api/users/${fredster.id}/restore` && method === "POST") {
+        members = members.map((member) =>
+          member.id === fredster.id ? { ...member, isActive: true } : member,
+        );
+        return jsonResponse(members[1]);
+      }
+      if (path === "/api/users") {
+        return jsonResponse(members);
+      }
+      return jsonResponse(board);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Manage family"));
+    const familyList = await screen.findByRole("list", {
+      name: "Family members",
+    });
+    const activeProfiles = within(familyList).getAllByRole("listitem");
+    const [selfProfile, fredsterProfile] = activeProfiles;
+    if (!selfProfile || !fredsterProfile) {
+      throw new Error("Expected both active family profiles.");
+    }
+    expect(within(selfProfile).getByText("Signed-in profile")).toBeVisible();
+    expect(
+      within(selfProfile).queryByRole("button", {
+        name: "Deactivate profile",
+      }),
+    ).not.toBeInTheDocument();
+
+    await user.click(within(fredsterProfile).getByText("Edit profile"));
+    await user.clear(within(fredsterProfile).getByLabelText("First name"));
+    await user.type(
+      within(fredsterProfile).getByLabelText("First name"),
+      "Frederick",
+    );
+    await user.clear(
+      within(fredsterProfile).getByLabelText("Nickname (optional)"),
+    );
+    await user.type(
+      within(fredsterProfile).getByLabelText("Nickname (optional)"),
+      "Freddie",
+    );
+    await user.click(
+      within(fredsterProfile).getByRole("button", { name: "Save profile" }),
+    );
+
+    expect(
+      await screen.findByText("Freddie's profile was updated."),
+    ).toHaveAttribute("role", "status");
+    const editRequest = fetch.mock.calls.find(([input]) => {
+      const request = input instanceof Request ? input : null;
+      return (
+        requestPath(input) === `/api/users/${fredster.id}` &&
+        request?.method === "PATCH"
+      );
+    })?.[0];
+    expect(editRequest).toBeInstanceOf(Request);
+    expect(await (editRequest as Request).clone().json()).toEqual({
+      firstName: "Frederick",
+      surname: "Avenant",
+      nickname: "Freddie",
+    });
+
+    const updatedProfile = screen.getByText("Freddie").closest("li");
+    expect(updatedProfile).not.toBeNull();
+    await user.click(
+      within(updatedProfile as HTMLLIElement).getByRole("button", {
+        name: "Deactivate profile",
+      }),
+    );
+    expect(
+      fetch.mock.calls.some(([input]) => {
+        const request = input instanceof Request ? input : null;
+        return request?.method === "DELETE";
+      }),
+    ).toBe(false);
+    await user.click(
+      within(updatedProfile as HTMLLIElement).getByRole("button", {
+        name: "Yes, deactivate",
+      }),
+    );
+
+    expect(
+      await screen.findByText(/Freddie's profile is inactive/),
+    ).toHaveAttribute("role", "status");
+    const inactiveList = screen.getByRole("list", {
+      name: "Inactive family members",
+    });
+    const inactiveProfile = within(inactiveList)
+      .getByText("Freddie")
+      .closest("li");
+    expect(inactiveProfile).not.toBeNull();
+    await user.click(
+      within(inactiveProfile as HTMLLIElement).getByRole("button", {
+        name: "Restore profile",
+      }),
+    );
+
+    expect(
+      await screen.findByText("Freddie's profile was restored."),
+    ).toHaveAttribute("role", "status");
+    expect(
+      within(screen.getByRole("list", { name: "Family members" })).getByText(
+        "Freddie",
+      ),
+    ).toBeVisible();
   });
 });
 
@@ -940,7 +1094,8 @@ function managedMember(
   member: typeof addie,
   isCredentialReady: boolean,
   surname: string | null,
-) {
+  isActive = true,
+): FamilyMember {
   return {
     id: member.id,
     firstName: member.firstName,
@@ -949,5 +1104,6 @@ function managedMember(
     displayName: member.displayName,
     role: member.isAdult ? "adult" : "child",
     isCredentialReady,
+    isActive,
   };
 }

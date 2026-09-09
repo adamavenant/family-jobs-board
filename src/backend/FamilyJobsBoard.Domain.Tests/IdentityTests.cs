@@ -23,6 +23,55 @@ public sealed class IdentityTests
         Assert.True(member.IsActive);
     }
 
+    [Fact]
+    public void Household_member_profile_update_preserves_role_and_records_actor()
+    {
+        var actorId = Guid.NewGuid();
+        var now = new DateTimeOffset(2026, 9, 9, 18, 30, 0, TimeSpan.Zero);
+        var member = new HouseholdMember(
+            Guid.NewGuid(),
+            "Fred",
+            "Avenant",
+            HouseholdRole.Child,
+            "Fredster");
+
+        member.UpdateProfile("  Frederick ", " Avenant ", "  Freddie ", actorId, now);
+
+        Assert.Equal("Frederick", member.FirstName);
+        Assert.Equal("Avenant", member.Surname);
+        Assert.Equal("Freddie", member.Nickname);
+        Assert.Equal(HouseholdRole.Child, member.Role);
+        Assert.Equal(now, member.ProfileUpdatedAtUtc);
+        Assert.Equal(actorId, member.ProfileUpdatedByMemberId);
+    }
+
+    [Fact]
+    public void Household_member_deactivation_and_restore_are_idempotent_and_tracked()
+    {
+        var actorId = Guid.NewGuid();
+        var member = new HouseholdMember(
+            Guid.NewGuid(),
+            "Fred",
+            "Avenant",
+            HouseholdRole.Child);
+        var deactivatedAt = new DateTimeOffset(2026, 9, 9, 18, 30, 0, TimeSpan.Zero);
+        var restoredAt = deactivatedAt.AddMinutes(1);
+
+        member.Deactivate(actorId, deactivatedAt);
+        member.Deactivate(Guid.NewGuid(), deactivatedAt.AddSeconds(30));
+
+        Assert.False(member.IsActive);
+        Assert.Equal(deactivatedAt, member.DeactivatedAtUtc);
+        Assert.Equal(actorId, member.DeactivatedByMemberId);
+
+        member.Restore(actorId, restoredAt);
+        member.Restore(Guid.NewGuid(), restoredAt.AddSeconds(30));
+
+        Assert.True(member.IsActive);
+        Assert.Equal(restoredAt, member.RestoredAtUtc);
+        Assert.Equal(actorId, member.RestoredByMemberId);
+    }
+
     [Theory]
     [InlineData("0123", HouseholdRole.Child, true)]
     [InlineData("123", HouseholdRole.Child, false)]

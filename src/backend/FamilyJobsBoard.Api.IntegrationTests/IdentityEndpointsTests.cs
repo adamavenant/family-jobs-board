@@ -106,6 +106,9 @@ public sealed class IdentityEndpointsTests : IAsyncLifetime
     [InlineData("POST", "/api/recurring-jobs/monthly")]
     [InlineData("GET", "/api/users")]
     [InlineData("POST", "/api/users")]
+    [InlineData("PATCH", "/api/users/7009b529-733c-4770-ae56-1f6fa69f6363")]
+    [InlineData("DELETE", "/api/users/7009b529-733c-4770-ae56-1f6fa69f6363")]
+    [InlineData("POST", "/api/users/7009b529-733c-4770-ae56-1f6fa69f6363/restore")]
     [InlineData("POST", "/api/users/7009b529-733c-4770-ae56-1f6fa69f6363/pin-setup")]
     public async Task Application_endpoints_reject_anonymous_requests(string method, string path)
     {
@@ -321,12 +324,270 @@ public sealed class IdentityEndpointsTests : IAsyncLifetime
 
         using var childList = await SendAuthorizedAsync(HttpMethod.Get, "/api/users", child.AccessToken);
         Assert.Equal(HttpStatusCode.Forbidden, childList.StatusCode);
+        using var childInactiveList = await SendAuthorizedAsync(
+            HttpMethod.Get,
+            "/api/users?includeInactive=true",
+            child.AccessToken);
+        Assert.Equal(HttpStatusCode.Forbidden, childInactiveList.StatusCode);
         using var childCreate = await SendAuthorizedJsonAsync(
             HttpMethod.Post,
             "/api/users",
             child.AccessToken,
             new { firstName = "No", surname = "Access", nickname = (string?)null, role = "child" });
         Assert.Equal(HttpStatusCode.Forbidden, childCreate.StatusCode);
+        using var childUpdate = await SendAuthorizedJsonAsync(
+            HttpMethod.Patch,
+            $"/api/users/{created.Id}",
+            child.AccessToken,
+            new { firstName = "No", surname = "Access", nickname = (string?)null });
+        Assert.Equal(HttpStatusCode.Forbidden, childUpdate.StatusCode);
+        using var childDeactivate = await SendAuthorizedAsync(
+            HttpMethod.Delete,
+            $"/api/users/{created.Id}",
+            child.AccessToken);
+        Assert.Equal(HttpStatusCode.Forbidden, childDeactivate.StatusCode);
+        using var childRestore = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            $"/api/users/{created.Id}/restore",
+            child.AccessToken,
+            new { });
+        Assert.Equal(HttpStatusCode.Forbidden, childRestore.StatusCode);
+    }
+
+    [Fact]
+    public async Task Adult_edits_deactivates_and_restores_a_child_without_losing_history()
+    {
+        var bootstrap = await BootstrapAdultAsync("123456");
+        using var createdResponse = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            "/api/users",
+            bootstrap.Body.AccessToken,
+            new { firstName = "Fred", surname = "Avenant", nickname = "Fredster", role = "child" });
+        var created = (await createdResponse.Content.ReadFromJsonAsync<FamilyMemberBody>())!;
+
+        using var handoff = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            $"/api/users/{created.Id}/pin-setup",
+            bootstrap.Body.AccessToken,
+            new { surname = (string?)null });
+        var grant = (await handoff.Content.ReadFromJsonAsync<PinSetupGrantResponse>())!;
+        using var setup = await Client.PostAsJsonAsync(
+            "/api/auth/setup-pin",
+            new { setupToken = grant.SetupToken, pin = "0123" });
+        var childAuth = (await setup.Content.ReadFromJsonAsync<AuthBody>())!;
+        var childRefresh = RefreshCookie(setup);
+
+        using var childDelete = await SendAuthorizedAsync(
+            HttpMethod.Delete,
+            $"/api/users/{created.Id}",
+            childAuth.AccessToken);
+        Assert.Equal(HttpStatusCode.Forbidden, childDelete.StatusCode);
+
+        using var adultSignIn = await Client.PostAsJsonAsync(
+            "/api/auth/sign-in",
+            new { memberId = bootstrap.Body.Member.Id, pin = "123456" });
+        var adultAuth = (await adultSignIn.Content.ReadFromJsonAsync<AuthBody>())!;
+        using var job = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            "/api/today/jobs",
+            adultAuth.AccessToken,
+            new
+            {
+                childIds = new[] { created.Id },
+                name = "Keep this job",
+                description = "History survives deactivation.",
+                points = 2,
+            });
+        Assert.Equal(HttpStatusCode.Created, job.StatusCode);
+
+        var editedAt = Factory.Clock.UtcNow;
+        using var editedResponse = await SendAuthorizedJsonAsync(
+            HttpMethod.Patch,
+            $"/api/users/{created.Id}",
+            adultAuth.AccessToken,
+            new { firstName = " Frederick ", surname = " Smith ", nickname = " Addie " });
+        Assert.Equal(HttpStatusCode.OK, editedResponse.StatusCode);
+        var edited = (await editedResponse.Content.ReadFromJsonAsync<FamilyMemberBody>())!;
+        Assert.Equal("Frederick", edited.FirstName);
+        Assert.Equal("Smith", edited.Surname);
+        Assert.Equal("Addie", edited.Nickname);
+        Assert.True(edited.IsActive);
+
+        using (var startBeforeDeactivate = await Client.GetAsync("/api/auth/start"))
+        {
+            var start = (await startBeforeDeactivate.Content.ReadFromJsonAsync<AuthStart>())!;
+            Assert.Contains(start.Members!, member => member.DisplayName == "Addie Avenant");
+            Assert.Contains(start.Members!, member => member.DisplayName == "Addie Smith");
+        }
+
+        var deactivatedAt = Factory.Clock.UtcNow;
+        using var deactivatedResponse = await SendAuthorizedAsync(
+            HttpMethod.Delete,
+            $"/api/users/{created.Id}",
+            adultAuth.AccessToken);
+        Assert.Equal(HttpStatusCode.OK, deactivatedResponse.StatusCode);
+        var deactivated = (await deactivatedResponse.Content.ReadFromJsonAsync<FamilyMemberBody>())!;
+        Assert.False(deactivated.IsActive);
+        Factory.Clock.Advance(TimeSpan.FromMinutes(1));
+        using var repeatedDeactivation = await SendAuthorizedAsync(
+            HttpMethod.Delete,
+            $"/api/users/{created.Id}",
+            adultAuth.AccessToken);
+        Assert.Equal(HttpStatusCode.OK, repeatedDeactivation.StatusCode);
+        Assert.False((await repeatedDeactivation.Content.ReadFromJsonAsync<FamilyMemberBody>())!.IsActive);
+
+        using var activeResponse = await SendAuthorizedAsync(
+            HttpMethod.Get,
+            "/api/users",
+            adultAuth.AccessToken);
+        var active = (await activeResponse.Content.ReadFromJsonAsync<IReadOnlyList<FamilyMemberBody>>())!;
+        Assert.DoesNotContain(active, member => member.Id == created.Id);
+        using var allResponse = await SendAuthorizedAsync(
+            HttpMethod.Get,
+            "/api/users?includeInactive=true",
+            adultAuth.AccessToken);
+        var all = (await allResponse.Content.ReadFromJsonAsync<IReadOnlyList<FamilyMemberBody>>())!;
+        Assert.Contains(all, member => member.Id == created.Id && !member.IsActive);
+
+        using var revokedAccess = await SendAuthorizedAsync(
+            HttpMethod.Get,
+            "/api/today",
+            childAuth.AccessToken);
+        Assert.Equal(HttpStatusCode.Unauthorized, revokedAccess.StatusCode);
+        using var revokedRefresh = await RefreshAsync(childRefresh);
+        Assert.Equal(HttpStatusCode.Unauthorized, revokedRefresh.StatusCode);
+
+        var startAfterDeactivate = await Client.GetFromJsonAsync<AuthStart>("/api/auth/start");
+        Assert.DoesNotContain(startAfterDeactivate!.Members!, member => member.Id == created.Id);
+        Assert.Contains(startAfterDeactivate.Members!, member => member.DisplayName == "Addie");
+
+        await using (var scope = Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var stored = await database.HouseholdMembers.SingleAsync(member => member.Id == created.Id);
+            Assert.Equal(editedAt, stored.ProfileUpdatedAtUtc);
+            Assert.Equal(bootstrap.Body.Member.Id, stored.ProfileUpdatedByMemberId);
+            Assert.Equal(deactivatedAt, stored.DeactivatedAtUtc);
+            Assert.Equal(bootstrap.Body.Member.Id, stored.DeactivatedByMemberId);
+            Assert.Equal(1, await database.Jobs.CountAsync(candidate => candidate.ChildId == created.Id));
+        }
+
+        await RestartApplicationAsync();
+        var restoredAt = Factory.Clock.UtcNow;
+        using var restoredResponse = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            $"/api/users/{created.Id}/restore",
+            adultAuth.AccessToken,
+            new { });
+        Assert.Equal(HttpStatusCode.OK, restoredResponse.StatusCode);
+        var restored = (await restoredResponse.Content.ReadFromJsonAsync<FamilyMemberBody>())!;
+        Assert.True(restored.IsActive);
+        Factory.Clock.Advance(TimeSpan.FromMinutes(1));
+        using var repeatedRestore = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            $"/api/users/{created.Id}/restore",
+            adultAuth.AccessToken,
+            new { });
+        Assert.Equal(HttpStatusCode.OK, repeatedRestore.StatusCode);
+        Assert.True((await repeatedRestore.Content.ReadFromJsonAsync<FamilyMemberBody>())!.IsActive);
+
+        using var childSignIn = await Client.PostAsJsonAsync(
+            "/api/auth/sign-in",
+            new { memberId = created.Id, pin = "0123" });
+        Assert.Equal(HttpStatusCode.OK, childSignIn.StatusCode);
+        await using var restoredScope = Factory.Services.CreateAsyncScope();
+        var restoredDatabase = restoredScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var restoredMember = await restoredDatabase.HouseholdMembers.SingleAsync(
+            member => member.Id == created.Id);
+        Assert.Equal(restoredAt, restoredMember.RestoredAtUtc);
+        Assert.Equal(bootstrap.Body.Member.Id, restoredMember.RestoredByMemberId);
+        Assert.Equal(1, await restoredDatabase.Jobs.CountAsync(candidate => candidate.ChildId == created.Id));
+    }
+
+    [Fact]
+    public async Task Deactivation_revokes_an_outstanding_PIN_handoff()
+    {
+        var bootstrap = await BootstrapAdultAsync("123456");
+        using var createdResponse = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            "/api/users",
+            bootstrap.Body.AccessToken,
+            new { firstName = "Harrie", surname = "Avenant", nickname = (string?)null, role = "child" });
+        var created = (await createdResponse.Content.ReadFromJsonAsync<FamilyMemberBody>())!;
+        using var handoff = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            $"/api/users/{created.Id}/pin-setup",
+            bootstrap.Body.AccessToken,
+            new { surname = (string?)null });
+        var grant = (await handoff.Content.ReadFromJsonAsync<PinSetupGrantResponse>())!;
+
+        using var adultSignIn = await Client.PostAsJsonAsync(
+            "/api/auth/sign-in",
+            new { memberId = bootstrap.Body.Member.Id, pin = "123456" });
+        var adult = (await adultSignIn.Content.ReadFromJsonAsync<AuthBody>())!;
+        using var deactivated = await SendAuthorizedAsync(
+            HttpMethod.Delete,
+            $"/api/users/{created.Id}",
+            adult.AccessToken);
+        Assert.Equal(HttpStatusCode.OK, deactivated.StatusCode);
+
+        using var setup = await Client.PostAsJsonAsync(
+            "/api/auth/setup-pin",
+            new { setupToken = grant.SetupToken, pin = "0123" });
+        Assert.Equal(HttpStatusCode.BadRequest, setup.StatusCode);
+        Assert.Equal("invalid_or_expired_setup", await ProblemCodeAsync(setup));
+
+        using var restored = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            $"/api/users/{created.Id}/restore",
+            adult.AccessToken,
+            new { });
+        Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
+        Assert.False((await restored.Content.ReadFromJsonAsync<FamilyMemberBody>())!.IsCredentialReady);
+        using var newHandoff = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            $"/api/users/{created.Id}/pin-setup",
+            adult.AccessToken,
+            new { surname = (string?)null });
+        Assert.Equal(HttpStatusCode.OK, newHandoff.StatusCode);
+    }
+
+    [Fact]
+    public async Task Adult_cannot_deactivate_their_current_profile()
+    {
+        var bootstrap = await BootstrapAdultAsync("123456");
+
+        using var response = await SendAuthorizedAsync(
+            HttpMethod.Delete,
+            $"/api/users/{bootstrap.Body.Member.Id}",
+            bootstrap.Body.AccessToken);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("cannot_deactivate_self", await ProblemCodeAsync(response));
+        using var stillAuthorized = await SendAuthorizedAsync(
+            HttpMethod.Get,
+            "/api/today",
+            bootstrap.Body.AccessToken);
+        Assert.Equal(HttpStatusCode.OK, stillAuthorized.StatusCode);
+    }
+
+    [Fact]
+    public async Task Invalid_member_update_is_atomic_and_returns_a_stable_problem()
+    {
+        var bootstrap = await BootstrapAdultAsync("123456");
+        using var response = await SendAuthorizedJsonAsync(
+            HttpMethod.Patch,
+            $"/api/users/{bootstrap.Body.Member.Id}",
+            bootstrap.Body.AccessToken,
+            new { firstName = "", surname = "Avenant", nickname = (string?)null });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("invalid_member", await ProblemCodeAsync(response));
+        await using var scope = Factory.Services.CreateAsyncScope();
+        var member = await scope.ServiceProvider.GetRequiredService<AppDbContext>()
+            .HouseholdMembers.SingleAsync(candidate => candidate.Id == bootstrap.Body.Member.Id);
+        Assert.Equal("Addie", member.FirstName);
+        Assert.Null(member.ProfileUpdatedAtUtc);
     }
 
     [Fact]
@@ -592,7 +853,8 @@ public sealed class IdentityEndpointsTests : IAsyncLifetime
         string? Nickname,
         string DisplayName,
         string Role,
-        bool IsCredentialReady);
+        bool IsCredentialReady,
+        bool IsActive);
 
     private sealed class IdentityApiFactory : WebApplicationFactory<Program>
     {

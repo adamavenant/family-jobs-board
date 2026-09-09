@@ -82,10 +82,74 @@ public sealed class HouseholdMember
 
     public bool IsActive { get; private set; }
 
+    public DateTimeOffset? ProfileUpdatedAtUtc { get; private set; }
+
+    public Guid? ProfileUpdatedByMemberId { get; private set; }
+
+    public DateTimeOffset? DeactivatedAtUtc { get; private set; }
+
+    public Guid? DeactivatedByMemberId { get; private set; }
+
+    public DateTimeOffset? RestoredAtUtc { get; private set; }
+
+    public Guid? RestoredByMemberId { get; private set; }
+
+    public void UpdateProfile(
+        string firstName,
+        string surname,
+        string? nickname,
+        Guid actorMemberId,
+        DateTimeOffset now)
+    {
+        EnsureActor(actorMemberId);
+        FirstName = NormalizeRequiredName(firstName, nameof(firstName));
+        Surname = NormalizeRequiredName(surname, nameof(surname));
+        Nickname = NormalizeOptionalName(nickname, nameof(nickname));
+        ProfileUpdatedAtUtc = now;
+        ProfileUpdatedByMemberId = actorMemberId;
+    }
+
+    public void Deactivate(Guid actorMemberId, DateTimeOffset now)
+    {
+        EnsureActor(actorMemberId);
+        if (!IsActive)
+        {
+            return;
+        }
+
+        IsActive = false;
+        DeactivatedAtUtc = now;
+        DeactivatedByMemberId = actorMemberId;
+    }
+
+    public void Restore(Guid actorMemberId, DateTimeOffset now)
+    {
+        EnsureActor(actorMemberId);
+        if (IsActive)
+        {
+            return;
+        }
+
+        IsActive = true;
+        RestoredAtUtc = now;
+        RestoredByMemberId = actorMemberId;
+    }
+
     public void SetSurname(string surname)
     {
-        Surname = NormalizeOptionalName(surname, nameof(surname))
-            ?? throw new ArgumentException("A surname is required.", nameof(surname));
+        Surname = NormalizeRequiredName(surname, nameof(surname));
+    }
+
+    private static string NormalizeRequiredName(string value, string parameterName) =>
+        NormalizeOptionalName(value, parameterName)
+        ?? throw new ArgumentException("A name is required.", parameterName);
+
+    private static void EnsureActor(Guid actorMemberId)
+    {
+        if (actorMemberId == Guid.Empty)
+        {
+            throw new ArgumentException("A profile change needs an actor ID.", nameof(actorMemberId));
+        }
     }
 
     private static string? NormalizeOptionalName(string? value, string parameterName)

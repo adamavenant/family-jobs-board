@@ -16,13 +16,17 @@ public sealed class EfIdentityRepository : IIdentityRepository
         _database = database;
     }
 
-    public async Task<IReadOnlyList<IdentityMember>> GetActiveMembersAsync(
+    public async Task<IReadOnlyList<IdentityMember>> GetMembersAsync(
+        bool includeInactive,
         CancellationToken cancellationToken)
     {
-        var members = await _database.HouseholdMembers
-            .AsNoTracking()
-            .Where(member => member.IsActive)
-            .ToListAsync(cancellationToken);
+        var query = _database.HouseholdMembers.AsNoTracking();
+        if (!includeInactive)
+        {
+            query = query.Where(member => member.IsActive);
+        }
+
+        var members = await query.ToListAsync(cancellationToken);
         var readyIds = await _database.MemberCredentials
             .AsNoTracking()
             .Where(credential => credential.State == CredentialState.Ready)
@@ -40,10 +44,82 @@ public sealed class EfIdentityRepository : IIdentityRepository
         _database.MemberCredentials.Add(new MemberCredential(member.Id));
         await _database.SaveChangesAsync(cancellationToken);
 
-        var members = await GetActiveMembersAsync(cancellationToken);
+        var members = await GetMembersAsync(false, cancellationToken);
         var created = members.Single(candidate => candidate.Id == member.Id);
         await transaction.CommitAsync(cancellationToken);
         return created;
+    }
+
+    public async Task<IdentityMember?> UpdateMemberAsync(
+        Guid memberId,
+        string firstName,
+        string surname,
+        string? nickname,
+        Guid actorMemberId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var member = await _database.HouseholdMembers.SingleOrDefaultAsync(
+            candidate => candidate.Id == memberId,
+            cancellationToken);
+        if (member is null)
+        {
+            return null;
+        }
+
+        member.UpdateProfile(firstName, surname, nickname, actorMemberId, now);
+        await _database.SaveChangesAsync(cancellationToken);
+        return (await GetMembersAsync(true, cancellationToken))
+            .Single(candidate => candidate.Id == memberId);
+    }
+
+    public async Task<IdentityMember?> SetMemberActiveAsync(
+        Guid memberId,
+        bool isActive,
+        Guid actorMemberId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await _database.Database.BeginTransactionAsync(cancellationToken);
+        var member = await _database.HouseholdMembers
+            .FromSqlInterpolated($"SELECT * FROM household_members WHERE id = {memberId} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken);
+        if (member is null)
+        {
+            return null;
+        }
+
+        if (isActive)
+        {
+            member.Restore(actorMemberId, now);
+        }
+        else if (member.IsActive)
+        {
+            member.Deactivate(actorMemberId, now);
+            var sessions = await _database.AuthSessions
+                .Where(session => session.MemberId == memberId && session.RevokedAtUtc == null)
+                .ToListAsync(cancellationToken);
+            foreach (var session in sessions)
+            {
+                session.Revoke(now);
+            }
+
+            var setupTokens = await _database.PinSetupTokens
+                .Where(token => token.TargetMemberId == memberId
+                    && token.ConsumedAtUtc == null
+                    && token.RevokedAtUtc == null)
+                .ToListAsync(cancellationToken);
+            foreach (var token in setupTokens)
+            {
+                token.Revoke(now);
+            }
+        }
+
+        await _database.SaveChangesAsync(cancellationToken);
+        var mapped = (await GetMembersAsync(true, cancellationToken))
+            .Single(candidate => candidate.Id == memberId);
+        await transaction.CommitAsync(cancellationToken);
+        return mapped;
     }
 
     public async Task<IdentityStartState> GetStartAsync(CancellationToken cancellationToken)
@@ -68,12 +144,12 @@ public sealed class EfIdentityRepository : IIdentityRepository
 
             return new IdentityStartState(
                 IdentityStartMode.ClaimExistingAdult,
-                MapMembers(members.Where(member => member.IsAdult), ready));
+                MapMembers(members.Where(member => member.IsActive && member.IsAdult), ready));
         }
 
         return new IdentityStartState(
             IdentityStartMode.SignIn,
-            MapMembers(members.Where(member => ready.Contains(member.Id)), ready));
+            MapMembers(members.Where(member => member.IsActive && ready.Contains(member.Id)), ready));
     }
 
     public async Task<BootstrapStoreResult> BootstrapAsync(
@@ -156,7 +232,7 @@ public sealed class EfIdentityRepository : IIdentityRepository
         CancellationToken cancellationToken)
     {
         var member = await _database.HouseholdMembers.AsNoTracking().SingleOrDefaultAsync(
-            member => member.Id == memberId,
+            member => member.Id == memberId && member.IsActive,
             cancellationToken);
         var credential = await _database.MemberCredentials.AsNoTracking().SingleOrDefaultAsync(
             credential => credential.MemberId == memberId && credential.State == CredentialState.Ready,
@@ -256,6 +332,14 @@ public sealed class EfIdentityRepository : IIdentityRepository
         var member = await _database.HouseholdMembers.AsNoTracking().SingleAsync(
             member => member.Id == session.MemberId,
             cancellationToken);
+        if (!member.IsActive)
+        {
+            session.Revoke(now);
+            await _database.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return new SessionRefreshResult(SessionRefreshStatus.Expired, null, sessionId);
+        }
+
         session.Rotate(nextRefreshHash, now);
         await _database.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -275,9 +359,14 @@ public sealed class EfIdentityRepository : IIdentityRepository
         var session = await _database.AuthSessions.SingleOrDefaultAsync(
             session => session.Id == sessionId,
             cancellationToken);
+        var memberIsActive = session is not null
+            && await _database.HouseholdMembers.AnyAsync(
+                member => member.Id == memberId && member.IsActive,
+                cancellationToken);
         if (session is null
             || session.MemberId != memberId
             || session.Role != role
+            || !memberIsActive
             || !session.IsActive(now))
         {
             if (session is { RevokedAtUtc: null })
@@ -484,7 +573,8 @@ public sealed class EfIdentityRepository : IIdentityRepository
             member.Nickname,
             displayName,
             member.Role,
-            ready);
+            ready,
+            member.IsActive);
 
     private static bool CryptographicEquals(string left, string right) =>
         System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(

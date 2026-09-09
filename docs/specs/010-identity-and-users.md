@@ -2,9 +2,9 @@
 
 ## Status
 
-Accepted for the first-adult bootstrap, PIN sign-in, and family-member
-list/create/onboarding implementation slices. Editing, soft deletion,
-restoration, and PIN reset remain specified at a boundary level only.
+Accepted for the first-adult bootstrap, PIN sign-in, family-member onboarding,
+and profile lifecycle implementation slices. PIN reset remains specified at a
+boundary level only.
 
 ## Outcome and user value
 
@@ -33,6 +33,7 @@ points-ledger record.
 | Approve or reject work                         | No                       | No                    | Yes                                    |
 | Start one-time PIN handoff                     | No                       | No                    | Yes                                    |
 | Finish one-time PIN handoff                    | Valid handoff token only | Target                | Target                                 |
+| Edit, deactivate, or restore a profile         | No                       | No                    | Yes, except self-deactivation          |
 
 Health endpoints remain anonymous and reveal no household or identity data.
 All other current `/api` operations require a valid session. The authenticated
@@ -71,10 +72,24 @@ slice.
   or return to it later; and
 - anonymous and child callers cannot list or create household members.
 
+### Family-member lifecycle slice
+
+- an authenticated adult can edit required first name and surname plus an
+  optional nickname without changing the profile's role;
+- active profiles are returned by default, while an explicit adult-only query
+  includes inactive profiles;
+- deactivation is a reversible state change which preserves every historical
+  job, recurrence, review, and points reference;
+- deactivation immediately revokes the target's sessions and outstanding PIN
+  handoffs, then hides the target from sign-in, Today, and new assignments;
+- the signed-in adult cannot deactivate their own profile;
+- restore retains an existing PIN but creates no new session, while a restored
+  `NotSet` profile becomes eligible for a new PIN handoff; and
+- profile updates, deactivation, and restoration record UTC time and actor ID.
+
 ### Out of scope
 
-- editing, deleting, restoring, or resetting users beyond the existing-profile
-  PIN handoff;
+- hard deletion, role changes, or PIN reset;
 - multiple households or tenants;
 - email, passwords, recovery links, external identity providers, biometrics,
   multi-factor authentication, or device trust;
@@ -159,6 +174,20 @@ closing loses the token and requires the adult to sign in and start again.
 Successful setup atomically consumes the token and credential transition, then
 signs in the target. Concurrent or repeated consumption has exactly one winner;
 failure never restores the adult session.
+
+### Profile lifecycle
+
+Profile updates trim names, require non-empty first name and surname, and leave
+the role unchanged. Name changes immediately participate in duplicate-display
+disambiguation everywhere the profile is shown.
+
+Deactivation and restoration are idempotent. Repeating an operation returns the
+current result without replacing its original audit instant or actor. A profile
+stores nullable update, deactivation, and restoration UTC instants and actor
+IDs so the forward migration remains safe for existing rows. Inactive profiles
+retain credentials and all historical references, but cannot authenticate,
+refresh, use an already-issued access token, receive a handoff, appear in the
+chooser or Today board, or receive a new assignment.
 
 ### Sessions and inactivity
 
@@ -309,6 +338,20 @@ No body. Rotates the refresh cookie. Returns `200 AuthResponse` or
 Accepts current access token or refresh cookie, always clears the cookie, and
 returns `204`. Repeated logout is harmless.
 
+### `/api/users` member administration
+
+Adult policy throughout. `GET /api/users` returns active profiles;
+`GET /api/users?includeInactive=true` also returns inactive profiles. Each
+response includes `isCredentialReady` and `isActive`, but no PIN, token, hash,
+session, or audit internals.
+
+`POST /api/users` creates a profile in credential state `NotSet`.
+`PATCH /api/users/{memberId}` accepts `firstName`, `surname`, and `nickname` and
+returns the updated profile. `DELETE /api/users/{memberId}` soft-deactivates the
+profile. `POST /api/users/{memberId}/restore` restores it. Unknown members use
+`404 member_not_found`, invalid names use `400 invalid_member`, and attempting
+to deactivate the current profile uses `409 cannot_deactivate_self`.
+
 ### `POST /api/users/{memberId}/pin-setup`
 
 Adult policy. Accepts an optional `surname`; it is required when the migrated
@@ -362,11 +405,11 @@ put PIN or setup token in route state, URLs, analytics, or persistent storage.
 
 ## Audit, observability, and health
 
-Audit bootstrap, credential setup/reset, successful sign-in, logout, session
-revocation, setup-token issue/consume, and authorization denial with UTC time,
-known actor/target IDs, and correlation ID. Failed sign-in may include member
-ID, remote-IP hash, outcome category, and lock duration—never submitted input
-or token material.
+Audit bootstrap, profile update/deactivation/restoration, credential
+setup/reset, successful sign-in, logout, session revocation, setup-token
+issue/consume, and authorization denial with UTC time, known actor/target IDs,
+and correlation ID. Failed sign-in may include member ID, remote-IP hash,
+outcome category, and lock duration—never submitted input or token material.
 
 Emit counters for sign-in outcome, rate-limit rejection, active/revoked
 sessions, and bootstrap conflicts. Logs use stable event names and never log
@@ -400,6 +443,13 @@ credentials or expose counts; database readiness covers migrated tables.
     fail the live session check.
 13. **Restart:** With the same secrets/database, configured users can sign in
     and an eligible session can refresh after container restart.
+14. **Lifecycle:** Editing a profile updates display names without changing its
+    role; deactivation preserves history but revokes sessions and removes every
+    active-use surface; restoration keeps a ready PIN or re-enables handoff for
+    a `NotSet` profile.
+15. **Self-protection/idempotency:** The current adult receives
+    `cannot_deactivate_self`; repeat deactivate/restore calls succeed without
+    rewriting their original audit records.
 
 ## Automated test seams
 
@@ -412,8 +462,9 @@ credentials or expose counts; database readiness covers migrated tables.
   401/403/409/429 errors, restart, and missing production secrets.
 - **React:** auth-state routing, confirmation/leading zero, generic errors,
   focus/status behavior, in-memory tokens, expiry, and role views.
-- **Playwright:** fresh bootstrap; pilot claim and child handoff; child
-  completion then adult approval; expiry; phone and tablet widths.
+- **Playwright:** fresh bootstrap; pilot claim and child handoff; profile edit,
+  two-step deactivation, and restore; child completion then adult approval;
+  expiry; phone and tablet widths.
 - **Security:** inspect logs, errors, OpenAPI, DOM, URL, storage, cookies, and DB
   to prove no PIN, plaintext refresh token, signing key, or pepper appears.
 

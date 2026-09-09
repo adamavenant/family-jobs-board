@@ -4,6 +4,10 @@ import type { components, paths } from "./schema";
 import { authenticatedFetch } from "./auth";
 
 type GeneratedFamilyMember = components["schemas"]["FamilyMemberResponse"];
+type CreateFamilyMemberRequest =
+  components["schemas"]["CreateFamilyMemberRequest"];
+type UpdateFamilyMemberRequest =
+  components["schemas"]["UpdateFamilyMemberRequest"];
 
 export type FamilyMemberRole = "adult" | "child";
 
@@ -15,6 +19,7 @@ export interface FamilyMember {
   displayName: string;
   role: FamilyMemberRole;
   isCredentialReady: boolean;
+  isActive: boolean;
 }
 
 export class FamilyMemberApiError extends Error {
@@ -24,8 +29,12 @@ export class FamilyMemberApiError extends Error {
   }
 }
 
-export async function getFamilyMembers(): Promise<FamilyMember[]> {
-  const { data, error } = await apiClient().GET("/api/users");
+export async function getFamilyMembers(
+  includeInactive = false,
+): Promise<FamilyMember[]> {
+  const { data, error } = await apiClient().GET("/api/users", {
+    params: { query: { includeInactive } },
+  });
   if (!data) {
     throw new FamilyMemberApiError(
       problemMessage(error, "We couldn't load the family members."),
@@ -35,18 +44,63 @@ export async function getFamilyMembers(): Promise<FamilyMember[]> {
   return data.map(mapMember);
 }
 
-export async function createFamilyMember(request: {
-  firstName: string;
-  surname: string;
-  nickname: string | null;
-  role: FamilyMemberRole;
-}): Promise<FamilyMember> {
+export async function createFamilyMember(
+  request: CreateFamilyMemberRequest,
+): Promise<FamilyMember> {
   const { data, error } = await apiClient().POST("/api/users", {
     body: request,
   });
   if (!data) {
     throw new FamilyMemberApiError(
       problemMessage(error, "That family member couldn't be created."),
+    );
+  }
+
+  return mapMember(data);
+}
+
+export async function updateFamilyMember(
+  memberId: string,
+  request: UpdateFamilyMemberRequest,
+): Promise<FamilyMember> {
+  const { data, error } = await apiClient().PATCH("/api/users/{memberId}", {
+    params: { path: { memberId } },
+    body: request,
+  });
+  if (!data) {
+    throw new FamilyMemberApiError(
+      problemMessage(error, "That family member couldn't be updated."),
+    );
+  }
+
+  return mapMember(data);
+}
+
+export async function deactivateFamilyMember(
+  memberId: string,
+): Promise<FamilyMember> {
+  const { data, error } = await apiClient().DELETE("/api/users/{memberId}", {
+    params: { path: { memberId } },
+  });
+  if (!data) {
+    throw new FamilyMemberApiError(
+      problemMessage(error, "That family member couldn't be deactivated."),
+    );
+  }
+
+  return mapMember(data);
+}
+
+export async function restoreFamilyMember(
+  memberId: string,
+): Promise<FamilyMember> {
+  const { data, error } = await apiClient().POST(
+    "/api/users/{memberId}/restore",
+    { params: { path: { memberId } } },
+  );
+  if (!data) {
+    throw new FamilyMemberApiError(
+      problemMessage(error, "That family member couldn't be restored."),
     );
   }
 
@@ -75,6 +129,7 @@ function mapMember(value: GeneratedFamilyMember): FamilyMember {
     displayName: value.displayName,
     role: value.role,
     isCredentialReady: value.isCredentialReady,
+    isActive: value.isActive,
   };
 }
 

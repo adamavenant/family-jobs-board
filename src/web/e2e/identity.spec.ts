@@ -149,8 +149,10 @@ test("pilot claim, child handoff, completion, and adult approval work on a table
   await page.getByRole("button", { name: "Set up and continue" }).click();
 
   await page.getByText("Manage family").click();
-  await page.getByLabel("Surname", { exact: true }).last().fill("Avenant");
-  await page.getByRole("button", { name: "Set up PIN now" }).click();
+  const setupButton = page.getByRole("button", { name: "Set up PIN now" });
+  const handoffForm = setupButton.locator("xpath=ancestor::form");
+  await handoffForm.getByLabel("Surname").fill("Avenant");
+  await setupButton.click();
   await expect(
     page.getByRole("heading", { name: "Over to Fredster" }),
   ).toBeVisible();
@@ -240,10 +242,12 @@ test("a grown-up creates a child and hands over PIN setup on a phone", async ({
   await page.waitForTimeout(250);
   expect(pageErrors).toEqual([]);
   await page.getByText("Manage family").click();
-  await page.getByLabel("First name").fill("Harriet");
-  await page.getByLabel("Surname", { exact: true }).first().fill("Avenant");
-  await page.getByLabel("Nickname (optional)").fill("Harrie");
-  await page.getByRole("button", { name: "Add family member" }).click();
+  const addButton = page.getByRole("button", { name: "Add family member" });
+  const createForm = addButton.locator("xpath=ancestor::form");
+  await createForm.getByLabel("First name").fill("Harriet");
+  await createForm.getByLabel("Surname", { exact: true }).fill("Avenant");
+  await createForm.getByLabel("Nickname (optional)").fill("Harrie");
+  await addButton.click();
   await expect(page.getByText(/Harrie was added/)).toBeVisible();
   await page.getByRole("button", { name: "Set up PIN now" }).click();
   await expect(
@@ -426,6 +430,111 @@ test("an expired remembered session returns to the chooser", async ({
   ).toBeVisible();
 });
 
+for (const viewport of [
+  { name: "phone", width: 390, height: 844 },
+  { name: "tablet", width: 820, height: 1180 },
+]) {
+  test(`a grown-up manages a profile lifecycle on a ${viewport.name}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    let members = [
+      familyMember(addieId, "Addie", "Avenant", "adult", true),
+      familyMember(fredsterId, "Fredster", "Avenant", "child", true),
+    ];
+    await page.route("**/api/**", async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (!path.startsWith("/api/")) {
+        return route.continue();
+      }
+      if (path === "/api/auth/refresh") {
+        return json(route, auth(addieId, "Addie", "adult"));
+      }
+      if (path === "/api/today") {
+        return json(route, board("Addie", true, "open"));
+      }
+      if (path === `/api/users/${fredsterId}` && request.method() === "PATCH") {
+        const names = request.postDataJSON() as {
+          firstName: string;
+          surname: string;
+          nickname: string | null;
+        };
+        members = members.map((member) =>
+          member.id === fredsterId
+            ? {
+                ...member,
+                ...names,
+                displayName: names.nickname ?? names.firstName,
+              }
+            : member,
+        );
+        return json(route, members[1]);
+      }
+      if (
+        path === `/api/users/${fredsterId}` &&
+        request.method() === "DELETE"
+      ) {
+        members = members.map((member) =>
+          member.id === fredsterId ? { ...member, isActive: false } : member,
+        );
+        return json(route, members[1]);
+      }
+      if (
+        path === `/api/users/${fredsterId}/restore` &&
+        request.method() === "POST"
+      ) {
+        members = members.map((member) =>
+          member.id === fredsterId ? { ...member, isActive: true } : member,
+        );
+        return json(route, members[1]);
+      }
+      if (path === "/api/users") {
+        return json(route, members);
+      }
+      return problem(route, 404);
+    });
+
+    await page.goto("/");
+    await page.getByText("Manage family").click();
+    const activeList = page.getByRole("list", { name: "Family members" });
+    await expect(activeList.getByText("Signed-in profile")).toBeVisible();
+    const childProfile = activeList
+      .getByRole("listitem")
+      .filter({ hasText: "Fredster" });
+    await childProfile.getByText("Edit profile").click();
+    await childProfile.getByLabel("First name").fill("Frederick");
+    await childProfile.getByLabel("Nickname (optional)").fill("Freddie");
+    await childProfile.getByRole("button", { name: "Save profile" }).click();
+    await expect(
+      page.getByText("Freddie's profile was updated."),
+    ).toBeVisible();
+
+    const editedProfile = activeList
+      .getByRole("listitem")
+      .filter({ hasText: "Freddie" });
+    await editedProfile
+      .getByRole("button", { name: "Deactivate profile" })
+      .click();
+    await expect(
+      editedProfile.getByRole("button", { name: "Yes, deactivate" }),
+    ).toBeVisible();
+    await editedProfile
+      .getByRole("button", { name: "Yes, deactivate" })
+      .click();
+
+    const inactiveList = page.getByRole("list", {
+      name: "Inactive family members",
+    });
+    await expect(inactiveList.getByText("Freddie")).toBeVisible();
+    await inactiveList.getByRole("button", { name: "Restore profile" }).click();
+    await expect(
+      page.getByText("Freddie's profile was restored."),
+    ).toBeVisible();
+    await expect(activeList.getByText("Freddie")).toBeVisible();
+  });
+}
+
 function member(id: string, displayName: string, role: "adult" | "child") {
   return { id, displayName, role, requiresSurname: true };
 }
@@ -444,6 +553,7 @@ function familyMember(
   surname: string | null,
   role: "adult" | "child",
   isCredentialReady: boolean,
+  isActive = true,
 ) {
   return {
     id,
@@ -453,6 +563,7 @@ function familyMember(
     displayName,
     role,
     isCredentialReady,
+    isActive,
   };
 }
 

@@ -364,7 +364,9 @@ h1 {
 }
 .family-member-form > button,
 .family-members__load-error button,
-.member-handoff-form button {
+.member-handoff-form button,
+.family-member-edit button,
+.member-restore-form button {
   min-height: 46px;
   padding: 11px 18px;
   color: #fff;
@@ -376,11 +378,15 @@ h1 {
 }
 .family-member-form > button:hover,
 .family-members__load-error button:hover,
-.member-handoff-form button:hover {
+.member-handoff-form button:hover,
+.family-member-edit button:hover,
+.member-restore-form button:hover {
   background: var(--accent-hover);
 }
 .family-member-form > button:disabled,
-.member-handoff-form button:disabled {
+.member-handoff-form button:disabled,
+.family-member-edit button:disabled,
+.member-restore-form button:disabled {
   cursor: wait;
   opacity: 0.65;
 }
@@ -435,6 +441,28 @@ h1 {
   color: var(--pending-text);
   background: var(--pending-bg);
 }
+.family-member-list__status .status--inactive {
+  color: var(--error-text);
+  background: var(--error-bg);
+}
+.inactive-family-members {
+  display: grid;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.inactive-family-members h3,
+.inactive-family-members p {
+  margin: 0;
+}
+.inactive-family-members p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+.family-member--inactive {
+  background: color-mix(in srgb, var(--input) 76%, var(--page));
+}
 .member-handoff-form {
   display: grid;
   gap: 8px;
@@ -452,6 +480,102 @@ h1 {
   background: var(--input);
   border: 1px solid var(--input-border);
   border-radius: 9px;
+}
+.family-member-edit {
+  grid-column: 1 / -1;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.family-member-edit > summary {
+  width: fit-content;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 700;
+}
+.family-member-edit > form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+  padding-top: 12px;
+}
+.family-member-edit label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.family-member-edit input {
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 10px;
+  color: var(--text);
+  background: var(--page);
+  border: 1px solid var(--input-border);
+  border-radius: 9px;
+}
+.family-member-edit .error-message,
+.family-member-edit button {
+  grid-column: 1 / -1;
+}
+.family-member-list__self,
+.family-member-deactivate,
+.deactivate-confirmation,
+.member-restore-form {
+  grid-column: 1 / -1;
+}
+.family-member-list__self {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.family-member-deactivate {
+  justify-self: start;
+}
+.deactivate-confirmation {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  color: var(--error-text);
+  background: var(--error-bg);
+  border-radius: 10px;
+}
+.deactivate-confirmation p {
+  margin: 0;
+}
+.deactivate-confirmation > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.deactivate-confirmation button,
+.family-member-deactivate,
+.member-restore-form button {
+  min-height: 44px;
+  padding: 9px 14px;
+  border-radius: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.deactivate-confirmation .button--danger {
+  color: #fff;
+  background: var(--error-text);
+  border: 1px solid var(--error-text);
+}
+.deactivate-confirmation .button--quiet,
+.family-member-deactivate {
+  color: var(--error-text);
+  background: transparent;
+  border: 1px solid var(--error-text);
+}
+.member-restore-form button {
+  color: #fff;
+  background: var(--accent);
+  border: 0;
+}
+.member-restore-form .error-message {
+  margin-top: 0;
 }
 .family-members__load-error {
   display: flex;
@@ -1047,6 +1171,9 @@ h1 {
   }
   .member-handoff-form {
     grid-column: 1 / -1;
+  }
+  .family-member-edit > form {
+    grid-template-columns: 1fr;
   }
   .job-grid {
     grid-template-columns: 1fr;

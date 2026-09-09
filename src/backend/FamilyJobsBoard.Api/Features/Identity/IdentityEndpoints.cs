@@ -60,12 +60,29 @@ internal static class IdentityEndpoints
         users.MapGet("", GetMembersAsync)
             .Produces<IReadOnlyList<FamilyMemberResponse>>()
             .WithName("GetFamilyMembers")
-            .WithSummary("List active household members for administration.");
+            .WithSummary("List active or all household members for administration.");
         users.MapPost("", CreateMemberAsync)
             .Produces<FamilyMemberResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .WithName("CreateFamilyMember")
             .WithSummary("Create an active household member awaiting PIN setup.");
+        users.MapPatch("/{memberId:guid}", UpdateMemberAsync)
+            .Produces<FamilyMemberResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .WithName("UpdateFamilyMember")
+            .WithSummary("Update a household member's profile names.");
+        users.MapDelete("/{memberId:guid}", DeactivateMemberAsync)
+            .Produces<FamilyMemberResponse>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .WithName("DeactivateFamilyMember")
+            .WithSummary("Deactivate a household member and revoke their access.");
+        users.MapPost("/{memberId:guid}/restore", RestoreMemberAsync)
+            .Produces<FamilyMemberResponse>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .WithName("RestoreFamilyMember")
+            .WithSummary("Restore a deactivated household member.");
         users.MapPost("/{memberId:guid}/pin-setup", StartPinSetupAsync)
             .Produces<PinSetupResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -78,9 +95,10 @@ internal static class IdentityEndpoints
 
     private static async Task<IResult> GetMembersAsync(
         IdentityService service,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeInactive = false)
     {
-        var members = await service.GetActiveMembersAsync(cancellationToken);
+        var members = await service.GetMembersAsync(includeInactive, cancellationToken);
         return TypedResults.Ok(members.Select(MapFamilyMember).ToArray());
     }
 
@@ -106,6 +124,101 @@ internal static class IdentityEndpoints
                 member.Id,
                 member.Role);
             return TypedResults.Created($"/api/users/{member.Id}", MapFamilyMember(member));
+        }
+        catch (IdentityOperationException exception)
+        {
+            return MapError(exception.Error);
+        }
+    }
+
+    private static async Task<IResult> UpdateMemberAsync(
+        Guid memberId,
+        UpdateFamilyMemberRequest request,
+        HttpContext context,
+        IdentityService service,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        var actorId = PrincipalMemberId(context.User);
+        if (actorId is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        try
+        {
+            var member = await service.UpdateMemberAsync(
+                memberId,
+                new UpdateFamilyMember(request.FirstName, request.Surname, request.Nickname),
+                actorId.Value,
+                cancellationToken);
+            loggerFactory.CreateLogger("IdentityAudit").LogInformation(
+                "FamilyMemberUpdated ActorId={ActorId} TargetId={TargetId}",
+                actorId,
+                memberId);
+            return TypedResults.Ok(MapFamilyMember(member));
+        }
+        catch (IdentityOperationException exception)
+        {
+            return MapError(exception.Error);
+        }
+    }
+
+    private static async Task<IResult> DeactivateMemberAsync(
+        Guid memberId,
+        HttpContext context,
+        IdentityService service,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        var actorId = PrincipalMemberId(context.User);
+        if (actorId is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        try
+        {
+            var member = await service.DeactivateMemberAsync(
+                memberId,
+                actorId.Value,
+                cancellationToken);
+            loggerFactory.CreateLogger("IdentityAudit").LogInformation(
+                "FamilyMemberDeactivated ActorId={ActorId} TargetId={TargetId}",
+                actorId,
+                memberId);
+            return TypedResults.Ok(MapFamilyMember(member));
+        }
+        catch (IdentityOperationException exception)
+        {
+            return MapError(exception.Error);
+        }
+    }
+
+    private static async Task<IResult> RestoreMemberAsync(
+        Guid memberId,
+        HttpContext context,
+        IdentityService service,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        var actorId = PrincipalMemberId(context.User);
+        if (actorId is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        try
+        {
+            var member = await service.RestoreMemberAsync(
+                memberId,
+                actorId.Value,
+                cancellationToken);
+            loggerFactory.CreateLogger("IdentityAudit").LogInformation(
+                "FamilyMemberRestored ActorId={ActorId} TargetId={TargetId}",
+                actorId,
+                memberId);
+            return TypedResults.Ok(MapFamilyMember(member));
         }
         catch (IdentityOperationException exception)
         {
@@ -333,7 +446,8 @@ internal static class IdentityEndpoints
             member.Nickname,
             member.DisplayName,
             MapRole(member.Role),
-            member.IsCredentialReady);
+            member.IsCredentialReady,
+            member.IsActive);
 
     private static string MapRole(Domain.Households.HouseholdRole role) =>
         role == Domain.Households.HouseholdRole.Adult ? "adult" : "child";
@@ -392,6 +506,7 @@ internal static class IdentityEndpoints
         IdentityError.PinAlreadySet => Problem(409, "pin_already_set", "That member already has a PIN."),
         IdentityError.MemberNotEligible => Problem(409, "member_not_eligible", "That member is not eligible for PIN setup."),
         IdentityError.InvalidMember => Problem(400, "invalid_member", "Check the family member details."),
+        IdentityError.CannotDeactivateSelf => Problem(409, "cannot_deactivate_self", "You cannot deactivate your signed-in profile."),
         _ => Problem(400, "invalid_or_expired_setup", "The setup request is invalid or expired."),
     };
 
