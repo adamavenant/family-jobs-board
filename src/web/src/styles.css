@@ -520,6 +520,7 @@ h1 {
 }
 .family-member-list__self,
 .family-member-deactivate,
+.family-member-pin-reset,
 .deactivate-confirmation,
 .member-restore-form {
   grid-column: 1 / -1;
@@ -530,7 +531,8 @@ h1 {
   font-size: 0.82rem;
   font-weight: 700;
 }
-.family-member-deactivate {
+.family-member-deactivate,
+.family-member-pin-reset {
   justify-self: start;
 }
 .deactivate-confirmation {
@@ -551,6 +553,7 @@ h1 {
 }
 .deactivate-confirmation button,
 .family-member-deactivate,
+.family-member-pin-reset,
 .member-restore-form button {
   min-height: 44px;
   padding: 9px 14px;
@@ -564,7 +567,8 @@ h1 {
   border: 1px solid var(--error-text);
 }
 .deactivate-confirmation .button--quiet,
-.family-member-deactivate {
+.family-member-deactivate,
+.family-member-pin-reset {
   color: var(--error-text);
   background: transparent;
   border: 1px solid var(--error-text);

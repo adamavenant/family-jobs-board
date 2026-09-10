@@ -25,6 +25,8 @@ internal sealed class MemberCredentialConfiguration : IEntityTypeConfiguration<M
         builder.Property(credential => credential.FailedWindowStartedAtUtc).HasColumnName("failed_window_started_at_utc");
         builder.Property(credential => credential.FailedAttemptCount).HasColumnName("failed_attempt_count");
         builder.Property(credential => credential.LockedUntilUtc).HasColumnName("locked_until_utc");
+        builder.Property(credential => credential.PinResetAtUtc).HasColumnName("pin_reset_at_utc");
+        builder.Property(credential => credential.PinResetByMemberId).HasColumnName("pin_reset_by_member_id");
         builder.HasOne<HouseholdMember>()
             .WithOne()
             .HasForeignKey<MemberCredential>(credential => credential.MemberId)

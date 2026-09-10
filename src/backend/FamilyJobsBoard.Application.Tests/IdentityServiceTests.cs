@@ -170,6 +170,46 @@ public sealed class IdentityServiceTests
         Assert.Null(repository.RequestedActiveState);
     }
 
+    [Fact]
+    public async Task An_adult_cannot_reset_their_own_PIN()
+    {
+        var memberId = Guid.NewGuid();
+        var repository = new RecordingRepository();
+        var service = NewService(repository, new RecordingHasher());
+
+        var error = await Assert.ThrowsAsync<IdentityOperationException>(() =>
+            service.IssuePinResetAsync(memberId, memberId, Guid.NewGuid(), CancellationToken.None));
+
+        Assert.Equal(IdentityError.CannotResetSelf, error.Error);
+        Assert.Null(repository.ResetTargetMemberId);
+    }
+
+    [Fact]
+    public async Task PIN_reset_issues_a_private_handoff_for_the_target()
+    {
+        var target = Adult() with { Id = Guid.NewGuid() };
+        var actorId = Guid.NewGuid();
+        var repository = new RecordingRepository
+        {
+            ResetResult = new PinResetIssueResult(
+                PinResetIssueStatus.Issued,
+                target with { IsCredentialReady = false },
+                Now.AddMinutes(5)),
+        };
+        var service = NewService(repository, new RecordingHasher());
+
+        var grant = await service.IssuePinResetAsync(
+            target.Id,
+            actorId,
+            Guid.NewGuid(),
+            CancellationToken.None);
+
+        Assert.Equal(target.Id, grant.Member.Id);
+        Assert.Equal(Now.AddMinutes(5), grant.ExpiresAtUtc);
+        Assert.Equal(target.Id, repository.ResetTargetMemberId);
+        Assert.Equal(actorId, repository.ActorMemberId);
+    }
+
     private static IdentityService NewService(RecordingRepository repository, RecordingHasher hasher) =>
         new(repository, hasher, new StubTokens(), new FixedClock());
 
@@ -220,6 +260,9 @@ public sealed class IdentityServiceTests
         public bool? RequestedActiveState { get; private set; }
         public Guid? ActorMemberId { get; private set; }
         public DateTimeOffset? MutationTime { get; private set; }
+        public PinResetIssueResult ResetResult { get; init; } =
+            new(PinResetIssueStatus.MemberNotEligible, null, null);
+        public Guid? ResetTargetMemberId { get; private set; }
 
         public Task<IReadOnlyList<IdentityMember>> GetMembersAsync(
             bool includeInactive,
@@ -307,6 +350,13 @@ public sealed class IdentityServiceTests
         public Task<bool> ValidateAndTouchSessionAsync(Guid sessionId, Guid memberId, HouseholdRole role, DateTimeOffset now, CancellationToken cancellationToken) => throw Unused();
         public Task RevokeSessionAsync(Guid sessionId, DateTimeOffset now, CancellationToken cancellationToken) => throw Unused();
         public Task<PinSetupIssueResult> IssuePinSetupAsync(Guid tokenId, Guid targetMemberId, Guid adultId, Guid adultSessionId, string? surname, string tokenHash, DateTimeOffset now, CancellationToken cancellationToken) => throw Unused();
+        public Task<PinResetIssueResult> IssuePinResetAsync(Guid tokenId, Guid targetMemberId, Guid adultId, Guid adultSessionId, string tokenHash, DateTimeOffset now, CancellationToken cancellationToken)
+        {
+            ResetTargetMemberId = targetMemberId;
+            ActorMemberId = adultId;
+            MutationTime = now;
+            return Task.FromResult(ResetResult);
+        }
         public Task<IdentityMember?> GetPinSetupTargetAsync(Guid tokenId, string tokenHash, DateTimeOffset now, CancellationToken cancellationToken) => throw Unused();
         public Task<PinSetupConsumeResult> ConsumePinSetupAsync(Guid tokenId, string tokenHash, string pinHash, DateTimeOffset now, CancellationToken cancellationToken) => throw Unused();
 

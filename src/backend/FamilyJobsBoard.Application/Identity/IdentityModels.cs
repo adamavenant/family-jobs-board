@@ -91,6 +91,19 @@ public sealed record PinSetupIssueResult(
     IdentityMember? Member,
     DateTimeOffset? ExpiresAtUtc);
 
+public enum PinResetIssueStatus
+{
+    Issued,
+    MemberNotFound,
+    PinNotSet,
+    MemberNotEligible,
+}
+
+public sealed record PinResetIssueResult(
+    PinResetIssueStatus Status,
+    IdentityMember? Member,
+    DateTimeOffset? ExpiresAtUtc);
+
 public enum PinSetupConsumeStatus
 {
     Consumed,
@@ -117,6 +130,8 @@ public enum IdentityError
     InvalidOrExpiredSetup,
     InvalidMember,
     CannotDeactivateSelf,
+    CannotResetSelf,
+    PinNotSet,
 }
 
 public sealed class IdentityOperationException : Exception
