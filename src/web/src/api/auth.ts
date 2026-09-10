@@ -167,6 +167,25 @@ export async function beginPinSetup(
   return pendingPinSetup;
 }
 
+export async function beginPinReset(
+  memberId: string,
+): Promise<PendingPinSetup> {
+  const body = await postJson<GeneratedPinSetup>(
+    `/api/users/${encodeURIComponent(memberId)}/pin-reset`,
+    {},
+    true,
+  );
+  pendingPinSetup = {
+    state: "setupPin",
+    setupToken: body.setupToken,
+    expiresAtUtc: body.expiresAtUtc,
+    targetDisplayName: body.targetDisplayName,
+    targetRole: mapRole(body.targetRole),
+  };
+  session = null;
+  return pendingPinSetup;
+}
+
 export async function setupPin(pin: string): Promise<AuthSession> {
   if (!pendingPinSetup) {
     throw new AuthApiError(

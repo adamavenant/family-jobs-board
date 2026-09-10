@@ -31,6 +31,10 @@ public sealed class MemberCredential
 
     public DateTimeOffset? LockedUntilUtc { get; private set; }
 
+    public DateTimeOffset? PinResetAtUtc { get; private set; }
+
+    public Guid? PinResetByMemberId { get; private set; }
+
     public void SetPin(string pinHash, DateTimeOffset now)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pinHash);
@@ -60,5 +64,25 @@ public sealed class MemberCredential
         FailedWindowStartedAtUtc = null;
         FailedAttemptCount = 0;
         LockedUntilUtc = null;
+    }
+
+    public void ResetPin(Guid actorMemberId, DateTimeOffset now)
+    {
+        if (actorMemberId == Guid.Empty)
+        {
+            throw new ArgumentException("A PIN reset needs an actor.", nameof(actorMemberId));
+        }
+
+        if (State != CredentialState.Ready)
+        {
+            throw new InvalidOperationException("Only a configured PIN can be reset.");
+        }
+
+        PinHash = null;
+        PinSetAtUtc = null;
+        State = CredentialState.NotSet;
+        ResetFailures();
+        PinResetAtUtc = now;
+        PinResetByMemberId = actorMemberId;
     }
 }

@@ -246,6 +246,40 @@ public sealed class IdentityService
         };
     }
 
+    public async Task<PinSetupGrant> IssuePinResetAsync(
+        Guid targetMemberId,
+        Guid adultId,
+        Guid adultSessionId,
+        CancellationToken cancellationToken)
+    {
+        if (targetMemberId == adultId)
+        {
+            throw new IdentityOperationException(IdentityError.CannotResetSelf);
+        }
+
+        var generated = _tokens.CreateOpaqueToken(Guid.NewGuid());
+        var result = await _repository.IssuePinResetAsync(
+            generated.Id,
+            targetMemberId,
+            adultId,
+            adultSessionId,
+            generated.Hash,
+            _clock.UtcNow,
+            cancellationToken);
+        return result.Status switch
+        {
+            PinResetIssueStatus.Issued => new PinSetupGrant(
+                generated.Value,
+                result.ExpiresAtUtc!.Value,
+                result.Member!),
+            PinResetIssueStatus.MemberNotFound => throw new IdentityOperationException(
+                IdentityError.MemberNotFound),
+            PinResetIssueStatus.PinNotSet => throw new IdentityOperationException(
+                IdentityError.PinNotSet),
+            _ => throw new IdentityOperationException(IdentityError.MemberNotEligible),
+        };
+    }
+
     public async Task<AuthenticatedIdentity> SetupPinAsync(
         string? setupToken,
         string? pin,

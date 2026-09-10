@@ -4,6 +4,7 @@ import type { RouteObject } from "react-router";
 
 import {
   AuthApiError,
+  beginPinReset,
   beginPinSetup,
   bootstrap,
   clearIdentity,
@@ -81,7 +82,13 @@ export type TodayActionResult =
   | RejectActionResult;
 
 export interface IdentityActionResult {
-  intent: "bootstrap" | "signIn" | "logout" | "beginPinSetup" | "setupPin";
+  intent:
+    | "bootstrap"
+    | "signIn"
+    | "logout"
+    | "beginPinSetup"
+    | "beginPinReset"
+    | "setupPin";
   error?: string;
 }
 
@@ -135,6 +142,9 @@ async function todayAction({
   }
   if (form.get("intent") === "beginPinSetup") {
     return beginPinSetupAction(form);
+  }
+  if (form.get("intent") === "beginPinReset") {
+    return beginPinResetAction(form);
   }
   if (form.get("intent") === "setupPin") {
     return setupPinAction(form);
@@ -417,6 +427,25 @@ async function setupPinAction(form: FormData): Promise<IdentityActionResult> {
       "setupPin",
       error,
     );
+  }
+}
+
+async function beginPinResetAction(
+  form: FormData,
+): Promise<IdentityActionResult> {
+  const memberId = form.get("memberId");
+  if (typeof memberId !== "string" || memberId.length === 0) {
+    return {
+      intent: "beginPinReset",
+      error: "Choose whose PIN should be reset.",
+    };
+  }
+
+  try {
+    await beginPinReset(memberId);
+    return { intent: "beginPinReset" };
+  } catch (error) {
+    return identityError("The PIN could not be reset.", "beginPinReset", error);
   }
 }
 

@@ -176,8 +176,12 @@ function FamilyMemberCard({
 }) {
   const handoff = useFetcher<AppActionResult>();
   const [confirmingDeactivation, setConfirmingDeactivation] = useState(false);
+  const [confirmingPinReset, setConfirmingPinReset] = useState(false);
   const handoffError =
-    handoff.data?.intent === "beginPinSetup" ? handoff.data.error : undefined;
+    handoff.data?.intent === "beginPinSetup" ||
+    handoff.data?.intent === "beginPinReset"
+      ? handoff.data.error
+      : undefined;
   const memberAction =
     fetcher.data?.affectedMemberId === member.id ? fetcher.data : undefined;
   const mutationError =
@@ -222,6 +226,59 @@ function FamilyMemberCard({
             {handoff.state !== "idle" ? "Starting…" : "Set up PIN now"}
           </button>
         </handoff.Form>
+      ) : null}
+      {member.isActive &&
+      member.isCredentialReady &&
+      member.id !== currentMemberId ? (
+        confirmingPinReset ? (
+          <div
+            className="deactivate-confirmation pin-reset-confirmation"
+            role="group"
+            aria-label={`Reset ${member.displayName}'s PIN`}
+          >
+            <p>
+              Reset {member.displayName}&apos;s PIN? They will be signed out
+              everywhere. Hand the screen to them so only they see and choose
+              the replacement PIN.
+            </p>
+            {handoffError ? (
+              <p className="error-message" role="alert">
+                {handoffError}
+              </p>
+            ) : null}
+            <div>
+              <handoff.Form method="post" action="/">
+                <input type="hidden" name="intent" value="beginPinReset" />
+                <input type="hidden" name="memberId" value={member.id} />
+                <button
+                  type="submit"
+                  className="button--danger"
+                  disabled={handoff.state !== "idle"}
+                >
+                  {handoff.state !== "idle"
+                    ? "Resetting…"
+                    : "Yes, reset and hand over"}
+                </button>
+              </handoff.Form>
+              <button
+                type="button"
+                className="button--quiet"
+                onClick={() => setConfirmingPinReset(false)}
+                disabled={handoff.state !== "idle"}
+              >
+                Keep current PIN
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="button--quiet family-member-pin-reset"
+            onClick={() => setConfirmingPinReset(true)}
+          >
+            Reset PIN
+          </button>
+        )
       ) : null}
       <details className="family-member-edit">
         <summary>Edit profile</summary>

@@ -506,6 +506,81 @@ public sealed class EfIdentityRepository : IIdentityRepository
             : null;
     }
 
+    public async Task<PinResetIssueResult> IssuePinResetAsync(
+        Guid tokenId,
+        Guid targetMemberId,
+        Guid adultId,
+        Guid adultSessionId,
+        string tokenHash,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await _database.Database.BeginTransactionAsync(cancellationToken);
+        var adultSession = await _database.AuthSessions
+            .FromSqlInterpolated($"SELECT * FROM auth_sessions WHERE id = {adultSessionId} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken);
+        if (adultSession is null
+            || adultSession.MemberId != adultId
+            || adultSession.Role != HouseholdRole.Adult
+            || !adultSession.IsActive(now))
+        {
+            return new PinResetIssueResult(PinResetIssueStatus.MemberNotEligible, null, null);
+        }
+
+        var target = await _database.HouseholdMembers.SingleOrDefaultAsync(
+            member => member.Id == targetMemberId,
+            cancellationToken);
+        if (target is null)
+        {
+            return new PinResetIssueResult(PinResetIssueStatus.MemberNotFound, null, null);
+        }
+
+        if (!target.IsActive)
+        {
+            return new PinResetIssueResult(PinResetIssueStatus.MemberNotEligible, null, null);
+        }
+
+        var credential = await LockedCredentialAsync(targetMemberId, cancellationToken);
+        if (credential is null)
+        {
+            return new PinResetIssueResult(PinResetIssueStatus.MemberNotEligible, null, null);
+        }
+
+        if (credential.State != CredentialState.Ready)
+        {
+            return new PinResetIssueResult(PinResetIssueStatus.PinNotSet, null, null);
+        }
+
+        var sessions = await _database.AuthSessions
+            .Where(session => session.MemberId == targetMemberId && session.RevokedAtUtc == null)
+            .ToListAsync(cancellationToken);
+        foreach (var session in sessions)
+        {
+            session.Revoke(now);
+        }
+
+        var previous = await _database.PinSetupTokens
+            .Where(token => token.TargetMemberId == targetMemberId
+                && token.ConsumedAtUtc == null
+                && token.RevokedAtUtc == null)
+            .ToListAsync(cancellationToken);
+        foreach (var token in previous)
+        {
+            token.Revoke(now);
+        }
+
+        credential.ResetPin(adultId, now);
+        var setup = new PinSetupToken(tokenId, targetMemberId, adultId, tokenHash, now);
+        _database.PinSetupTokens.Add(setup);
+        adultSession.Revoke(now);
+        await _database.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new PinResetIssueResult(
+            PinResetIssueStatus.Issued,
+            MapMember(target, false, target.DisplayName),
+            setup.ExpiresAtUtc);
+    }
+
     public async Task<PinSetupConsumeResult> ConsumePinSetupAsync(
         Guid tokenId,
         string tokenHash,

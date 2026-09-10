@@ -89,6 +89,12 @@ internal static class IdentityEndpoints
             .ProducesProblem(StatusCodes.Status409Conflict)
             .WithName("StartPinSetup")
             .WithSummary("Authorize a one-time PIN handoff to an unconfigured member.");
+        users.MapPost("/{memberId:guid}/pin-reset", StartPinResetAsync)
+            .Produces<PinSetupResponse>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .WithName("StartPinReset")
+            .WithSummary("Reset another active member's PIN and authorize a private replacement handoff.");
 
         return endpoints;
     }
@@ -422,6 +428,44 @@ internal static class IdentityEndpoints
         }
     }
 
+    private static async Task<IResult> StartPinResetAsync(
+        Guid memberId,
+        HttpContext context,
+        IdentityService service,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        var adultId = PrincipalMemberId(context.User);
+        var adultSessionId = PrincipalSessionId(context.User);
+        if (adultId is null || adultSessionId is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        try
+        {
+            var grant = await service.IssuePinResetAsync(
+                memberId,
+                adultId.Value,
+                adultSessionId.Value,
+                cancellationToken);
+            ClearRefreshCookie(context);
+            loggerFactory.CreateLogger("IdentityAudit").LogInformation(
+                "PinResetIssued ActorId={ActorId} TargetId={TargetId}",
+                adultId,
+                memberId);
+            return TypedResults.Ok(new PinSetupResponse(
+                grant.SetupToken,
+                grant.ExpiresAtUtc,
+                grant.Member.DisplayName,
+                MapRole(grant.Member.Role)));
+        }
+        catch (IdentityOperationException exception)
+        {
+            return MapError(exception.Error);
+        }
+    }
+
     private static AuthResponse MapAuth(AuthenticatedIdentity identity) =>
         new(
             identity.AccessToken,
@@ -507,6 +551,8 @@ internal static class IdentityEndpoints
         IdentityError.MemberNotEligible => Problem(409, "member_not_eligible", "That member is not eligible for PIN setup."),
         IdentityError.InvalidMember => Problem(400, "invalid_member", "Check the family member details."),
         IdentityError.CannotDeactivateSelf => Problem(409, "cannot_deactivate_self", "You cannot deactivate your signed-in profile."),
+        IdentityError.CannotResetSelf => Problem(409, "cannot_reset_self", "You cannot reset your signed-in profile."),
+        IdentityError.PinNotSet => Problem(409, "pin_not_set", "That member does not have a PIN to reset."),
         _ => Problem(400, "invalid_or_expired_setup", "The setup request is invalid or expired."),
     };
 

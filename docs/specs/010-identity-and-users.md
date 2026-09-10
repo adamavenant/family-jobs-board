@@ -3,8 +3,7 @@
 ## Status
 
 Accepted for the first-adult bootstrap, PIN sign-in, family-member onboarding,
-and profile lifecycle implementation slices. PIN reset remains specified at a
-boundary level only.
+profile lifecycle, and secure PIN-reset implementation slices.
 
 ## Outcome and user value
 
@@ -32,6 +31,7 @@ points-ledger record.
 | Add jobs or recurring schedules                | No                       | No                    | Yes                                    |
 | Approve or reject work                         | No                       | No                    | Yes                                    |
 | Start one-time PIN handoff                     | No                       | No                    | Yes                                    |
+| Reset another active member's PIN              | No                       | No                    | Yes, except the signed-in profile      |
 | Finish one-time PIN handoff                    | Valid handoff token only | Target                | Target                                 |
 | Edit, deactivate, or restore a profile         | No                       | No                    | Yes, except self-deactivation          |
 
@@ -87,9 +87,23 @@ slice.
   `NotSet` profile becomes eligible for a new PIN handoff; and
 - profile updates, deactivation, and restoration record UTC time and actor ID.
 
+### PIN-reset slice
+
+- an authenticated adult can reset another active `Ready` profile, but never
+  their own signed-in profile;
+- the request accepts no PIN and returns no PIN, hash, session, or refresh
+  secret;
+- credential reset, target-session and handoff revocation, reset audit, a fresh
+  five-minute handoff, and authorizing-adult logout commit atomically;
+- the target privately chooses the replacement PIN through the existing
+  single-use handoff screen; and
+- profile identity, role, jobs, recurrences, reviews, and points history remain
+  unchanged.
+
 ### Out of scope
 
-- hard deletion, role changes, or PIN reset;
+- hard deletion, role changes, self-service PIN change, or recovery when no
+  other adult can sign in;
 - multiple households or tenants;
 - email, passwords, recovery links, external identity providers, biometrics,
   multi-factor authentication, or device trust;
@@ -175,6 +189,22 @@ Successful setup atomically consumes the token and credential transition, then
 signs in the target. Concurrent or repeated consumption has exactly one winner;
 failure never restores the adult session.
 
+### PIN reset
+
+Reset is available only for another active `Ready` profile. In one PostgreSQL
+transaction, it clears the old PIN hash and set time, resets failed-attempt and
+lock state, records the UTC reset instant and adult actor ID, revokes every
+target session and unconsumed handoff, creates a fresh hash-only handoff, and
+revokes the authorizing adult session. The browser receives the raw handoff
+token once, clears the adult identity, and immediately shows the existing
+private PIN screen.
+
+The old access token, refresh token, and PIN stop working once reset commits.
+Only one concurrent reset may succeed. If the response or in-memory token is
+lost, the target remains `NotSet` and another adult can start the ordinary PIN
+handoff later. Unknown, inactive, already-`NotSet`, and self targets fail with
+stable problems and no partial mutation.
+
 ### Profile lifecycle
 
 Profile updates trim names, require non-empty first name and surname, and leave
@@ -245,8 +275,8 @@ forwarded address when partitioning the limiter.
 Identity owns these PostgreSQL records:
 
 - `household_bootstrap`: singleton state, first-adult ID, completion instant;
-- `member_credentials`: member ID, versioned PIN hash, readiness/set times,
-  failed-attempt window/count, and lock expiry;
+- `member_credentials`: member ID, versioned PIN hash, readiness/set/reset
+  times, reset actor ID, failed-attempt window/count, and lock expiry;
 - `auth_sessions`: session ID, member ID, role snapshot, refresh hash/rotation,
   created/last-activity/revoked times; and
 - `pin_setup_tokens`: target member, token hash, expiry, consumed/revoked times,
@@ -352,6 +382,13 @@ profile. `POST /api/users/{memberId}/restore` restores it. Unknown members use
 `404 member_not_found`, invalid names use `400 invalid_member`, and attempting
 to deactivate the current profile uses `409 cannot_deactivate_self`.
 
+### `POST /api/users/{memberId}/pin-reset`
+
+Adult policy. Accepts no body and resets another active, PIN-ready profile.
+Returns the same one-time handoff fields as `pin-setup`, revokes the initiating
+adult session, and clears the refresh cookie. Errors are `404 member_not_found`,
+`409 cannot_reset_self`, `409 pin_not_set`, and `409 member_not_eligible`.
+
 ### `POST /api/users/{memberId}/pin-setup`
 
 Adult policy. Accepts an optional `surname`; it is required when the migrated
@@ -450,6 +487,10 @@ credentials or expose counts; database readiness covers migrated tables.
 15. **Self-protection/idempotency:** The current adult receives
     `cannot_deactivate_self`; repeat deactivate/restore calls succeed without
     rewriting their original audit records.
+16. **PIN reset:** A grown-up confirms reset for another active ready profile;
+    old access, refresh, and PIN fail, the reset audit persists, history stays
+    intact, the replacement handoff succeeds once, and the new PIN works after
+    restart.
 
 ## Automated test seams
 
@@ -463,8 +504,9 @@ credentials or expose counts; database readiness covers migrated tables.
 - **React:** auth-state routing, confirmation/leading zero, generic errors,
   focus/status behavior, in-memory tokens, expiry, and role views.
 - **Playwright:** fresh bootstrap; pilot claim and child handoff; profile edit,
-  two-step deactivation, and restore; child completion then adult approval;
-  expiry; phone and tablet widths.
+  two-step deactivation and restore; two-step PIN reset, cancel, private
+  replacement handoff; child completion then adult approval; expiry; phone and
+  tablet widths.
 - **Security:** inspect logs, errors, OpenAPI, DOM, URL, storage, cookies, and DB
   to prove no PIN, plaintext refresh token, signing key, or pepper appears.
 

@@ -105,6 +105,37 @@ public sealed class IdentityTests
     }
 
     [Fact]
+    public void Credential_reset_clears_the_secret_and_lock_state_and_records_the_actor()
+    {
+        var memberId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var now = new DateTimeOffset(2026, 9, 10, 12, 0, 0, TimeSpan.Zero);
+        var credential = new MemberCredential(memberId);
+        credential.SetPin("versioned-password-hash", now.AddMinutes(-2));
+        credential.RecordFailure(now.AddMinutes(-1));
+
+        credential.ResetPin(actorId, now);
+
+        Assert.Equal(CredentialState.NotSet, credential.State);
+        Assert.Null(credential.PinHash);
+        Assert.Null(credential.PinSetAtUtc);
+        Assert.Equal(0, credential.FailedAttemptCount);
+        Assert.Null(credential.FailedWindowStartedAtUtc);
+        Assert.Null(credential.LockedUntilUtc);
+        Assert.Equal(now, credential.PinResetAtUtc);
+        Assert.Equal(actorId, credential.PinResetByMemberId);
+    }
+
+    [Fact]
+    public void Credential_without_a_PIN_cannot_be_reset()
+    {
+        var credential = new MemberCredential(Guid.NewGuid());
+
+        Assert.Throws<InvalidOperationException>(() =>
+            credential.ResetPin(Guid.NewGuid(), DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
     public void Household_bootstrap_completes_once()
     {
         var bootstrap = new HouseholdBootstrap(HouseholdBootstrap.SingletonId);

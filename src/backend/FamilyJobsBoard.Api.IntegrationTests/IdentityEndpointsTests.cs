@@ -110,6 +110,7 @@ public sealed class IdentityEndpointsTests : IAsyncLifetime
     [InlineData("DELETE", "/api/users/7009b529-733c-4770-ae56-1f6fa69f6363")]
     [InlineData("POST", "/api/users/7009b529-733c-4770-ae56-1f6fa69f6363/restore")]
     [InlineData("POST", "/api/users/7009b529-733c-4770-ae56-1f6fa69f6363/pin-setup")]
+    [InlineData("POST", "/api/users/7009b529-733c-4770-ae56-1f6fa69f6363/pin-reset")]
     public async Task Application_endpoints_reject_anonymous_requests(string method, string path)
     {
         using var request = new HttpRequestMessage(new HttpMethod(method), path);
@@ -352,6 +353,220 @@ public sealed class IdentityEndpointsTests : IAsyncLifetime
             child.AccessToken,
             new { });
         Assert.Equal(HttpStatusCode.Forbidden, childRestore.StatusCode);
+    }
+
+    [Fact]
+    public async Task Adult_resets_another_members_PIN_with_a_single_use_private_handoff()
+    {
+        var bootstrap = await BootstrapAdultAsync("123456");
+        using var createdResponse = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            "/api/users",
+            bootstrap.Body.AccessToken,
+            new { firstName = "Fred", surname = "Avenant", nickname = "Fredster", role = "child" });
+        var created = (await createdResponse.Content.ReadFromJsonAsync<FamilyMemberBody>())!;
+        using var initialHandoff = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            $"/api/users/{created.Id}/pin-setup",
+            bootstrap.Body.AccessToken,
+            new { surname = (string?)null });
+        var initialGrant = (await initialHandoff.Content.ReadFromJsonAsync<PinSetupGrantResponse>())!;
+        using var initialSetup = await Client.PostAsJsonAsync(
+            "/api/auth/setup-pin",
+            new { setupToken = initialGrant.SetupToken, pin = "0123" });
+        var child = (await initialSetup.Content.ReadFromJsonAsync<AuthBody>())!;
+        var childRefresh = RefreshCookie(initialSetup);
+        using var childReset = await SendAuthorizedAsync(
+            HttpMethod.Post,
+            $"/api/users/{bootstrap.Body.Member.Id}/pin-reset",
+            child.AccessToken);
+        Assert.Equal(HttpStatusCode.Forbidden, childReset.StatusCode);
+
+        using var adultSignIn = await Client.PostAsJsonAsync(
+            "/api/auth/sign-in",
+            new { memberId = bootstrap.Body.Member.Id, pin = "123456" });
+        var adult = (await adultSignIn.Content.ReadFromJsonAsync<AuthBody>())!;
+        using var job = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            "/api/today/jobs",
+            adult.AccessToken,
+            new
+            {
+                childIds = new[] { created.Id },
+                name = "Keep this history",
+                description = "PIN reset must not delete it.",
+                points = 2,
+            });
+        Assert.Equal(HttpStatusCode.Created, job.StatusCode);
+
+        var resetAt = Factory.Clock.UtcNow;
+        using var reset = await SendAuthorizedAsync(
+            HttpMethod.Post,
+            $"/api/users/{created.Id}/pin-reset",
+            adult.AccessToken);
+        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+        var resetGrant = (await reset.Content.ReadFromJsonAsync<PinSetupGrantResponse>())!;
+        Assert.Equal(created.DisplayName, resetGrant.TargetDisplayName);
+        Assert.Equal("child", resetGrant.TargetRole);
+        Assert.True(resetGrant.ExpiresAtUtc - resetAt <= TimeSpan.FromMinutes(5));
+
+        using var revokedChildAccess = await SendAuthorizedAsync(
+            HttpMethod.Get,
+            "/api/today",
+            child.AccessToken);
+        Assert.Equal(HttpStatusCode.Unauthorized, revokedChildAccess.StatusCode);
+        using var revokedChildRefresh = await RefreshAsync(childRefresh);
+        Assert.Equal(HttpStatusCode.Unauthorized, revokedChildRefresh.StatusCode);
+        using var revokedAdultAccess = await SendAuthorizedAsync(
+            HttpMethod.Get,
+            "/api/today",
+            adult.AccessToken);
+        Assert.Equal(HttpStatusCode.Unauthorized, revokedAdultAccess.StatusCode);
+        using var oldPin = await Client.PostAsJsonAsync(
+            "/api/auth/sign-in",
+            new { memberId = created.Id, pin = "0123" });
+        Assert.Equal(HttpStatusCode.Unauthorized, oldPin.StatusCode);
+        Assert.Equal("invalid_credentials", await ProblemCodeAsync(oldPin));
+
+        await using (var scope = Factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var credential = await database.MemberCredentials.SingleAsync(
+                candidate => candidate.MemberId == created.Id);
+            Assert.Equal(CredentialState.NotSet, credential.State);
+            Assert.Null(credential.PinHash);
+            Assert.Null(credential.PinSetAtUtc);
+            Assert.Equal(resetAt, credential.PinResetAtUtc!.Value, TimeSpan.FromMicroseconds(1));
+            Assert.Equal(bootstrap.Body.Member.Id, credential.PinResetByMemberId);
+            Assert.Equal(1, await database.Jobs.CountAsync(candidate => candidate.ChildId == created.Id));
+            var storedToken = await database.PinSetupTokens.SingleAsync(
+                token => token.TargetMemberId == created.Id && token.ConsumedAtUtc == null);
+            Assert.NotEqual(resetGrant.SetupToken, storedToken.TokenHash);
+            Assert.DoesNotContain(resetGrant.SetupToken, storedToken.TokenHash, StringComparison.Ordinal);
+        }
+
+        using var replacement = await Client.PostAsJsonAsync(
+            "/api/auth/setup-pin",
+            new { setupToken = resetGrant.SetupToken, pin = "9876" });
+        Assert.Equal(HttpStatusCode.OK, replacement.StatusCode);
+        using var replay = await Client.PostAsJsonAsync(
+            "/api/auth/setup-pin",
+            new { setupToken = resetGrant.SetupToken, pin = "9876" });
+        Assert.Equal(HttpStatusCode.BadRequest, replay.StatusCode);
+        Assert.Equal("invalid_or_expired_setup", await ProblemCodeAsync(replay));
+
+        await RestartApplicationAsync();
+        using var persistedSignIn = await Client.PostAsJsonAsync(
+            "/api/auth/sign-in",
+            new { memberId = created.Id, pin = "9876" });
+        Assert.Equal(HttpStatusCode.OK, persistedSignIn.StatusCode);
+        await using var restartedScope = Factory.Services.CreateAsyncScope();
+        Assert.Equal(1, await restartedScope.ServiceProvider.GetRequiredService<AppDbContext>()
+            .Jobs.CountAsync(candidate => candidate.ChildId == created.Id));
+    }
+
+    [Fact]
+    public async Task PIN_reset_rejects_self_unknown_unconfigured_and_inactive_targets_without_mutation()
+    {
+        var bootstrap = await BootstrapAdultAsync("123456");
+        using var self = await SendAuthorizedAsync(
+            HttpMethod.Post,
+            $"/api/users/{bootstrap.Body.Member.Id}/pin-reset",
+            bootstrap.Body.AccessToken);
+        Assert.Equal(HttpStatusCode.Conflict, self.StatusCode);
+        Assert.Equal("cannot_reset_self", await ProblemCodeAsync(self));
+
+        using var unknown = await SendAuthorizedAsync(
+            HttpMethod.Post,
+            $"/api/users/{Guid.NewGuid()}/pin-reset",
+            bootstrap.Body.AccessToken);
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        Assert.Equal("member_not_found", await ProblemCodeAsync(unknown));
+
+        using var createdResponse = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            "/api/users",
+            bootstrap.Body.AccessToken,
+            new { firstName = "Harrie", surname = "Avenant", nickname = (string?)null, role = "child" });
+        var created = (await createdResponse.Content.ReadFromJsonAsync<FamilyMemberBody>())!;
+        using var notSet = await SendAuthorizedAsync(
+            HttpMethod.Post,
+            $"/api/users/{created.Id}/pin-reset",
+            bootstrap.Body.AccessToken);
+        Assert.Equal(HttpStatusCode.Conflict, notSet.StatusCode);
+        Assert.Equal("pin_not_set", await ProblemCodeAsync(notSet));
+
+        using var deactivated = await SendAuthorizedAsync(
+            HttpMethod.Delete,
+            $"/api/users/{created.Id}",
+            bootstrap.Body.AccessToken);
+        Assert.Equal(HttpStatusCode.OK, deactivated.StatusCode);
+        using var inactive = await SendAuthorizedAsync(
+            HttpMethod.Post,
+            $"/api/users/{created.Id}/pin-reset",
+            bootstrap.Body.AccessToken);
+        Assert.Equal(HttpStatusCode.Conflict, inactive.StatusCode);
+        Assert.Equal("member_not_eligible", await ProblemCodeAsync(inactive));
+
+        await using var scope = Factory.Services.CreateAsyncScope();
+        var credential = await scope.ServiceProvider.GetRequiredService<AppDbContext>()
+            .MemberCredentials.SingleAsync(candidate => candidate.MemberId == created.Id);
+        Assert.Null(credential.PinResetAtUtc);
+        Assert.Null(credential.PinResetByMemberId);
+    }
+
+    [Fact]
+    public async Task Concurrent_PIN_resets_have_at_most_one_winner()
+    {
+        var bootstrap = await BootstrapAdultAsync("123456");
+        using var createdResponse = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            "/api/users",
+            bootstrap.Body.AccessToken,
+            new { firstName = "Fred", surname = "Avenant", nickname = (string?)null, role = "child" });
+        var child = (await createdResponse.Content.ReadFromJsonAsync<FamilyMemberBody>())!;
+        using var handoff = await SendAuthorizedJsonAsync(
+            HttpMethod.Post,
+            $"/api/users/{child.Id}/pin-setup",
+            bootstrap.Body.AccessToken,
+            new { surname = (string?)null });
+        var setupGrant = (await handoff.Content.ReadFromJsonAsync<PinSetupGrantResponse>())!;
+        using var setup = await Client.PostAsJsonAsync(
+            "/api/auth/setup-pin",
+            new { setupToken = setupGrant.SetupToken, pin = "0123" });
+        Assert.Equal(HttpStatusCode.OK, setup.StatusCode);
+
+        using var firstSignIn = await Client.PostAsJsonAsync(
+            "/api/auth/sign-in",
+            new { memberId = bootstrap.Body.Member.Id, pin = "123456" });
+        using var secondSignIn = await Client.PostAsJsonAsync(
+            "/api/auth/sign-in",
+            new { memberId = bootstrap.Body.Member.Id, pin = "123456" });
+        var firstAdult = (await firstSignIn.Content.ReadFromJsonAsync<AuthBody>())!;
+        var secondAdult = (await secondSignIn.Content.ReadFromJsonAsync<AuthBody>())!;
+
+        var attempts = await Task.WhenAll(
+            SendAuthorizedAsync(
+                HttpMethod.Post,
+                $"/api/users/{child.Id}/pin-reset",
+                firstAdult.AccessToken),
+            SendAuthorizedAsync(
+                HttpMethod.Post,
+                $"/api/users/{child.Id}/pin-reset",
+                secondAdult.AccessToken));
+        using var firstAttempt = attempts[0];
+        using var secondAttempt = attempts[1];
+
+        Assert.Single(attempts, response => response.StatusCode == HttpStatusCode.OK);
+        var rejected = Assert.Single(attempts, response => response.StatusCode != HttpStatusCode.OK);
+        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+        Assert.Equal("pin_not_set", await ProblemCodeAsync(rejected));
+        await using var scope = Factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(1, await database.PinSetupTokens.CountAsync(
+            token => token.TargetMemberId == child.Id
+                && token.ConsumedAtUtc == null
+                && token.RevokedAtUtc == null));
     }
 
     [Fact]

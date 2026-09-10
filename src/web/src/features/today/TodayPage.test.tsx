@@ -910,6 +910,93 @@ describe("Today page", () => {
     });
   });
 
+  it("confirms a PIN reset before signing out for the private handoff", async () => {
+    const fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = input instanceof Request ? input : null;
+        const path = requestPath(input);
+        const method = request?.method ?? init?.method ?? "GET";
+        if (
+          path === `/api/users/${fredster.id}/pin-reset` &&
+          method === "POST"
+        ) {
+          return jsonResponse({
+            setupToken: "replacement-one-time-token",
+            expiresAtUtc: "2099-01-01T00:05:00Z",
+            targetDisplayName: "Fredster",
+            targetRole: "child",
+          });
+        }
+        if (path === "/api/users") {
+          return jsonResponse([
+            managedMember(addie, true, "Avenant"),
+            managedMember(fredster, true, "Avenant"),
+          ]);
+        }
+        return jsonResponse(board);
+      },
+    );
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Manage family"));
+    const familyList = await screen.findByRole("list", {
+      name: "Family members",
+    });
+    const childProfile = within(familyList)
+      .getByText("Fredster", { selector: "strong" })
+      .closest("li");
+    expect(childProfile).not.toBeNull();
+
+    await user.click(
+      within(childProfile as HTMLLIElement).getByRole("button", {
+        name: "Reset PIN",
+      }),
+    );
+    expect(
+      fetch.mock.calls.some(([input]) =>
+        requestPath(input).endsWith("pin-reset"),
+      ),
+    ).toBe(false);
+    await user.click(
+      within(childProfile as HTMLLIElement).getByRole("button", {
+        name: "Keep current PIN",
+      }),
+    );
+    expect(
+      within(childProfile as HTMLLIElement).queryByRole("button", {
+        name: "Yes, reset and hand over",
+      }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(childProfile as HTMLLIElement).getByRole("button", {
+        name: "Reset PIN",
+      }),
+    );
+    await user.click(
+      within(childProfile as HTMLLIElement).getByRole("button", {
+        name: "Yes, reset and hand over",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Over to Fredster" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/signed out/)).toBeInTheDocument();
+    const resetRequest = fetch.mock.calls.find(([input, init]) => {
+      const request = input instanceof Request ? input : null;
+      return (
+        requestPath(input) === `/api/users/${fredster.id}/pin-reset` &&
+        (request?.method ?? init?.method) === "POST"
+      );
+    });
+    expect(resetRequest).toBeDefined();
+    expect(JSON.parse(String(resetRequest?.[1]?.body))).toEqual({});
+  });
+
   it("edits, deliberately deactivates, and restores a family profile", async () => {
     let members = [
       managedMember(addie, true, "Avenant"),

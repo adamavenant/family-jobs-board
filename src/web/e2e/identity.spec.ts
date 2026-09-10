@@ -434,6 +434,84 @@ for (const viewport of [
   { name: "phone", width: 390, height: 844 },
   { name: "tablet", width: 820, height: 1180 },
 ]) {
+  test(`a grown-up resets a child's PIN with a private handoff on a ${viewport.name}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    let signedIn: "adult" | "child" = "adult";
+    let submittedPin = "";
+    await page.route("**/api/**", async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (!path.startsWith("/api/")) {
+        return route.continue();
+      }
+      if (path === "/api/auth/refresh") {
+        return json(route, auth(addieId, "Addie", "adult"));
+      }
+      if (path === "/api/today") {
+        return json(
+          route,
+          board(
+            signedIn === "child" ? "Fredster" : "Addie",
+            signedIn === "adult",
+            "open",
+          ),
+        );
+      }
+      if (path === "/api/users") {
+        return json(route, [
+          familyMember(addieId, "Addie", "Avenant", "adult", true),
+          familyMember(fredsterId, "Fredster", "Avenant", "child", true),
+        ]);
+      }
+      if (path === `/api/users/${fredsterId}/pin-reset`) {
+        signedIn = "child";
+        return json(route, {
+          setupToken: "replacement-one-time-token",
+          expiresAtUtc: "2099-01-01T00:05:00Z",
+          targetDisplayName: "Fredster",
+          targetRole: "child",
+        });
+      }
+      if (path === "/api/auth/setup-pin") {
+        submittedPin = String(request.postDataJSON().pin);
+        return json(route, auth(fredsterId, "Fredster", "child"));
+      }
+      return problem(route, 404);
+    });
+
+    await page.goto("/");
+    await page.getByText("Manage family").click();
+    const childProfile = page
+      .getByRole("list", { name: "Family members" })
+      .getByRole("listitem")
+      .filter({ hasText: "Fredster" });
+    await childProfile.getByRole("button", { name: "Reset PIN" }).click();
+    await expect(childProfile.getByText(/signed out everywhere/)).toBeVisible();
+    await childProfile
+      .getByRole("button", { name: "Keep current PIN" })
+      .click();
+    await expect(
+      childProfile.getByRole("button", { name: "Reset PIN" }),
+    ).toBeVisible();
+
+    await childProfile.getByRole("button", { name: "Reset PIN" }).click();
+    await childProfile
+      .getByRole("button", { name: "Yes, reset and hand over" })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Over to Fredster" }),
+    ).toBeVisible();
+    await page.getByLabel("4-digit PIN").fill("9876");
+    await page.getByLabel("Confirm PIN").fill("9876");
+    await page.getByRole("button", { name: "Save PIN and open board" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Good day, Fredster!" }),
+    ).toBeVisible();
+    expect(submittedPin).toBe("9876");
+  });
+
   test(`a grown-up manages a profile lifecycle on a ${viewport.name}`, async ({
     page,
   }) => {

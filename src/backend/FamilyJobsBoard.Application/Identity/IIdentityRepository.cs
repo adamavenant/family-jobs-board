@@ -80,6 +80,15 @@ public interface IIdentityRepository
         DateTimeOffset now,
         CancellationToken cancellationToken);
 
+    Task<PinResetIssueResult> IssuePinResetAsync(
+        Guid tokenId,
+        Guid targetMemberId,
+        Guid adultId,
+        Guid adultSessionId,
+        string tokenHash,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+
     Task<IdentityMember?> GetPinSetupTargetAsync(
         Guid tokenId,
         string tokenHash,
