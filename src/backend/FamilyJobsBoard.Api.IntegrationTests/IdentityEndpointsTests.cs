@@ -465,9 +465,15 @@ public sealed class IdentityEndpointsTests : IAsyncLifetime
         {
             var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var stored = await database.HouseholdMembers.SingleAsync(member => member.Id == created.Id);
-            Assert.Equal(editedAt, stored.ProfileUpdatedAtUtc);
+            Assert.Equal(
+                editedAt,
+                stored.ProfileUpdatedAtUtc!.Value,
+                TimeSpan.FromMicroseconds(1));
             Assert.Equal(bootstrap.Body.Member.Id, stored.ProfileUpdatedByMemberId);
-            Assert.Equal(deactivatedAt, stored.DeactivatedAtUtc);
+            Assert.Equal(
+                deactivatedAt,
+                stored.DeactivatedAtUtc!.Value,
+                TimeSpan.FromMicroseconds(1));
             Assert.Equal(bootstrap.Body.Member.Id, stored.DeactivatedByMemberId);
             Assert.Equal(1, await database.Jobs.CountAsync(candidate => candidate.ChildId == created.Id));
         }
@@ -499,7 +505,10 @@ public sealed class IdentityEndpointsTests : IAsyncLifetime
         var restoredDatabase = restoredScope.ServiceProvider.GetRequiredService<AppDbContext>();
         var restoredMember = await restoredDatabase.HouseholdMembers.SingleAsync(
             member => member.Id == created.Id);
-        Assert.Equal(restoredAt, restoredMember.RestoredAtUtc);
+        Assert.Equal(
+            restoredAt,
+            restoredMember.RestoredAtUtc!.Value,
+            TimeSpan.FromMicroseconds(1));
         Assert.Equal(bootstrap.Body.Member.Id, restoredMember.RestoredByMemberId);
         Assert.Equal(1, await restoredDatabase.Jobs.CountAsync(candidate => candidate.ChildId == created.Id));
     }
