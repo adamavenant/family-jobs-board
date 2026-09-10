@@ -14,6 +14,7 @@ internal sealed class AspNetCorePinHasher : IPinHasher
         null,
         "Unknown",
         Domain.Households.HouseholdRole.Adult,
+        true,
         true);
 
     private readonly byte[] _pepper;

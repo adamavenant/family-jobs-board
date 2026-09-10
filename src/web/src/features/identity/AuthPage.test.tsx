@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
@@ -174,6 +174,7 @@ describe("Identity flow", () => {
               displayName: "Addie",
               role: "adult",
               isCredentialReady: true,
+              isActive: true,
             },
             {
               id: fredsterId,
@@ -183,6 +184,7 @@ describe("Identity flow", () => {
               displayName: "Fredster",
               role: "child",
               isCredentialReady: false,
+              isActive: true,
             },
           ]);
         }
@@ -209,8 +211,16 @@ describe("Identity flow", () => {
     await screen.findByRole("heading", { name: "Good day, Addie!" });
     await user.click(screen.getByText("Manage family"));
     await screen.findByText("PIN not set");
-    await user.type(screen.getAllByLabelText("Surname").at(-1)!, "Avenant");
-    await user.click(screen.getByRole("button", { name: "Set up PIN now" }));
+    const setupButton = screen.getByRole("button", {
+      name: "Set up PIN now",
+    });
+    const handoffForm = setupButton.closest("form");
+    expect(handoffForm).not.toBeNull();
+    await user.type(
+      within(handoffForm as HTMLFormElement).getByLabelText("Surname"),
+      "Avenant",
+    );
+    await user.click(setupButton);
 
     expect(
       await screen.findByRole("heading", { name: "Over to Fredster" }),

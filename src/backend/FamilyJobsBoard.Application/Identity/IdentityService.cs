@@ -26,9 +26,10 @@ public sealed class IdentityService
     public Task<IdentityStartState> GetStartAsync(CancellationToken cancellationToken) =>
         _repository.GetStartAsync(cancellationToken);
 
-    public Task<IReadOnlyList<IdentityMember>> GetActiveMembersAsync(
+    public Task<IReadOnlyList<IdentityMember>> GetMembersAsync(
+        bool includeInactive,
         CancellationToken cancellationToken) =>
-        _repository.GetActiveMembersAsync(cancellationToken);
+        _repository.GetMembersAsync(includeInactive, cancellationToken);
 
     public Task<IdentityMember> CreateMemberAsync(
         CreateFamilyMember request,
@@ -49,6 +50,43 @@ public sealed class IdentityService
             cancellationToken);
     }
 
+    public async Task<IdentityMember> UpdateMemberAsync(
+        Guid memberId,
+        UpdateFamilyMember request,
+        Guid actorMemberId,
+        CancellationToken cancellationToken)
+    {
+        var updated = await _repository.UpdateMemberAsync(
+            memberId,
+            RequiredName(request.FirstName),
+            RequiredName(request.Surname),
+            OptionalName(request.Nickname),
+            actorMemberId,
+            _clock.UtcNow,
+            cancellationToken);
+        return updated
+            ?? throw new IdentityOperationException(IdentityError.MemberNotFound);
+    }
+
+    public Task<IdentityMember> DeactivateMemberAsync(
+        Guid memberId,
+        Guid actorMemberId,
+        CancellationToken cancellationToken)
+    {
+        if (memberId == actorMemberId)
+        {
+            throw new IdentityOperationException(IdentityError.CannotDeactivateSelf);
+        }
+
+        return SetMemberActiveAsync(memberId, false, actorMemberId, cancellationToken);
+    }
+
+    public Task<IdentityMember> RestoreMemberAsync(
+        Guid memberId,
+        Guid actorMemberId,
+        CancellationToken cancellationToken) =>
+        SetMemberActiveAsync(memberId, true, actorMemberId, cancellationToken);
+
     public async Task<AuthenticatedIdentity> BootstrapAsync(
         BootstrapIdentity request,
         CancellationToken cancellationToken)
@@ -62,6 +100,7 @@ public sealed class IdentityService
             null,
             normalized.FirstName ?? string.Empty,
             HouseholdRole.Adult,
+            true,
             true);
         var pinHash = _pinHasher.Hash(provisionalMember, normalized.Pin!);
         var stored = await _repository.BootstrapAsync(
@@ -305,6 +344,22 @@ public sealed class IdentityService
     }
 
     public static bool IsValidPin(string? pin, HouseholdRole role) => PinPolicy.IsValid(pin, role);
+
+    private async Task<IdentityMember> SetMemberActiveAsync(
+        Guid memberId,
+        bool isActive,
+        Guid actorMemberId,
+        CancellationToken cancellationToken)
+    {
+        var member = await _repository.SetMemberActiveAsync(
+            memberId,
+            isActive,
+            actorMemberId,
+            _clock.UtcNow,
+            cancellationToken);
+        return member
+            ?? throw new IdentityOperationException(IdentityError.MemberNotFound);
+    }
 
     private static string RequiredName(string? value)
     {

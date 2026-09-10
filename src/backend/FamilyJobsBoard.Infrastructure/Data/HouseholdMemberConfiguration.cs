@@ -32,6 +32,30 @@ internal sealed class HouseholdMemberConfiguration : IEntityTypeConfiguration<Ho
         builder.Property(member => member.IsActive)
             .HasColumnName("is_active")
             .HasDefaultValue(true);
+        builder.Property(member => member.ProfileUpdatedAtUtc)
+            .HasColumnName("profile_updated_at_utc");
+        builder.Property(member => member.ProfileUpdatedByMemberId)
+            .HasColumnName("profile_updated_by_member_id");
+        builder.Property(member => member.DeactivatedAtUtc)
+            .HasColumnName("deactivated_at_utc");
+        builder.Property(member => member.DeactivatedByMemberId)
+            .HasColumnName("deactivated_by_member_id");
+        builder.Property(member => member.RestoredAtUtc)
+            .HasColumnName("restored_at_utc");
+        builder.Property(member => member.RestoredByMemberId)
+            .HasColumnName("restored_by_member_id");
+        builder.HasOne<HouseholdMember>()
+            .WithMany()
+            .HasForeignKey(member => member.ProfileUpdatedByMemberId)
+            .OnDelete(DeleteBehavior.NoAction);
+        builder.HasOne<HouseholdMember>()
+            .WithMany()
+            .HasForeignKey(member => member.DeactivatedByMemberId)
+            .OnDelete(DeleteBehavior.NoAction);
+        builder.HasOne<HouseholdMember>()
+            .WithMany()
+            .HasForeignKey(member => member.RestoredByMemberId)
+            .OnDelete(DeleteBehavior.NoAction);
         builder.Ignore(member => member.IsAdult);
     }
 }

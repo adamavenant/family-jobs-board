@@ -16,13 +16,19 @@ public sealed record IdentityMember(
     string? Nickname,
     string DisplayName,
     HouseholdRole Role,
-    bool IsCredentialReady);
+    bool IsCredentialReady,
+    bool IsActive);
 
 public sealed record CreateFamilyMember(
     string? FirstName,
     string? Surname,
     string? Nickname,
     string? Role);
+
+public sealed record UpdateFamilyMember(
+    string? FirstName,
+    string? Surname,
+    string? Nickname);
 
 public sealed record IdentityStartState(
     IdentityStartMode Mode,
@@ -110,6 +116,7 @@ public enum IdentityError
     MemberNotEligible,
     InvalidOrExpiredSetup,
     InvalidMember,
+    CannotDeactivateSelf,
 }
 
 public sealed class IdentityOperationException : Exception

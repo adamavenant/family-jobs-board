@@ -19,6 +19,11 @@ internal sealed record CreateFamilyMemberRequest(
     string? Nickname,
     string? Role);
 
+internal sealed record UpdateFamilyMemberRequest(
+    string? FirstName,
+    string? Surname,
+    string? Nickname);
+
 internal sealed record FamilyMemberResponse(
     Guid Id,
     string FirstName,
@@ -26,7 +31,8 @@ internal sealed record FamilyMemberResponse(
     string? Nickname,
     string DisplayName,
     string Role,
-    bool IsCredentialReady);
+    bool IsCredentialReady,
+    bool IsActive);
 
 internal sealed record AuthMemberResponse(
     Guid Id,

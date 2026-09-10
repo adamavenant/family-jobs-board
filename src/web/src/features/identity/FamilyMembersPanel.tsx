@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useFetcher } from "react-router";
 
 import type {
@@ -6,11 +7,21 @@ import type {
 } from "../../app/routes";
 import type { FamilyMember } from "../../api/members";
 
-export function FamilyMembersPanel() {
+export function FamilyMembersPanel({
+  currentMemberId,
+}: {
+  currentMemberId: string;
+}) {
   const family = useFetcher<FamilyMembersActionResult>();
   const members = family.data?.members ?? [];
-  const created = members.find(
-    (member) => member.id === family.data?.createdMemberId,
+  const affected = members.find(
+    (member) => member.id === family.data?.affectedMemberId,
+  );
+  const active = members.filter((member) => member.isActive);
+  const inactive = members.filter((member) => !member.isActive);
+  const success = actionSuccess(
+    family.data?.intent,
+    family.data?.error ? undefined : affected,
   );
 
   return (
@@ -57,17 +68,49 @@ export function FamilyMembersPanel() {
           </div>
         ) : (
           <>
-            {created ? (
+            {success ? (
               <p className="success-message" role="status">
-                {created.displayName} was added. Set up their PIN now or come
-                back later.
+                {success}
               </p>
             ) : null}
             <ul className="family-member-list" aria-label="Family members">
-              {members.map((member) => (
-                <FamilyMemberCard key={member.id} member={member} />
+              {active.map((member) => (
+                <FamilyMemberCard
+                  key={`${member.id}-${member.isActive}`}
+                  member={member}
+                  currentMemberId={currentMemberId}
+                  fetcher={family}
+                />
               ))}
             </ul>
+            <section
+              className="inactive-family-members"
+              aria-labelledby="inactive-family-heading"
+            >
+              <div>
+                <h3 id="inactive-family-heading">Inactive profiles</h3>
+                <p>These profiles are hidden from sign-in and assignments.</p>
+              </div>
+              {inactive.length > 0 ? (
+                <ul
+                  className="family-member-list family-member-list--inactive"
+                  aria-label="Inactive family members"
+                >
+                  {inactive.map((member) => (
+                    <FamilyMemberCard
+                      key={`${member.id}-${member.isActive}`}
+                      member={member}
+                      currentMemberId={currentMemberId}
+                      fetcher={family}
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <p className="inactive-family-members__empty">
+                  No inactive profiles.
+                </p>
+              )}
+            </section>
           </>
         )}
       </div>
@@ -122,13 +165,27 @@ function CreateMemberForm({
   );
 }
 
-function FamilyMemberCard({ member }: { member: FamilyMember }) {
+function FamilyMemberCard({
+  member,
+  currentMemberId,
+  fetcher,
+}: {
+  member: FamilyMember;
+  currentMemberId: string;
+  fetcher: ReturnType<typeof useFetcher<FamilyMembersActionResult>>;
+}) {
   const handoff = useFetcher<AppActionResult>();
-  const error =
+  const [confirmingDeactivation, setConfirmingDeactivation] = useState(false);
+  const handoffError =
     handoff.data?.intent === "beginPinSetup" ? handoff.data.error : undefined;
+  const memberAction =
+    fetcher.data?.affectedMemberId === member.id ? fetcher.data : undefined;
+  const mutationError =
+    memberAction?.intent !== "createMember" ? memberAction?.error : undefined;
+  const submitting = fetcher.state !== "idle";
   const fullName = [member.firstName, member.surname].filter(Boolean).join(" ");
   return (
-    <li>
+    <li className={member.isActive ? undefined : "family-member--inactive"}>
       <div className="family-member-list__identity">
         <strong>{member.displayName}</strong>
         <span>{fullName}</span>
@@ -142,8 +199,11 @@ function FamilyMemberCard({ member }: { member: FamilyMember }) {
         >
           {member.isCredentialReady ? "PIN ready" : "PIN not set"}
         </span>
+        {!member.isActive ? (
+          <span className="status--inactive">Inactive</span>
+        ) : null}
       </div>
-      {!member.isCredentialReady ? (
+      {member.isActive && !member.isCredentialReady ? (
         <handoff.Form method="post" action="/" className="member-handoff-form">
           <input type="hidden" name="intent" value="beginPinSetup" />
           <input type="hidden" name="memberId" value={member.id} />
@@ -153,9 +213,9 @@ function FamilyMemberCard({ member }: { member: FamilyMember }) {
               <input name="surname" maxLength={100} required />
             </label>
           ) : null}
-          {error ? (
+          {handoffError ? (
             <p className="error-message" role="alert">
-              {error}
+              {handoffError}
             </p>
           ) : null}
           <button type="submit" disabled={handoff.state !== "idle"}>
@@ -163,6 +223,136 @@ function FamilyMemberCard({ member }: { member: FamilyMember }) {
           </button>
         </handoff.Form>
       ) : null}
+      <details className="family-member-edit">
+        <summary>Edit profile</summary>
+        <fetcher.Form method="post" action="/family">
+          <input type="hidden" name="intent" value="updateMember" />
+          <input type="hidden" name="memberId" value={member.id} />
+          <label>
+            <span>First name</span>
+            <input
+              name="firstName"
+              defaultValue={member.firstName}
+              maxLength={100}
+              required
+            />
+          </label>
+          <label>
+            <span>Surname</span>
+            <input
+              name="surname"
+              defaultValue={member.surname ?? ""}
+              maxLength={100}
+              required
+            />
+          </label>
+          <label>
+            <span>Nickname (optional)</span>
+            <input
+              name="nickname"
+              defaultValue={member.nickname ?? ""}
+              maxLength={100}
+            />
+          </label>
+          {memberAction?.intent === "updateMember" && mutationError ? (
+            <p className="error-message" role="alert">
+              {mutationError}
+            </p>
+          ) : null}
+          <button type="submit" disabled={submitting}>
+            {submitting ? "Saving…" : "Save profile"}
+          </button>
+        </fetcher.Form>
+      </details>
+      {member.isActive ? (
+        member.id === currentMemberId ? (
+          <p className="family-member-list__self">Signed-in profile</p>
+        ) : confirmingDeactivation ? (
+          <div
+            className="deactivate-confirmation"
+            role="group"
+            aria-label={`Deactivate ${member.displayName}`}
+          >
+            <p>
+              Deactivate {member.displayName}? They will be signed out and
+              hidden from new assignments. Their history stays safe.
+            </p>
+            {memberAction?.intent === "deactivateMember" && mutationError ? (
+              <p className="error-message" role="alert">
+                {mutationError}
+              </p>
+            ) : null}
+            <div>
+              <fetcher.Form method="post" action="/family">
+                <input type="hidden" name="intent" value="deactivateMember" />
+                <input type="hidden" name="memberId" value={member.id} />
+                <button
+                  type="submit"
+                  className="button--danger"
+                  disabled={submitting}
+                >
+                  {submitting ? "Deactivating…" : "Yes, deactivate"}
+                </button>
+              </fetcher.Form>
+              <button
+                type="button"
+                className="button--quiet"
+                onClick={() => setConfirmingDeactivation(false)}
+                disabled={submitting}
+              >
+                Keep active
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="button--quiet family-member-deactivate"
+            onClick={() => setConfirmingDeactivation(true)}
+          >
+            Deactivate profile
+          </button>
+        )
+      ) : (
+        <fetcher.Form
+          method="post"
+          action="/family"
+          className="member-restore-form"
+        >
+          <input type="hidden" name="intent" value="restoreMember" />
+          <input type="hidden" name="memberId" value={member.id} />
+          {memberAction?.intent === "restoreMember" && mutationError ? (
+            <p className="error-message" role="alert">
+              {mutationError}
+            </p>
+          ) : null}
+          <button type="submit" disabled={submitting}>
+            {submitting ? "Restoring…" : "Restore profile"}
+          </button>
+        </fetcher.Form>
+      )}
     </li>
   );
+}
+
+function actionSuccess(
+  intent: FamilyMembersActionResult["intent"],
+  member: FamilyMember | undefined,
+): string | undefined {
+  if (!member) {
+    return undefined;
+  }
+
+  switch (intent) {
+    case "createMember":
+      return `${member.displayName} was added. Set up their PIN now or come back later.`;
+    case "updateMember":
+      return `${member.displayName}'s profile was updated.`;
+    case "deactivateMember":
+      return `${member.displayName}'s profile is inactive. Their history is still here.`;
+    case "restoreMember":
+      return `${member.displayName}'s profile was restored.`;
+    default:
+      return undefined;
+  }
 }

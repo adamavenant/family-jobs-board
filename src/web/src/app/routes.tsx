@@ -33,8 +33,11 @@ import { TodayPage } from "../features/today/TodayPage";
 import type { TodayBoard } from "../api/today";
 import {
   createFamilyMember,
+  deactivateFamilyMember,
   FamilyMemberApiError,
   getFamilyMembers,
+  restoreFamilyMember,
+  updateFamilyMember,
 } from "../api/members";
 import type { FamilyMember } from "../api/members";
 
@@ -83,9 +86,10 @@ export interface IdentityActionResult {
 }
 
 export interface FamilyMembersActionResult {
-  intent?: "createMember";
-  members?: FamilyMember[];
-  createdMemberId?: string;
+  intent?:
+    "createMember" | "updateMember" | "deactivateMember" | "restoreMember";
+  members?: FamilyMember[] | undefined;
+  affectedMemberId?: string | undefined;
   error?: string;
 }
 
@@ -153,7 +157,7 @@ async function todayAction({
 
 async function familyLoader(): Promise<FamilyMembersActionResult> {
   try {
-    return { members: await getFamilyMembers() };
+    return { members: await getFamilyMembers(true) };
   } catch (error) {
     return {
       error:
@@ -168,10 +172,98 @@ async function familyAction({
   request,
 }: ActionFunctionArgs): Promise<FamilyMembersActionResult> {
   const form = await request.formData();
+  const intent = form.get("intent");
+  if (
+    intent !== "createMember" &&
+    intent !== "updateMember" &&
+    intent !== "deactivateMember" &&
+    intent !== "restoreMember"
+  ) {
+    return { error: "That family action wasn't recognised." };
+  }
+
   const firstName = form.get("firstName");
   const surname = form.get("surname");
   const nickname = form.get("nickname");
-  const role = form.get("role");
+  const submittedMemberId = form.get("memberId");
+  const memberId =
+    typeof submittedMemberId === "string" && submittedMemberId.length > 0
+      ? submittedMemberId
+      : undefined;
+  const names = normalizeMemberNames(firstName, surname, nickname);
+  const needsNames = intent === "createMember" || intent === "updateMember";
+  if (needsNames && names === null) {
+    return {
+      intent,
+      affectedMemberId: memberId,
+      members: await loadFamilyMembersAfterAction(),
+      error: "Check the family member details.",
+    };
+  }
+
+  try {
+    let affected: FamilyMember;
+    if (intent === "createMember") {
+      const role = form.get("role");
+      if (names === null || (role !== "adult" && role !== "child")) {
+        return {
+          intent,
+          members: await loadFamilyMembersAfterAction(),
+          error: "Check the family member details.",
+        };
+      }
+
+      affected = await createFamilyMember({
+        firstName: names.firstName,
+        surname: names.surname,
+        nickname: names.nickname,
+        role,
+      });
+    } else {
+      if (memberId === undefined) {
+        return { intent, error: "Choose a family member." };
+      }
+
+      if (intent === "updateMember") {
+        if (names === null) {
+          return {
+            intent,
+            members: await loadFamilyMembersAfterAction(),
+            error: "Check the family member details.",
+          };
+        }
+
+        affected = await updateFamilyMember(memberId, names);
+      } else if (intent === "deactivateMember") {
+        affected = await deactivateFamilyMember(memberId);
+      } else {
+        affected = await restoreFamilyMember(memberId);
+      }
+    }
+
+    return {
+      intent,
+      members: await getFamilyMembers(true),
+      affectedMemberId: affected.id,
+    };
+  } catch (error) {
+    return {
+      intent,
+      affectedMemberId: memberId,
+      members: await loadFamilyMembersAfterAction(),
+      error:
+        error instanceof FamilyMemberApiError
+          ? error.message
+          : "That family change couldn't be saved.",
+    };
+  }
+}
+
+function normalizeMemberNames(
+  firstName: FormDataEntryValue | null,
+  surname: FormDataEntryValue | null,
+  nickname: FormDataEntryValue | null,
+): { firstName: string; surname: string; nickname: string | null } | null {
   if (
     typeof firstName !== "string" ||
     firstName.trim().length === 0 ||
@@ -180,36 +272,25 @@ async function familyAction({
     surname.trim().length === 0 ||
     surname.trim().length > 100 ||
     typeof nickname !== "string" ||
-    nickname.trim().length > 100 ||
-    (role !== "adult" && role !== "child")
+    nickname.trim().length > 100
   ) {
-    return {
-      intent: "createMember",
-      members: await getFamilyMembers(),
-      error: "Check the family member details.",
-    };
+    return null;
   }
 
+  return {
+    firstName: firstName.trim(),
+    surname: surname.trim(),
+    nickname: nickname.trim() || null,
+  };
+}
+
+async function loadFamilyMembersAfterAction(): Promise<
+  FamilyMember[] | undefined
+> {
   try {
-    const created = await createFamilyMember({
-      firstName: firstName.trim(),
-      surname: surname.trim(),
-      nickname: nickname.trim() || null,
-      role,
-    });
-    return {
-      intent: "createMember",
-      members: await getFamilyMembers(),
-      createdMemberId: created.id,
-    };
-  } catch (error) {
-    return {
-      intent: "createMember",
-      error:
-        error instanceof FamilyMemberApiError
-          ? error.message
-          : "That family member couldn't be created.",
-    };
+    return await getFamilyMembers(true);
+  } catch {
+    return undefined;
   }
 }
 

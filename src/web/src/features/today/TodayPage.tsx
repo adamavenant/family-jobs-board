@@ -65,7 +65,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
 
       {board.viewer.isAdult ? (
         <div className="grown-up-toolbox">
-          <FamilyMembersPanel />
+          <FamilyMembersPanel currentMemberId={board.viewer.id} />
           <AddJobForm children={children} />
           <RecurringJobForm children={children} today={board.date} />
         </div>

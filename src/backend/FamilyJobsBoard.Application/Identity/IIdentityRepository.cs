@@ -4,11 +4,28 @@ namespace FamilyJobsBoard.Application.Identity;
 
 public interface IIdentityRepository
 {
-    Task<IReadOnlyList<IdentityMember>> GetActiveMembersAsync(
+    Task<IReadOnlyList<IdentityMember>> GetMembersAsync(
+        bool includeInactive,
         CancellationToken cancellationToken);
 
     Task<IdentityMember> CreateMemberAsync(
         HouseholdMember member,
+        CancellationToken cancellationToken);
+
+    Task<IdentityMember?> UpdateMemberAsync(
+        Guid memberId,
+        string firstName,
+        string surname,
+        string? nickname,
+        Guid actorMemberId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+
+    Task<IdentityMember?> SetMemberActiveAsync(
+        Guid memberId,
+        bool isActive,
+        Guid actorMemberId,
+        DateTimeOffset now,
         CancellationToken cancellationToken);
 
     Task<IdentityStartState> GetStartAsync(CancellationToken cancellationToken);
