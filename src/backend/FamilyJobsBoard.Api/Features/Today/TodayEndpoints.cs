@@ -15,8 +15,9 @@ internal static class TodayEndpoints
 
         group.MapGet("/today", GetTodayAsync)
             .WithName("GetToday")
-            .WithSummary("Get the authenticated family member's board.")
-            .WithDescription("Returns the child-owned or adult household view from the validated session.");
+            .WithSummary("Get the authenticated family member's daily board.")
+            .WithDescription(
+                "Returns the child-owned or adult household view for the optional household-local date.");
 
         group.MapPost("/jobs/{id:guid}/complete", CompleteJobAsync)
             .RequireAuthorization("Child")
@@ -27,8 +28,9 @@ internal static class TodayEndpoints
         group.MapPost("/today/jobs", AddJobAsync)
             .RequireAuthorization("Adult")
             .WithName("AddJob")
-            .WithSummary("Add a new job for one or more children.")
-            .WithDescription("Adds an independent job to each selected child's board for today.");
+            .WithSummary("Schedule a once-off job for one or more children.")
+            .WithDescription(
+                "Adds an independent job to each selected child's board for a household-local date.");
 
         group.MapPost("/recurring-jobs/daily", CreateDailyRecurringJobAsync)
             .RequireAuthorization("Adult")
@@ -210,6 +212,7 @@ internal static class TodayEndpoints
     }
 
     private static async Task<Results<Ok<TodayResponse>, ProblemHttpResult>> GetTodayAsync(
+        [FromQuery] DateOnly? date,
         HttpContext context,
         TodayBoardService service,
         CancellationToken cancellationToken)
@@ -217,7 +220,10 @@ internal static class TodayEndpoints
         try
         {
             var memberId = IdentityEndpoints.PrincipalMemberId(context.User)!.Value;
-            var board = await service.GetAsync(memberId, cancellationToken);
+            var board = await service.GetAsync(
+                memberId,
+                date ?? service.CurrentDate,
+                cancellationToken);
             return TypedResults.Ok(MapBoard(board));
         }
         catch (HouseholdMemberNotFoundException exception)
@@ -248,7 +254,10 @@ internal static class TodayEndpoints
                     request.ChildIds,
                     request.Name,
                     request.Description,
-                    request.Points),
+                    request.Points,
+                    request.ScheduledDate,
+                    request.AgendaPeriod,
+                    request.ScheduledTime),
                 cancellationToken);
             return TypedResults.Created(
                 "/api/today",
@@ -384,6 +393,7 @@ internal static class TodayEndpoints
             MapMember(board.Viewer),
             board.Members.Select(MapMember).ToArray(),
             board.Date,
+            board.CurrentDate,
             board.Jobs.Select(MapJob).ToArray(),
             board.PointsBalance,
             board.PointEarnings.Select(MapPointEarning).ToArray(),

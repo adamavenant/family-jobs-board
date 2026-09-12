@@ -41,6 +41,7 @@ const board = {
   viewer: addie,
   members: [addie, hellie, fredster, harrie],
   date: "2026-08-29",
+  currentDate: "2026-08-29",
   pointsBalance: null,
   pendingApprovalCount: 1,
   pointEarnings: [],
@@ -183,22 +184,25 @@ describe("Today page", () => {
       name: "Put toys away",
       description: "Return every toy to its box.",
       points: 4,
+      scheduledDate: board.date,
+      agendaPeriod: "arrivingHome",
+      scheduledTime: "15:45:00",
+      recurringJobSeriesId: null,
+      recurrenceFrequency: null,
       status: "open",
       completedAtUtc: null,
       approvedAtUtc: null,
       latestRejection: null,
     };
     const boardWithAddedJob = { ...board, jobs: [...board.jobs, addedJob] };
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(jsonResponse(board))
-        .mockResolvedValueOnce(
-          jsonResponse({ jobs: [addedJob] }, { status: 201 }),
-        )
-        .mockResolvedValueOnce(jsonResponse(boardWithAddedJob)),
-    );
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(board))
+      .mockResolvedValueOnce(
+        jsonResponse({ jobs: [addedJob] }, { status: 201 }),
+      )
+      .mockResolvedValueOnce(jsonResponse(boardWithAddedJob));
+    vi.stubGlobal("fetch", fetch);
     const user = userEvent.setup();
     renderApp();
 
@@ -211,12 +215,17 @@ describe("Today page", () => {
     );
     await user.clear(screen.getByLabelText("Points"));
     await user.type(screen.getByLabelText("Points"), "4");
+    await user.selectOptions(
+      screen.getByLabelText("Part of day"),
+      "arrivingHome",
+    );
+    await user.type(screen.getByLabelText("Time (optional)"), "15:45");
     await user.click(screen.getByRole("button", { name: "Add job" }));
 
     const addedHeading = await screen.findByRole("heading", {
       name: "Put toys away",
     });
-    expect(screen.getByText("Job added to today’s board.")).toHaveAttribute(
+    expect(screen.getByText("Job scheduled for 2026-08-29.")).toHaveAttribute(
       "role",
       "status",
     );
@@ -226,6 +235,62 @@ describe("Today page", () => {
     expect(
       within(addedCard as HTMLElement).getByText("Ready for Fredster"),
     ).toBeInTheDocument();
+    expect(
+      within(addedCard as HTMLElement).getByText("Arriving home · 15:45"),
+    ).toBeInTheDocument();
+    const createRequest = fetch.mock.calls.find(([input]) => {
+      const request = input instanceof Request ? input : null;
+      return (
+        requestPath(input) === "/api/today/jobs" && request?.method === "POST"
+      );
+    })?.[0];
+    expect(createRequest).toBeInstanceOf(Request);
+    expect(await (createRequest as Request).clone().json()).toEqual({
+      childIds: [fredster.id],
+      name: "Put toys away",
+      description: "Return every toy to its box.",
+      points: 4,
+      scheduledDate: board.date,
+      agendaPeriod: "arrivingHome",
+      scheduledTime: "15:45",
+    });
+  });
+
+  it("browses another day and returns to today", async () => {
+    const nextDate = "2026-08-30";
+    const nextBoard = {
+      ...board,
+      date: nextDate,
+      jobs: [],
+    };
+    const fetch = vi.fn((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      return Promise.resolve(
+        jsonResponse(
+          url.searchParams.get("date") === nextDate ? nextBoard : board,
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByRole("link", { name: "Next day →" }));
+
+    expect(await screen.findByText("Sunday, August 30")).toBeInTheDocument();
+    expect(
+      screen.getByText("No jobs are scheduled for this day."),
+    ).toBeVisible();
+    expect(screen.getByRole("link", { name: "Today" })).toHaveAttribute(
+      "href",
+      "/",
+    );
+    expect(
+      fetch.mock.calls.some(([input]) =>
+        requestUrl(input).searchParams.has("date", nextDate),
+      ),
+    ).toBe(true);
   });
 
   it("assigns one job to both children with an accessible multi-selection", async () => {
@@ -1168,13 +1233,17 @@ function jsonResponse(body: unknown, init?: ResponseInit) {
 }
 
 function requestPath(input: RequestInfo | URL) {
+  return requestUrl(input).pathname;
+}
+
+function requestUrl(input: RequestInfo | URL) {
   const value =
     typeof input === "string"
       ? input
       : "url" in input
         ? input.url
         : input.toString();
-  return new URL(value, window.location.origin).pathname;
+  return new URL(value, window.location.origin);
 }
 
 function managedMember(

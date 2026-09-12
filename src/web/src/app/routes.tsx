@@ -1,5 +1,5 @@
 import { useLoaderData } from "react-router";
-import type { ActionFunctionArgs } from "react-router";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { RouteObject } from "react-router";
 
 import {
@@ -51,6 +51,7 @@ export interface CompleteActionResult {
 export interface AddJobActionResult {
   intent: "add";
   success?: boolean;
+  scheduledDate?: string;
   error?: string;
 }
 
@@ -105,7 +106,9 @@ export type AppActionResult = TodayActionResult | IdentityActionResult;
 export type AppLoaderData =
   AuthStart | PendingPinSetup | { state: "authenticated"; board: TodayBoard };
 
-async function appLoader(): Promise<AppLoaderData> {
+async function appLoader({
+  request,
+}: LoaderFunctionArgs): Promise<AppLoaderData> {
   const setup = currentPinSetup();
   if (setup) {
     return setup;
@@ -114,7 +117,12 @@ async function appLoader(): Promise<AppLoaderData> {
   const active = currentSession() ?? (await refreshSession());
   if (active) {
     try {
-      return { state: "authenticated", board: await getToday() };
+      const selectedDate = new URL(request.url).searchParams.get("date");
+      const date =
+        selectedDate && /^\d{4}-\d{2}-\d{2}$/.test(selectedDate)
+          ? selectedDate
+          : undefined;
+      return { state: "authenticated", board: await getToday(date) };
     } catch (error) {
       if (!(error instanceof AuthApiError) || error.status !== 401) {
         throw error;
@@ -657,10 +665,19 @@ async function addJobAction(form: FormData): Promise<AddJobActionResult> {
   const name = form.get("name");
   const description = form.get("description");
   const pointsValue = form.get("points");
+  const scheduledDate = form.get("scheduledDate");
+  const agendaPeriod = form.get("agendaPeriod");
+  const scheduledTime = form.get("scheduledTime");
   const childIds = form
     .getAll("childIds")
     .filter((value): value is string => typeof value === "string");
   const points = Number(pointsValue);
+  const validAgendaPeriods = [
+    "morning",
+    "arrivingHome",
+    "evening",
+    "unscheduled",
+  ] as const;
 
   if (childIds.length === 0 || new Set(childIds).size !== childIds.length) {
     return { intent: "add", error: "Choose one or more children." };
@@ -689,10 +706,33 @@ async function addJobAction(form: FormData): Promise<AddJobActionResult> {
   ) {
     return { intent: "add", error: "Enter zero or more whole points." };
   }
+  if (
+    typeof scheduledDate !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)
+  ) {
+    return { intent: "add", error: "Choose a scheduled date." };
+  }
+  if (
+    typeof agendaPeriod !== "string" ||
+    !validAgendaPeriods.some((value) => value === agendaPeriod)
+  ) {
+    return { intent: "add", error: "Choose a part of the day." };
+  }
 
   try {
-    await addJob({ childIds, name, description, points });
-    return { intent: "add", success: true };
+    await addJob({
+      childIds,
+      name,
+      description,
+      points,
+      scheduledDate,
+      agendaPeriod: agendaPeriod as (typeof validAgendaPeriods)[number],
+      scheduledTime:
+        typeof scheduledTime === "string" && scheduledTime.length > 0
+          ? scheduledTime
+          : null,
+    });
+    return { intent: "add", success: true, scheduledDate };
   } catch (error) {
     return {
       intent: "add",

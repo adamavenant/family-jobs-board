@@ -396,6 +396,9 @@ public sealed class IdentityEndpointsTests : IAsyncLifetime
                 name = "Keep this history",
                 description = "PIN reset must not delete it.",
                 points = 2,
+                scheduledDate = Factory.Clock.Today,
+                agendaPeriod = "unscheduled",
+                scheduledTime = (string?)null,
             });
         Assert.Equal(HttpStatusCode.Created, job.StatusCode);
 
@@ -612,6 +615,9 @@ public sealed class IdentityEndpointsTests : IAsyncLifetime
                 name = "Keep this job",
                 description = "History survives deactivation.",
                 points = 2,
+                scheduledDate = Factory.Clock.Today,
+                agendaPeriod = "unscheduled",
+                scheduledTime = (string?)null,
             });
         Assert.Equal(HttpStatusCode.Created, job.StatusCode);
 

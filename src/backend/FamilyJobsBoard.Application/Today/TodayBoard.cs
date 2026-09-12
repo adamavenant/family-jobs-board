@@ -4,6 +4,7 @@ public sealed record TodayBoard(
     TodayMember Viewer,
     IReadOnlyList<TodayMember> Members,
     DateOnly Date,
+    DateOnly CurrentDate,
     IReadOnlyList<TodayJob> Jobs,
     int? PointsBalance,
     IReadOnlyList<TodayPointEarning> PointEarnings,

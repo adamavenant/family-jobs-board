@@ -201,8 +201,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get the authenticated family member's board.
-         * @description Returns the child-owned or adult household view from the validated session.
+         * Get the authenticated family member's daily board.
+         * @description Returns the child-owned or adult household view for the optional household-local date.
          */
         get: operations["GetToday"];
         put?: never;
@@ -243,8 +243,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Add a new job for one or more children.
-         * @description Adds an independent job to each selected child's board for today.
+         * Schedule a once-off job for one or more children.
+         * @description Adds an independent job to each selected child's board for a household-local date.
          */
         post: operations["AddJob"];
         delete?: never;
@@ -363,6 +363,11 @@ export interface components {
             description: null | string;
             /** Format: int32 */
             points: number | string;
+            /** Format: date */
+            scheduledDate: null | string;
+            agendaPeriod: null | string;
+            /** Format: time */
+            scheduledTime: null | string;
         };
         AddJobsResponse: {
             jobs: components["schemas"]["JobResponse"][];
@@ -582,6 +587,8 @@ export interface components {
             members: components["schemas"]["MemberResponse"][];
             /** Format: date */
             date: string;
+            /** Format: date */
+            currentDate: string;
             jobs: components["schemas"]["JobResponse"][];
             /** Format: int32 */
             pointsBalance: null | number | string;
@@ -1061,7 +1068,9 @@ export interface operations {
     };
     GetToday: {
         parameters: {
-            query?: never;
+            query?: {
+                date?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
