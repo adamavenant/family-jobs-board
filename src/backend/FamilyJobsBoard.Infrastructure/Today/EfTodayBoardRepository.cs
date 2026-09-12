@@ -47,7 +47,10 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         return await _database.Jobs
             .AsNoTracking()
             .Where(job => childIds.Contains(job.ChildId) && job.ScheduledDate == scheduledDate)
-            .OrderBy(job => job.Name)
+            .OrderBy(job => job.AgendaPeriod)
+            .ThenBy(job => job.ScheduledTime == null)
+            .ThenBy(job => job.ScheduledTime)
+            .ThenBy(job => job.Name)
             .ToListAsync(cancellationToken);
     }
 

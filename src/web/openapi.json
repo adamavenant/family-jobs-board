@@ -620,9 +620,19 @@
         "tags": [
           "Today"
         ],
-        "summary": "Get the authenticated family member's board.",
-        "description": "Returns the child-owned or adult household view from the validated session.",
+        "summary": "Get the authenticated family member's daily board.",
+        "description": "Returns the child-owned or adult household view for the optional household-local date.",
         "operationId": "GetToday",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -705,8 +715,8 @@
         "tags": [
           "Today"
         ],
-        "summary": "Add a new job for one or more children.",
-        "description": "Adds an independent job to each selected child's board for today.",
+        "summary": "Schedule a once-off job for one or more children.",
+        "description": "Adds an independent job to each selected child's board for a household-local date.",
         "operationId": "AddJob",
         "requestBody": {
           "content": {
@@ -1092,7 +1102,10 @@
           "childIds",
           "name",
           "description",
-          "points"
+          "points",
+          "scheduledDate",
+          "agendaPeriod",
+          "scheduledTime"
         ],
         "type": "object",
         "properties": {
@@ -1125,6 +1138,26 @@
               "string"
             ],
             "format": "int32"
+          },
+          "scheduledDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "agendaPeriod": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scheduledTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "time"
           }
         }
       },
@@ -2035,6 +2068,7 @@
           "viewer",
           "members",
           "date",
+          "currentDate",
           "jobs",
           "pointsBalance",
           "pointEarnings",
@@ -2052,6 +2086,10 @@
             }
           },
           "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "currentDate": {
             "type": "string",
             "format": "date"
           },

@@ -16,9 +16,19 @@ public sealed class TodayBoardService
         _clock = clock;
     }
 
+    public DateOnly CurrentDate => _clock.Today;
+
     public async Task<TodayBoard> GetAsync(Guid viewerId, CancellationToken cancellationToken)
     {
-        await EnsureRecurringJobsAsync(cancellationToken);
+        return await GetAsync(viewerId, _clock.Today, cancellationToken);
+    }
+
+    public async Task<TodayBoard> GetAsync(
+        Guid viewerId,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        await EnsureRecurringJobsAsync(date, cancellationToken);
         var members = await _repository.GetMembersAsync(cancellationToken);
         if (members.Count == 0)
         {
@@ -34,11 +44,11 @@ public sealed class TodayBoardService
         var visibleChildIds = visibleChildren.Select(child => child.Id).ToArray();
         var jobs = await _repository.GetJobsAsync(
             visibleChildIds,
-            _clock.Today,
+            date,
             cancellationToken);
         var latestRejections = await _repository.GetLatestRejectionsAsync(
             visibleChildIds,
-            _clock.Today,
+            date,
             cancellationToken);
         var rejectionByJobId = latestRejections.ToDictionary(rejection => rejection.JobId);
         var childById = children.ToDictionary(child => child.Id);
@@ -51,6 +61,7 @@ public sealed class TodayBoardService
         return new TodayBoard(
             MapMember(viewer),
             members.Select(MapMember).ToArray(),
+            date,
             _clock.Today,
             jobs.Select(job => MapJob(
                 job,
@@ -87,6 +98,22 @@ public sealed class TodayBoardService
         var name = request.Name?.Trim() ?? string.Empty;
         var description = request.Description?.Trim() ?? string.Empty;
         var errors = ValidateNewJob(name, description, request.Points);
+        if (request.ScheduledDate is null)
+        {
+            errors[nameof(AddTodayJob.ScheduledDate)] = ["Choose a scheduled date."];
+        }
+        else if (request.ScheduledDate < _clock.Today)
+        {
+            errors[nameof(AddTodayJob.ScheduledDate)] =
+                ["The scheduled date cannot be in the past."];
+        }
+
+        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        {
+            errors[nameof(AddTodayJob.AgendaPeriod)] =
+                ["Choose morning, arrivingHome, evening, or unscheduled."];
+        }
+
         var children = await GetSelectedChildrenAsync(
             request.ChildIds,
             errors,
@@ -105,7 +132,9 @@ public sealed class TodayBoardService
                 name,
                 description,
                 request.Points,
-                _clock.Today))
+                request.ScheduledDate!.Value,
+                agendaPeriod,
+                request.ScheduledTime))
             .ToArray();
 
         await _repository.AddJobsAsync(jobs, cancellationToken);
@@ -511,9 +540,12 @@ public sealed class TodayBoardService
         return new RecurringJobCreation(assignments, false);
     }
 
-    private async Task EnsureRecurringJobsAsync(CancellationToken cancellationToken)
+    private async Task EnsureRecurringJobsAsync(
+        DateOnly requestedDate,
+        CancellationToken cancellationToken)
     {
-        var horizon = _clock.Today.AddDays(55);
+        var rollingHorizon = _clock.Today.AddDays(55);
+        var horizon = requestedDate > rollingHorizon ? requestedDate : rollingHorizon;
         var seriesToAdvance = await _repository.GetRecurringJobSeriesNeedingGenerationAsync(
             horizon,
             cancellationToken);

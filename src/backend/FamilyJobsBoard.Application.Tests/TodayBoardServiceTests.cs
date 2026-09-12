@@ -37,7 +37,10 @@ public sealed class TodayBoardServiceTests
                 [FirstChild.Id, SecondChild.Id],
                 "  Make the beds  ",
                 "  Straighten the duvets.  ",
-                3),
+                3,
+                Today.AddDays(2),
+                "evening",
+                new TimeOnly(18, 30)),
             CancellationToken.None);
 
         Assert.Equal(2, created.Count);
@@ -50,6 +53,9 @@ public sealed class TodayBoardServiceTests
             Assert.Equal("Make the beds", job.Name);
             Assert.Equal("Straighten the duvets.", job.Description);
             Assert.Equal(3, job.Points);
+            Assert.Equal(Today.AddDays(2), job.ScheduledDate);
+            Assert.Equal("evening", job.AgendaPeriod);
+            Assert.Equal(new TimeOnly(18, 30), job.ScheduledTime);
         });
         Assert.Equal(1, repository.SaveCount);
     }
@@ -68,12 +74,79 @@ public sealed class TodayBoardServiceTests
 
         var exception = await Assert.ThrowsAsync<InvalidTodayJobException>(() =>
             service.AddJobAsync(
-                new AddTodayJob([FirstChild.Id, inactiveChild.Id], "A job", "", 1),
+                new AddTodayJob(
+                    [FirstChild.Id, inactiveChild.Id],
+                    "A job",
+                    "",
+                    1,
+                    Today,
+                    "morning",
+                    null),
                 CancellationToken.None));
 
         Assert.Contains("ChildIds", exception.Errors.Keys);
         Assert.Empty(repository.Jobs);
         Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Past_date_and_invalid_agenda_period_are_rejected_before_any_write()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var service = new TodayBoardService(repository, new FixedClock());
+
+        var exception = await Assert.ThrowsAsync<InvalidTodayJobException>(() =>
+            service.AddJobAsync(
+                new AddTodayJob(
+                    [FirstChild.Id],
+                    "A job",
+                    "",
+                    1,
+                    Today.AddDays(-1),
+                    "bedtime",
+                    null),
+                CancellationToken.None));
+
+        Assert.Contains("ScheduledDate", exception.Errors.Keys);
+        Assert.Contains("AgendaPeriod", exception.Errors.Keys);
+        Assert.Empty(repository.Jobs);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Requested_date_returns_only_that_days_visible_jobs()
+    {
+        var requestedDate = Today.AddDays(3);
+        var repository = new RecordingRepository([Adult, FirstChild, SecondChild]);
+        repository.Jobs.AddRange(
+        [
+            new Job(Guid.NewGuid(), FirstChild.Id, "Requested", "", 1, requestedDate),
+            new Job(Guid.NewGuid(), SecondChild.Id, "Other child", "", 1, requestedDate),
+            new Job(Guid.NewGuid(), FirstChild.Id, "Today", "", 1, Today),
+        ]);
+        var service = new TodayBoardService(repository, new FixedClock());
+
+        var board = await service.GetAsync(
+            FirstChild.Id,
+            requestedDate,
+            CancellationToken.None);
+
+        Assert.Equal(requestedDate, board.Date);
+        Assert.Equal(Today, board.CurrentDate);
+        var job = Assert.Single(board.Jobs);
+        Assert.Equal("Requested", job.Name);
+    }
+
+    [Fact]
+    public async Task Browsing_beyond_the_rolling_horizon_advances_recurrence_generation()
+    {
+        var requestedDate = Today.AddDays(70);
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var service = new TodayBoardService(repository, new FixedClock());
+
+        await service.GetAsync(FirstChild.Id, requestedDate, CancellationToken.None);
+
+        Assert.Equal(requestedDate, repository.LastGenerationHorizon);
     }
 
     [Fact]
@@ -135,6 +208,8 @@ public sealed class TodayBoardServiceTests
 
         public int SaveCount { get; private set; }
 
+        public DateOnly? LastGenerationHorizon { get; private set; }
+
         public Task<IReadOnlyList<HouseholdMember>> GetMembersAsync(
             CancellationToken cancellationToken) =>
             Task.FromResult(_members);
@@ -177,11 +252,20 @@ public sealed class TodayBoardServiceTests
             return Task.CompletedTask;
         }
 
-        public Task<IReadOnlyList<Job>> GetJobsAsync(IReadOnlyCollection<Guid> childIds, DateOnly scheduledDate, CancellationToken cancellationToken) => throw Unused();
+        public Task<IReadOnlyList<Job>> GetJobsAsync(IReadOnlyCollection<Guid> childIds, DateOnly scheduledDate, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Job>>(Jobs
+                .Where(job => childIds.Contains(job.ChildId) && job.ScheduledDate == scheduledDate)
+                .ToArray());
         public Task<Job?> GetJobAsync(Guid jobId, CancellationToken cancellationToken) => throw Unused();
-        public Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(IReadOnlyCollection<Guid> childIds, DateOnly scheduledDate, CancellationToken cancellationToken) => throw Unused();
-        public Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesNeedingGenerationAsync(DateOnly horizon, CancellationToken cancellationToken) => throw Unused();
-        public Task<TodayPointsSummary> GetPointsSummaryAsync(Guid childId, CancellationToken cancellationToken) => throw Unused();
+        public Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(IReadOnlyCollection<Guid> childIds, DateOnly scheduledDate, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<TodayJobRejection>>([]);
+        public Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesNeedingGenerationAsync(DateOnly horizon, CancellationToken cancellationToken)
+        {
+            LastGenerationHorizon = horizon;
+            return Task.FromResult<IReadOnlyList<RecurringJobSeries>>([]);
+        }
+        public Task<TodayPointsSummary> GetPointsSummaryAsync(Guid childId, CancellationToken cancellationToken) =>
+            Task.FromResult(new TodayPointsSummary(0, []));
         public Task AddPointsAwardAsync(PointsLedgerEntry entry, CancellationToken cancellationToken) => throw Unused();
         public Task AddReviewDecisionAsync(JobReviewDecision decision, CancellationToken cancellationToken) => throw Unused();
 

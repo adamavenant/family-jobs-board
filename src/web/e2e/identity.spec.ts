@@ -320,6 +320,68 @@ test("a grown-up assigns one job to both children on a tablet", async ({
   await expect(page.getByText("Ready for Harrie")).toBeVisible();
 });
 
+test("a grown-up browses and schedules a job on the next day", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const currentDate = "2026-09-07";
+  const nextDate = "2026-09-08";
+  let scheduledJob: ReturnType<typeof assignmentJob> | null = null;
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (!url.pathname.startsWith("/api/")) {
+      return route.continue();
+    }
+    if (url.pathname === "/api/auth/refresh") {
+      return json(route, auth(addieId, "Addie", "adult"));
+    }
+    if (url.pathname === "/api/today/jobs" && request.method() === "POST") {
+      const body = request.postDataJSON();
+      scheduledJob = {
+        ...assignmentJob(
+          "b37aed03-92d7-429e-a88e-f49347690669",
+          fredsterId,
+          "Fredster",
+          body.name,
+        ),
+        scheduledDate: body.scheduledDate,
+        agendaPeriod: body.agendaPeriod,
+        scheduledTime: body.scheduledTime,
+      };
+      return json(route, { jobs: [scheduledJob] }, 201);
+    }
+    if (url.pathname === "/api/today") {
+      const date = url.searchParams.get("date") ?? currentDate;
+      return json(
+        route,
+        assignmentBoard(
+          date === nextDate && scheduledJob ? [scheduledJob] : [],
+          date,
+        ),
+      );
+    }
+    return problem(route, 404);
+  });
+
+  await page.goto("/");
+  await page.getByRole("link", { name: "Next day →" }).click();
+  await expect(page).toHaveURL(`/?date=${nextDate}`);
+  await expect(page.getByText("Tuesday, September 8")).toBeVisible();
+  await page.locator("details.grown-up-tools--one-off summary").click();
+  const form = page.locator("details.grown-up-tools--one-off");
+  await expect(form.getByLabel("Scheduled date")).toHaveValue(nextDate);
+  await form.getByLabel("Job name").fill("Pack library books");
+  await form.getByLabel("Part of day").selectOption("morning");
+  await form.getByLabel("Time (optional)").fill("07:15");
+  await form.getByRole("button", { name: "Add job" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Pack library books" }),
+  ).toBeVisible();
+  await expect(page.getByText("Morning · 07:15")).toBeVisible();
+});
+
 test("a grown-up assigns a recurring schedule to one child on a phone", async ({
   page,
 }) => {
@@ -668,6 +730,7 @@ function board(
     viewer: isAdult ? addie : child,
     members: [addie, child],
     date: "2026-09-06",
+    currentDate: "2026-09-06",
     jobs: [job(status)],
     pointsBalance: isAdult ? null : status === "approved" ? 3 : 0,
     pointEarnings: [],
@@ -695,7 +758,10 @@ function job(status: "open" | "pendingApproval" | "approved") {
   };
 }
 
-function assignmentBoard(jobs: ReturnType<typeof assignmentJob>[]) {
+function assignmentBoard(
+  jobs: ReturnType<typeof assignmentJob>[],
+  date = "2026-09-07",
+) {
   return {
     viewer: {
       id: addieId,
@@ -727,7 +793,8 @@ function assignmentBoard(jobs: ReturnType<typeof assignmentJob>[]) {
         isAdult: false,
       },
     ],
-    date: "2026-09-07",
+    date,
+    currentDate: "2026-09-07",
     jobs,
     pointsBalance: null,
     pointEarnings: [],

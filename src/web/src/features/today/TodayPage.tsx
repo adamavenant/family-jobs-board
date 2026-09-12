@@ -1,4 +1,4 @@
-import { useFetcher } from "react-router";
+import { Link, useFetcher } from "react-router";
 
 import type {
   HouseholdMember,
@@ -14,6 +14,8 @@ import { FamilyMembersPanel } from "../identity/FamilyMembersPanel";
 
 export function TodayPage({ board }: { board: TodayBoard }) {
   const children = board.members.filter((member) => !member.isAdult);
+  const currentDate = board.currentDate ?? board.date;
+  const isToday = board.date === currentDate;
   const formattedDate = new Intl.DateTimeFormat("en", {
     weekday: "long",
     day: "numeric",
@@ -32,7 +34,10 @@ export function TodayPage({ board }: { board: TodayBoard }) {
         <div className="hero__content">
           <div>
             <h1>Good day, {board.viewer.displayName}!</h1>
-            <p className="hero__date">{formattedDate}</p>
+            <p className="hero__date">
+              {formattedDate}
+              {isToday ? <span>Today</span> : null}
+            </p>
           </div>
           <div className="hero__stats">
             <div
@@ -54,10 +59,10 @@ export function TodayPage({ board }: { board: TodayBoard }) {
             </div>
             <div
               className="hero__count"
-              aria-label={`${board.jobs.length} jobs today`}
+              aria-label={`${board.jobs.length} jobs on this day`}
             >
               <strong>{board.jobs.length}</strong>
-              <span>jobs today</span>
+              <span>jobs this day</span>
             </div>
           </div>
         </div>
@@ -66,19 +71,39 @@ export function TodayPage({ board }: { board: TodayBoard }) {
       {board.viewer.isAdult ? (
         <div className="grown-up-toolbox">
           <FamilyMembersPanel currentMemberId={board.viewer.id} />
-          <AddJobForm children={children} />
-          <RecurringJobForm children={children} today={board.date} />
+          <AddJobForm
+            key={board.date}
+            children={children}
+            currentDate={currentDate}
+            selectedDate={board.date}
+          />
+          <RecurringJobForm children={children} today={currentDate} />
         </div>
       ) : null}
 
       <section className="board" aria-labelledby="today-heading">
+        <nav className="date-navigation" aria-label="Daily agenda">
+          <Link to={dateHref(addDays(board.date, -1))}>← Previous day</Link>
+          {!isToday ? (
+            <Link to="/">Today</Link>
+          ) : (
+            <span aria-current="date">Today</span>
+          )}
+          <Link to={dateHref(addDays(board.date, 1))}>Next day →</Link>
+        </nav>
         <div className="board__heading">
           <div>
             <p className="eyebrow">
               {board.viewer.isAdult ? "Household list" : "Your list"}
             </p>
             <h2 id="today-heading">
-              {board.viewer.isAdult ? "Family jobs" : "Today’s jobs"}
+              {board.viewer.isAdult
+                ? isToday
+                  ? "Family jobs"
+                  : "Family agenda"
+                : isToday
+                  ? "Today’s jobs"
+                  : "Your jobs"}
             </h2>
           </div>
           <p>
@@ -88,16 +113,11 @@ export function TodayPage({ board }: { board: TodayBoard }) {
           </p>
         </div>
 
-        <div className="job-grid">
-          {board.jobs.map((job, index) => (
-            <JobCard
-              key={job.id}
-              job={job}
-              index={index}
-              isAdult={board.viewer.isAdult}
-            />
-          ))}
-        </div>
+        {board.jobs.length === 0 ? (
+          <p className="board__empty">No jobs are scheduled for this day.</p>
+        ) : (
+          <Agenda jobs={board.jobs} isAdult={board.viewer.isAdult} />
+        )}
       </section>
 
       {!board.viewer.isAdult ? (
@@ -108,6 +128,54 @@ export function TodayPage({ board }: { board: TodayBoard }) {
       ) : null}
     </main>
   );
+}
+
+const agendaPeriods = [
+  ["morning", "Morning"],
+  ["arrivingHome", "Arriving home"],
+  ["evening", "Evening"],
+  ["unscheduled", "Any time"],
+] as const;
+
+function Agenda({ jobs, isAdult }: { jobs: TodayJob[]; isAdult: boolean }) {
+  return (
+    <div className="agenda">
+      {agendaPeriods.map(([period, label]) => {
+        const periodJobs = jobs.filter((job) => job.agendaPeriod === period);
+        if (periodJobs.length === 0) {
+          return null;
+        }
+
+        return (
+          <section className="agenda-period" key={period}>
+            <h3>{label}</h3>
+            <div className="job-grid">
+              {periodJobs.map((job) => {
+                return (
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    index={jobs.indexOf(job)}
+                    isAdult={isAdult}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function addDays(date: string, days: number): string {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function dateHref(date: string): string {
+  return `/?date=${date}`;
 }
 
 function IdentityControls({ viewer }: { viewer: HouseholdMember }) {
@@ -228,13 +296,13 @@ function JobCard({
           <p className="job-card__assignee">For {job.childDisplayName}</p>
         ) : null}
         <h3>{job.name}</h3>
-        {job.recurringJobSeriesId ? (
-          <p className="job-card__schedule">
-            {formatRecurrenceFrequency(job.recurrenceFrequency)} ·{" "}
-            {formatAgendaPeriod(job.agendaPeriod)}
-            {job.scheduledTime ? ` · ${job.scheduledTime.slice(0, 5)}` : ""}
-          </p>
-        ) : null}
+        <p className="job-card__schedule">
+          {job.recurringJobSeriesId
+            ? `${formatRecurrenceFrequency(job.recurrenceFrequency)} · `
+            : ""}
+          {formatAgendaPeriod(job.agendaPeriod)}
+          {job.scheduledTime ? ` · ${job.scheduledTime.slice(0, 5)}` : ""}
+        </p>
         <p>{job.description}</p>
       </div>
 

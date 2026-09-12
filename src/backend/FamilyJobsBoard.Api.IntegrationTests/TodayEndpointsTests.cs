@@ -172,6 +172,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     public async Task Added_job_is_trimmed_listed_persisted_and_can_be_completed()
     {
         var client = Client;
+        var scheduledDate = CurrentDate.AddDays(2);
         using var createResponse = await client.PostAsJsonAsync(
             "/api/today/jobs",
             new
@@ -180,6 +181,9 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 name = "  Put toys away  ",
                 description = "  Return every toy to its box.  ",
                 points = 4,
+                scheduledDate,
+                agendaPeriod = "arrivingHome",
+                scheduledTime = "15:45:00",
             });
         var createdJobs = await createResponse.Content.ReadFromJsonAsync<AddJobsResponse>();
 
@@ -189,15 +193,24 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.Equal("Put toys away", created.Name);
         Assert.Equal("Return every toy to its box.", created.Description);
         Assert.Equal(4, created.Points);
+        Assert.Equal(scheduledDate, created.ScheduledDate);
+        Assert.Equal("arrivingHome", created.AgendaPeriod);
+        Assert.Equal(new TimeOnly(15, 45), created.ScheduledTime);
         Assert.Equal("open", created.Status);
         Assert.Null(created.CompletedAtUtc);
 
-        var listed = await client.GetFromJsonAsync<TodayResponse>("/api/today");
+        var today = await client.GetFromJsonAsync<TodayResponse>("/api/today");
+        Assert.DoesNotContain(today!.Jobs, job => job.Id == created.Id);
+        var listed = await client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?date={scheduledDate:yyyy-MM-dd}");
         Assert.Contains(listed!.Jobs, job => job.Id == created.Id);
+        Assert.Equal(scheduledDate, listed.Date);
+        Assert.Equal(CurrentDate, listed.CurrentDate);
 
         await RestartApplicationAsync();
 
-        var persisted = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
+        var persisted = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?date={scheduledDate:yyyy-MM-dd}");
         Assert.Contains(persisted!.Jobs, job => job.Id == created.Id);
 
         using var completeResponse = await Client.PostAsync(
@@ -220,6 +233,9 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 name = "Make the beds",
                 description = "Straighten the duvet and pillows.",
                 points = 3,
+                scheduledDate = CurrentDate,
+                agendaPeriod = "unscheduled",
+                scheduledTime = (string?)null,
             });
         var created = await createResponse.Content.ReadFromJsonAsync<AddJobsResponse>();
 
@@ -279,6 +295,9 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 name = "Do not create me",
                 description = "The assignee set is invalid.",
                 points = 1,
+                scheduledDate = CurrentDate,
+                agendaPeriod = "unscheduled",
+                scheduledTime = (string?)null,
             });
         var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
 
@@ -308,6 +327,9 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                     name = "Invalid assignees",
                     description = "Do not persist this job.",
                     points = 1,
+                    scheduledDate = CurrentDate,
+                    agendaPeriod = "unscheduled",
+                    scheduledTime = (string?)null,
                 });
             var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
 
@@ -323,6 +345,49 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Invalid_once_off_schedule_persists_no_jobs()
+    {
+        using var response = await Client.PostAsJsonAsync(
+            "/api/today/jobs",
+            new
+            {
+                childIds = new[] { DemoDataIds.Fredster },
+                name = "Invalid schedule",
+                description = "Do not persist this job.",
+                points = 1,
+                scheduledDate = CurrentDate.AddDays(-1),
+                agendaPeriod = "bedtime",
+                scheduledTime = (string?)null,
+            });
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("ScheduledDate", problem?.Errors.Keys ?? []);
+        Assert.Contains("AgendaPeriod", problem?.Errors.Keys ?? []);
+
+        using var invalidTimeResponse = await Client.PostAsJsonAsync(
+            "/api/today/jobs",
+            new
+            {
+                childIds = new[] { DemoDataIds.Fredster },
+                name = "Invalid time",
+                description = "Do not persist this job either.",
+                points = 1,
+                scheduledDate = CurrentDate,
+                agendaPeriod = "morning",
+                scheduledTime = "25:99:00",
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, invalidTimeResponse.StatusCode);
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await database.Jobs.AnyAsync(job => job.Name == "Invalid schedule"));
+        Assert.False(await database.Jobs.AnyAsync(job => job.Name == "Invalid time"));
+    }
+
+    [Fact]
     public async Task Child_cannot_complete_another_childs_job()
     {
         using var created = await Client.PostAsJsonAsync(
@@ -333,6 +398,9 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 name = "Harrie's job",
                 description = "Only Harrie can complete this.",
                 points = 2,
+                scheduledDate = CurrentDate,
+                agendaPeriod = "unscheduled",
+                scheduledTime = (string?)null,
             });
         var createdJobs = await created.Content.ReadFromJsonAsync<AddJobsResponse>();
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
@@ -949,6 +1017,9 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 name = "Water the plants",
                 description = "Give each plant a small drink.",
                 points = 2,
+                scheduledDate = CurrentDate,
+                agendaPeriod = "unscheduled",
+                scheduledTime = (string?)null,
             });
         addForHarrie.EnsureSuccessStatusCode();
 
@@ -994,6 +1065,9 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 name = "Invalid assignment",
                 description = "Adults cannot be job assignees.",
                 points = 1,
+                scheduledDate = CurrentDate,
+                agendaPeriod = "unscheduled",
+                scheduledTime = (string?)null,
             });
         var problem = await adultAssignee.Content.ReadFromJsonAsync<ValidationProblemDetails>();
         Assert.Equal(HttpStatusCode.BadRequest, adultAssignee.StatusCode);
@@ -1278,7 +1352,16 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     {
         using var response = await Client.PostAsJsonAsync(
             "/api/today/jobs",
-            new { childIds = new[] { DemoDataIds.Fredster }, name, description, points });
+            new
+            {
+                childIds = new[] { DemoDataIds.Fredster },
+                name,
+                description,
+                points,
+                scheduledDate = CurrentDate,
+                agendaPeriod = "unscheduled",
+                scheduledTime = (string?)null,
+            });
         var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -1297,6 +1380,11 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
     private HttpClient Client =>
         _client ?? throw new InvalidOperationException("Test client was not initialised.");
+
+    private DateOnly CurrentDate => (_factory
+        ?? throw new InvalidOperationException("Test API was not initialised."))
+        .Services.GetRequiredService<IHouseholdClock>()
+        .Today;
 
     private async Task CompleteAndApproveAsync(Guid jobId)
     {
@@ -1328,6 +1416,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         MemberResponse Viewer,
         IReadOnlyList<MemberResponse> Members,
         DateOnly Date,
+        DateOnly CurrentDate,
         IReadOnlyList<JobResponse> Jobs,
         int? PointsBalance,
         IReadOnlyList<PointEarningResponse> PointEarnings,

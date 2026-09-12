@@ -1,12 +1,21 @@
 import { useEffect, useRef } from "react";
-import { useFetcher } from "react-router";
+import { useFetcher, useNavigate } from "react-router";
 
 import type { TodayActionResult } from "../../app/routes";
 import type { HouseholdMember } from "../../api/today";
 import { ChildAssignmentPicker } from "./ChildAssignmentPicker";
 
-export function AddJobForm({ children }: { children: HouseholdMember[] }) {
+export function AddJobForm({
+  children,
+  currentDate,
+  selectedDate,
+}: {
+  children: HouseholdMember[];
+  currentDate: string;
+  selectedDate: string;
+}) {
   const fetcher = useFetcher<TodayActionResult>();
+  const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
   const result = fetcher.data?.intent === "add" ? fetcher.data : undefined;
   const isSubmitting = fetcher.state !== "idle";
@@ -14,8 +23,19 @@ export function AddJobForm({ children }: { children: HouseholdMember[] }) {
   useEffect(() => {
     if (fetcher.state === "idle" && result?.success) {
       formRef.current?.reset();
+      if (result.scheduledDate && result.scheduledDate !== selectedDate) {
+        void navigate(`/?date=${result.scheduledDate}`);
+      }
     }
-  }, [fetcher.state, result?.success]);
+  }, [
+    fetcher.state,
+    navigate,
+    result?.scheduledDate,
+    result?.success,
+    selectedDate,
+  ]);
+
+  const defaultDate = selectedDate < currentDate ? currentDate : selectedDate;
 
   return (
     <details className="grown-up-tools grown-up-tools--one-off">
@@ -27,8 +47,8 @@ export function AddJobForm({ children }: { children: HouseholdMember[] }) {
       </summary>
       <div className="add-job" aria-labelledby="add-job-heading">
         <div className="add-job__heading">
-          <h2 id="add-job-heading">Add today’s job</h2>
-          <p>Create another job for this board.</p>
+          <h2 id="add-job-heading">Schedule a once-off job</h2>
+          <p>Choose when it belongs on the family agenda.</p>
         </div>
         <fetcher.Form method="post" className="add-job__form" ref={formRef}>
           <input type="hidden" name="intent" value="add" />
@@ -36,6 +56,41 @@ export function AddJobForm({ children }: { children: HouseholdMember[] }) {
           <div className="form-group">
             <label htmlFor="name">Job name</label>
             <input type="text" id="name" name="name" required maxLength={160} />
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="scheduledDate">Scheduled date</label>
+              <input
+                type="date"
+                id="scheduledDate"
+                name="scheduledDate"
+                min={currentDate}
+                defaultValue={defaultDate}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="oneOffAgendaPeriod">Part of day</label>
+              <select
+                id="oneOffAgendaPeriod"
+                name="agendaPeriod"
+                defaultValue="unscheduled"
+              >
+                <option value="morning">Morning</option>
+                <option value="arrivingHome">Arriving home</option>
+                <option value="evening">Evening</option>
+                <option value="unscheduled">Any time</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label htmlFor="oneOffScheduledTime">Time (optional)</label>
+              <input
+                type="time"
+                id="oneOffScheduledTime"
+                name="scheduledTime"
+              />
+            </div>
           </div>
 
           <div className="form-group">
@@ -69,7 +124,7 @@ export function AddJobForm({ children }: { children: HouseholdMember[] }) {
 
           {result?.success && !isSubmitting ? (
             <p role="status" className="success-message">
-              Job added to today’s board.
+              Job scheduled for {result.scheduledDate}.
             </p>
           ) : null}
 

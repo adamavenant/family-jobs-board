@@ -4,6 +4,7 @@ public sealed record TodayResponse(
     MemberResponse Viewer,
     IReadOnlyList<MemberResponse> Members,
     DateOnly Date,
+    DateOnly CurrentDate,
     IReadOnlyList<JobResponse> Jobs,
     int? PointsBalance,
     IReadOnlyList<PointEarningResponse> PointEarnings,
@@ -20,7 +21,10 @@ public sealed record AddJobRequest(
     IReadOnlyList<Guid>? ChildIds,
     string? Name,
     string? Description,
-    int Points);
+    int Points,
+    DateOnly? ScheduledDate,
+    string? AgendaPeriod,
+    TimeOnly? ScheduledTime);
 
 public sealed record CreateDailyRecurringJobRequest(
     Guid RequestId,
