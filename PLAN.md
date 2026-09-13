@@ -1,7 +1,7 @@
 # Family Jobs Board delivery plan
 
-Status: proposed  
-Last updated: 2026-08-24  
+Status: active delivery plan
+Last updated: 2026-09-13
 Scope: MVP described by `CONTEXT.md`, `docs/product-brief.md`, `docs/mvp-features.md`, and `docs/mvp-nonfunctional-reqs-and-architecture.md`
 
 ## 1. Outcome
@@ -20,14 +20,11 @@ The first increment is a database-backed walking skeleton, not a throwaway mock.
 
 ## 2. Current repository assessment
 
-The current `main` branch contains product, domain, architecture, and agent guidance but no tracked application implementation. Ignored `bin/`, `obj/`, and `src/` build remnants and `stash@{0}` are not a supported baseline and must not be revived implicitly.
+The current `main` branch contains a runnable PostgreSQL-backed .NET API and React UI. Docker Compose builds the application, applies checked-in migrations, and exposes health-checked API and web services. Integration tests use disposable PostgreSQL containers; CI verifies the backend, web application, and Compose configuration and publishes deployable images.
 
-Before implementation begins:
+The delivered pilot includes household bootstrap, PIN authentication and revocable sessions, adult family-member administration, dated once-off jobs, daily/weekly/monthly recurrence creation, a navigable daily agenda, child completion submission, adult approval/rejection, and an append-only points ledger with child balance/history. Later phase deliverables remain tracked in section 9; in particular, the adult calendar, job and series lifecycle operations, good behaviours, redemptions, manual adjustments, and the complete audit/production-readiness scope are not yet delivered.
 
-1. Complete and accept `docs/adr/0002-modular-monolith.md`; it is currently empty.
-2. Turn the relevant phase/spec into GitHub issues with acceptance criteria, as required by `docs/agents/developer-rules.md`.
-3. Work from an issue branch while preserving the current uncommitted files.
-4. Resolve the product decisions in section 12 when their owning phase is reached.
+Further implementation continues through GitHub issues with acceptance criteria, issue branches, and the Compose/test gates in this plan. Product decisions in section 12 remain open until their owning phase reaches them.
 
 This plan assumes one household, one deployment, and one PostgreSQL database for the MVP. Multi-household tenancy and internet exposure are out of scope.
 
@@ -283,6 +280,17 @@ Every feature spec must contain:
 Each implementation issue should deliver one demonstrable slice from a spec. Avoid separate “backend”, “frontend”, and “database” issues that leave the feature unusable between merges.
 
 ## 9. Phased delivery
+
+Delivery status on `main` as of 2026-09-13:
+
+- [x] Phase 0: containerized database-backed walking skeleton, real-PostgreSQL integration tests, and CI.
+- [x] Phase 1: household bootstrap, PIN sign-in/session security, and the implemented family-member administration lifecycle.
+- [ ] Phase 2: once-off creation, daily navigation, multi-child assignment, and completion submission are delivered; edit/cancel/delete and the adult child filter remain.
+- [ ] Phase 3: the submit/approve-or-reject/ledger loop and child balance/history are delivered; approval-time point override remains.
+- [ ] Phase 4: daily, weekly, and monthly recurrence creation is delivered; series lifecycle and adult calendar views remain.
+- [ ] Phase 5: good behaviours are not implemented.
+- [ ] Phase 6: redemptions, manual adjustments, searchable audit, and administration completeness are not implemented.
+- [ ] Phase 7: image publication and home-server deployment automation are delivered; the full production-readiness exit gate remains.
 
 ### Phase 0 — Containerized, database-backed walking skeleton
 
@@ -545,7 +553,7 @@ Resolve each question in its owning feature spec rather than allowing an impleme
 
 ## 14. Reference basis
 
-Platform versions should be rechecked when Phase 0 begins. At the time of this plan:
+Platform versions should be rechecked before dependency upgrades. At the time of this plan:
 
 - .NET 10 is an active LTS release: <https://dotnet.microsoft.com/en-us/platform/support/policy>
 - PostgreSQL 18 is supported: <https://www.postgresql.org/support/versioning/>

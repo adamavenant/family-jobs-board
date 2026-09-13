@@ -4,13 +4,13 @@ Family Jobs Board is a family-focused web application for assigning household jo
 
 ## Project status
 
-**Planning and architecture — not yet runnable.**
+**Runnable pilot — core jobs-to-points loop delivered.**
 
-The repository currently contains the product requirements, domain model, architecture decisions, and a phased [delivery plan](PLAN.md). It does not yet contain a tracked application, Docker Compose stack, API, or UI.
+The repository contains a PostgreSQL-backed .NET API and React UI that run as a Docker Compose stack. The current pilot supports household bootstrap and PIN sign-in, family-member administration, dated once-off and daily/weekly/monthly recurring jobs, a navigable daily agenda, child completion submission, adult approval or rejection, and an append-only points history.
 
-Phase 0 will establish a PostgreSQL-backed walking skeleton with the database, .NET API, and React UI running in separate containers. Do not use ignored build remnants or the old Git stash as an implementation baseline.
+The adult calendar and the remaining administration, good-behaviour, redemption, adjustment, audit, and production-readiness work are still outstanding. See the [delivery roadmap](#delivery-roadmap) for the phase-by-phase status.
 
-## Planned MVP capabilities
+## MVP capabilities
 
 - Adult and child profiles protected by role-appropriate PINs.
 - Adult administration of users, jobs, and good-behaviour types.
@@ -23,7 +23,7 @@ Phase 0 will establish a PostgreSQL-backed walking skeleton with the database, .
 
 See [MVP features](docs/mvp-features.md) and the [product brief](docs/product-brief.md) for the detailed product intent.
 
-## Intended technical stack
+## Technical stack
 
 | Component | Technology |
 | --- | --- |
@@ -34,16 +34,11 @@ See [MVP features](docs/mvp-features.md) and the [product brief](docs/product-br
 | Local and home-server runtime | Docker Compose |
 | API contract | OpenAPI |
 
-Supported versions and dependency-pinning rules are recorded in [PLAN.md](PLAN.md#4-technical-baseline) and should be rechecked when Phase 0 begins.
+Supported versions and dependency-pinning rules are recorded in [PLAN.md](PLAN.md#4-technical-baseline).
 
 ## Requirements
 
-At the current planning stage:
-
-- Git, to clone and contribute to the repository.
-- A Markdown viewer or editor, to review the specifications.
-
-After Phase 0, a clean checkout should require only Docker with the Compose plugin. The .NET and Node.js SDKs will run inside build containers and should not be required on the host.
+A clean checkout requires Git and Docker with the Compose plugin. The .NET and Node.js SDKs run inside build containers and are not required on the host.
 
 ## Getting started
 
@@ -54,29 +49,33 @@ git clone git@github.com:adamavenant/family-jobs-board.git
 cd family-jobs-board
 ```
 
-There are currently no application dependencies to install or services to start. Begin with:
+Start the complete application from a clean checkout:
+
+```sh
+docker compose up --build
+```
+
+Then open <http://localhost:3000>. For project context, begin with:
 
 1. [PLAN.md](PLAN.md) for delivery phases, the proposed repository structure, and phase acceptance gates.
 2. [CONTEXT.md](CONTEXT.md) for the domain language and rules.
 3. [Product brief](docs/product-brief.md) and [MVP features](docs/mvp-features.md) for product behaviour.
 4. [Architecture decisions](docs/adr/) for accepted and proposed technical decisions.
 
-### Planned Compose workflow
-
-These commands become available when Phase 0 is delivered; they do not work on the current documentation-only branch.
+### Compose workflow
 
 ```sh
 # Start the complete stack and print its URLs
 docker compose up --build
 
-# Or start in the background, wait for health checks, and print the URLs
-./scripts/compose-up.sh
+# Or start in the background and wait for health checks
+docker compose up --build --detach --wait
 
-# Run the containerized test suites
-./scripts/compose-test.sh
+# Validate development and production Compose configuration
+./scripts/check-compose-config.sh
 
 # Stop the stack without deleting PostgreSQL data
-./scripts/compose-down.sh
+docker compose down
 ```
 
 The destructive database reset will be explicit and separate from normal shutdown:
@@ -85,25 +84,28 @@ The destructive database reset will be explicit and separate from normal shutdow
 docker compose down --volumes
 ```
 
-## Planned URLs
+## URLs
 
-The Compose startup banner will print these defaults, with host ports overridable through configuration:
+The development Compose override publishes these defaults, with host ports overridable through configuration. The startup banner prints the web and API links.
 
 | Resource | URL |
 | --- | --- |
 | Web application | <http://localhost:3000> |
-| API base | <http://localhost:8080/api> |
-| OpenAPI document | <http://localhost:8080/openapi/v1.json> |
+| Today API | <http://localhost:8080/api/today> |
 | API liveness | <http://localhost:8080/health/live> |
 | API readiness | <http://localhost:8080/health/ready> |
+
+OpenAPI is generated with the build and exposed at `/openapi/v1.json` only
+when the API runs in the Development environment; the default Compose stack
+runs the API in Production mode.
 
 Browser requests to `/api` will use the web origin and be reverse-proxied to the API container. The direct API port remains available for development and diagnostics.
 
 ## Configuration
 
-Phase 0 will add a committed `.env.example` describing every supported setting. Local overrides belong in an untracked `.env` file.
+The committed `.env.example` describes the supported settings. Local overrides belong in an untracked `.env` file.
 
-Expected configuration areas include:
+Supported configuration areas include:
 
 - web and API host ports;
 - PostgreSQL database name and local-only credentials;
@@ -114,12 +116,11 @@ Never commit real passwords, PINs, tokens, signing keys, or production environme
 
 ## Testing and development
 
-The planned test profile uses the real PostgreSQL Compose service rather than an in-memory database substitute. The delivery plan calls for:
+API integration tests use disposable real PostgreSQL containers rather than an in-memory database substitute. The test suites include:
 
 - domain and application tests for business rules and use cases;
 - API integration tests covering migrations, constraints, transactions, and authorization;
 - React component and interaction tests;
-- architecture tests for declared dependency boundaries; and
 - browser-level smoke tests for each completed phase.
 
 Every coding task must be tied to a GitHub issue and implemented as a demonstrable vertical slice. Before changing code, read [AGENTS.md](AGENTS.md), [developer rules](docs/agents/developer-rules.md), [CONTEXT.md](CONTEXT.md), the relevant ADRs, and the assigned issue.
@@ -136,26 +137,28 @@ Every coding task must be tied to a GitHub issue and implemented as a demonstrab
 | [Architecture decisions](docs/adr/) | Accepted, proposed, and future architectural decisions |
 | [Agent guidance](docs/agents/) | Issue workflow, domain-document conventions, triage labels, and developer rules |
 
-Feature-level specifications and operational runbooks will be added under `docs/specs/` and `docs/operations/` as their owning phases begin. The full proposed source and test layout is in [PLAN.md](PLAN.md#5-target-repository-layout).
+Feature-level specifications and operational runbooks live under `docs/specs/` and `docs/operations/`. The full source and test layout is described in [PLAN.md](PLAN.md#5-target-repository-layout).
 
 ## Delivery roadmap
 
 Delivery is split into eight independently runnable phases:
 
-0. Containerized PostgreSQL, migration, API, and web walking skeleton.
-1. Household bootstrap, sign-in, and user administration.
-2. Once-off jobs, daily agenda, and completion submission.
-3. Adult approval and the points ledger — the first complete pilot loop.
-4. Recurring jobs and the adult calendar.
-5. Good behaviours.
-6. Redemptions, adjustments, audit, and administration completeness.
-7. Production readiness and home-server delivery.
+| Phase | Status | Delivered and outstanding work |
+| --- | --- | --- |
+| 0 — Platform foundation | Delivered | PostgreSQL, migrations, API, web UI, Compose health checks, real-PostgreSQL integration tests, and CI are operational. |
+| 1 — Identity and users | Delivered | Household bootstrap, PIN authentication and sessions, member onboarding/lifecycle, and secure PIN reset are implemented. |
+| 2 — Jobs and daily agenda | In progress | Dated once-off job creation, daily navigation, multi-child assignment, and completion submission are delivered. Job edit/cancel/delete and the adult child filter remain outstanding. |
+| 3 — Approvals and points | Core loop delivered | Adults can approve or reject submitted work and approved jobs create append-only ledger entries shown in the child's balance/history. Approval-time point override remains outstanding. |
+| 4 — Recurring jobs and calendar | In progress | Daily, weekly, and monthly creation with duplicate-safe occurrence materialization is delivered. Series pause/end/edit and adult day/week/month calendar views remain outstanding. |
+| 5 — Good behaviours | Planned | Not implemented. |
+| 6 — Redemptions, adjustments, audit, and administration completeness | Planned | Not implemented. |
+| 7 — Production readiness and home-server delivery | In progress | CI publishes deployable images and the home-server deployment path exists; the broader readiness, backup/restore, accessibility, and operations exit gate remains outstanding. |
 
 See [PLAN.md](PLAN.md#9-phased-delivery) for deliverables and exit criteria. Work is tracked through [GitHub Issues](https://github.com/adamavenant/family-jobs-board/issues).
 
 ## Known limitations and deferred scope
 
-The current repository is not runnable. The MVP also deliberately defers:
+The runnable pilot still deliberately defers:
 
 - multiple households or tenants;
 - public-internet hosting and external identity providers;
