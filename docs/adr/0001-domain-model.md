@@ -17,9 +17,15 @@ We have defined the core domain concepts for the Family Jobs Board application w
 - Adult: A specific type of User with administrative privileges 
 - Job: Tasks assigned to users, with approval process before points are awarded
 - Job Approval: The verification mechanism for completed jobs
-- Good Behaviour: Positive actions logged by adults that earn points
-- Good Behaviour Type: Pre-defined categories of good behaviours
+- Good Behaviour: Planned positive actions logged by adults that earn points;
+  not yet implemented
+- Good Behaviour Type: Planned categories of good behaviours; not yet
+  implemented
 - Points: The currency accumulated by children for completing tasks and good behaviours
+
+The implemented points model currently contains job-sourced awards and a
+derived child balance/history. Good-behaviour awards, adult redemption, and
+manual point adjustment remain planned and are not yet implemented.
 
 ## Consequences
 
