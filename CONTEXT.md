@@ -27,7 +27,8 @@ A user with administrative privileges within the family system. Adults can manag
 
 #### Characteristics
 - All User characteristics
-- Full administrative capabilities including user management, job creation, good behaviour logging, and point adjustments
+- Implemented administration includes user management and job creation;
+  good-behaviour logging and point adjustments are planned, not yet implemented
 
 ### Job
 A task or chore assigned to one child within the family system. An adult may
@@ -55,8 +56,8 @@ The process by which an Adult verifies that a Child has completed a Job before p
 4. Adult approves or rejects job completion
 5. Points awarded if approved, no points if rejected
 
-### Good Behaviour
-A positive action observed and logged by an Adult that earns points for a Child.
+### Good Behaviour (planned, not yet implemented)
+A planned positive action observed and logged by an Adult that earns points for a Child.
 
 #### Characteristics
 - ID (GUID)  
@@ -64,8 +65,8 @@ A positive action observed and logged by an Adult that earns points for a Child.
 - Points (whole number)
 - Logged Date and Time
 
-### Good Behaviour Type
-Pre-defined categories of good behaviours that can be logged.
+### Good Behaviour Type (planned, not yet implemented)
+Planned pre-defined categories of good behaviours that can be logged.
 
 #### Characteristics
 - ID (GUID)
@@ -74,12 +75,14 @@ Pre-defined categories of good behaviours that can be logged.
 - Points
 
 ### Points
-The currency accumulated by Children for completing Jobs and good behaviours. Points can be redeemed by Adults for rewards.
+The currency accumulated by Children. Job-earned awards and their append-only
+history are implemented. Good-behaviour awards and adult redemption or manual
+adjustment are planned and are not yet implemented.
 
 #### Properties
 - Accumulated total per Child
 - Trackable history of point assignments
-- Can be adjusted by Adults (increased or decreased)
+- Adult redemption and manual adjustment are planned, not yet implemented
 - Do not expire
 
 ### Administration
@@ -88,17 +91,17 @@ Functions available to Adult users for managing the system.
 #### Capabilities
 - Manage Users (create, update, soft-delete)
 - Manage Jobs (add, edit, schedule, delete)
-- Manage Good Behaviours 
-- Manually adjust accumulated points
-- View audit trails for all actions
+- Manage Good Behaviours (planned, not yet implemented)
+- Manually adjust accumulated points (planned, not yet implemented)
+- View audit trails for all actions (planned, not yet implemented)
 
 ## Relationships
 
 1. User → Child/Adult (is-a relationship)
 2. Child → Job (assignee relationship)  
 3. Adult → Job Approval (approver relationship)
-4. Adult → Good Behaviour (creator relationship)
-5. Child → Good Behaviour Type (can log relationship)
+4. Adult → Good Behaviour (planned creator relationship; not yet implemented)
+5. Child → Good Behaviour Type (planned relationship; not yet implemented)
 
 ## Constraints
 
