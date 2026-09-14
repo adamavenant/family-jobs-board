@@ -401,6 +401,9 @@ test("a grown-up assigns a recurring schedule to one child on a phone", async ({
     }
     if (path === "/api/recurring-jobs/daily") {
       const body = request.postDataJSON();
+      expect(body.requestId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
       submittedChildIds = body.childIds;
       const seriesId = "5cd1028f-ea52-4f02-a088-23c6b9cb794c";
       jobs = [
@@ -434,6 +437,12 @@ test("a grown-up assigns a recurring schedule to one child on a phone", async ({
   });
 
   await page.goto("/");
+  if (process.env.FJB_EXPECT_INSECURE_HTTP === "true") {
+    expect(await page.evaluate(() => window.isSecureContext)).toBe(false);
+    expect(await page.evaluate(() => typeof crypto.randomUUID)).toBe(
+      "undefined",
+    );
+  }
   await page.waitForTimeout(250);
   expect(pageErrors).toEqual([]);
   const form = page.locator("details.grown-up-tools--recurring");
@@ -449,6 +458,7 @@ test("a grown-up assigns a recurring schedule to one child on a phone", async ({
     page.getByRole("heading", { name: "Feed the fish" }),
   ).toBeVisible();
   expect(submittedChildIds).toEqual([fredsterId]);
+  expect(pageErrors).toEqual([]);
   await expect(
     page.getByText("Daily job created through 2026-11-01."),
   ).toBeVisible();

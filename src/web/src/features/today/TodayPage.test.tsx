@@ -348,275 +348,323 @@ describe("Today page", () => {
     expect(screen.getAllByText("Ready for Harrie")).toHaveLength(1);
   });
 
-  it("creates a daily recurring job and refreshes today's board", async () => {
-    const recurringJob = {
-      id: "667b50fd-447d-4320-8390-ea82f5bb9145",
-      childId: fredster.id,
-      childDisplayName: fredster.displayName,
-      name: "Feed the fish",
-      description: "Add one small scoop.",
-      points: 3,
-      scheduledDate: board.date,
-      agendaPeriod: "morning",
-      scheduledTime: "07:30:00",
-      recurringJobSeriesId: "56d75d00-3b67-4532-a149-8a388889c9ca",
-      recurrenceFrequency: "daily",
-      status: "open",
-      completedAtUtc: null,
-      approvedAtUtc: null,
-      latestRejection: null,
-    };
-    const harrieRecurringJob = {
-      ...recurringJob,
-      id: "8a9ea890-7f2c-48d4-a08a-3fdccad19a53",
-      childId: harrie.id,
-      childDisplayName: harrie.displayName,
-      recurringJobSeriesId: "a40700dd-17a9-4733-8207-4fc4096516e3",
-    };
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(jsonResponse(board))
-        .mockResolvedValueOnce(
-          jsonResponse(
-            {
-              assignments: [
-                {
-                  seriesId: recurringJob.recurringJobSeriesId,
-                  childId: fredster.id,
-                  generatedThrough: "2026-10-23",
-                  occurrenceCount: 56,
-                },
-                {
-                  seriesId: harrieRecurringJob.recurringJobSeriesId,
-                  childId: harrie.id,
-                  generatedThrough: "2026-10-23",
-                  occurrenceCount: 56,
-                },
-              ],
-            },
-            { status: 201 },
+  it.each(["native", "fallback"])(
+    "creates a daily recurring job and refreshes today's board (%s UUID)",
+    async (mode) => {
+      if (mode === "fallback") {
+        vi.stubGlobal("crypto", {
+          getRandomValues: crypto.getRandomValues.bind(crypto),
+        });
+      }
+      const recurringJob = {
+        id: "667b50fd-447d-4320-8390-ea82f5bb9145",
+        childId: fredster.id,
+        childDisplayName: fredster.displayName,
+        name: "Feed the fish",
+        description: "Add one small scoop.",
+        points: 3,
+        scheduledDate: board.date,
+        agendaPeriod: "morning",
+        scheduledTime: "07:30:00",
+        recurringJobSeriesId: "56d75d00-3b67-4532-a149-8a388889c9ca",
+        recurrenceFrequency: "daily",
+        status: "open",
+        completedAtUtc: null,
+        approvedAtUtc: null,
+        latestRejection: null,
+      };
+      const harrieRecurringJob = {
+        ...recurringJob,
+        id: "8a9ea890-7f2c-48d4-a08a-3fdccad19a53",
+        childId: harrie.id,
+        childDisplayName: harrie.displayName,
+        recurringJobSeriesId: "a40700dd-17a9-4733-8207-4fc4096516e3",
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce(jsonResponse(board))
+          .mockResolvedValueOnce(
+            jsonResponse(
+              {
+                assignments: [
+                  {
+                    seriesId: recurringJob.recurringJobSeriesId,
+                    childId: fredster.id,
+                    generatedThrough: "2026-10-23",
+                    occurrenceCount: 56,
+                  },
+                  {
+                    seriesId: harrieRecurringJob.recurringJobSeriesId,
+                    childId: harrie.id,
+                    generatedThrough: "2026-10-23",
+                    occurrenceCount: 56,
+                  },
+                ],
+              },
+              { status: 201 },
+            ),
+          )
+          .mockResolvedValueOnce(
+            jsonResponse({
+              ...board,
+              jobs: [...board.jobs, recurringJob, harrieRecurringJob],
+            }),
           ),
-        )
-        .mockResolvedValueOnce(
-          jsonResponse({
-            ...board,
-            jobs: [...board.jobs, recurringJob, harrieRecurringJob],
-          }),
-        ),
-    );
+      );
+      const user = userEvent.setup();
+      renderApp();
+
+      await screen.findByRole("heading", { name: "Good day, Addie!" });
+      const recurringTools = screen.getByText("Routines").closest("details");
+      expect(recurringTools).not.toBeNull();
+      await user.click(screen.getByText("Routines"));
+      await user.click(
+        within(recurringTools as HTMLElement).getByRole("checkbox", {
+          name: "Harrie",
+        }),
+      );
+      await user.type(screen.getByLabelText("Daily job name"), "Feed the fish");
+      await user.type(
+        screen.getByLabelText("Daily job description"),
+        "Add one small scoop.",
+      );
+      await user.clear(screen.getByLabelText("Daily job points"));
+      await user.type(screen.getByLabelText("Daily job points"), "3");
+      await user.selectOptions(
+        screen.getByLabelText("Daily job part of day"),
+        "morning",
+      );
+      await user.type(
+        screen.getByLabelText("Daily job time (optional)"),
+        "07:30",
+      );
+      await user.click(
+        screen.getByRole("button", { name: "Create daily job" }),
+      );
+
+      const headings = await screen.findAllByRole("heading", {
+        name: "Feed the fish",
+      });
+      expect(headings).toHaveLength(2);
+      const card = headings[0]!.closest("article");
+      expect(card).not.toBeNull();
+      expect(
+        within(card as HTMLElement).getByText("Daily · Morning · 07:30"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Daily job created through 2026-10-23."),
+      ).toHaveAttribute("role", "status");
+    },
+  );
+
+  it.each(["native", "fallback"])(
+    "creates a weekly recurring job for selected weekdays (%s UUID)",
+    async (mode) => {
+      if (mode === "fallback") {
+        vi.stubGlobal("crypto", {
+          getRandomValues: crypto.getRandomValues.bind(crypto),
+        });
+      }
+      const recurringJob = {
+        id: "372ee9d4-1bfc-4daa-a111-39a29eebcb3c",
+        childId: fredster.id,
+        childDisplayName: fredster.displayName,
+        name: "Pack sports kit",
+        description: "Check the kit bag.",
+        points: 4,
+        scheduledDate: board.date,
+        agendaPeriod: "evening",
+        scheduledTime: "18:15:00",
+        recurringJobSeriesId: "afcd56e4-ed26-4399-b342-673905d55079",
+        recurrenceFrequency: "weekly",
+        status: "open",
+        completedAtUtc: null,
+        approvedAtUtc: null,
+        latestRejection: null,
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce(jsonResponse(board))
+          .mockResolvedValueOnce(
+            jsonResponse(
+              {
+                assignments: [
+                  {
+                    seriesId: recurringJob.recurringJobSeriesId,
+                    childId: fredster.id,
+                    generatedThrough: "2026-10-23",
+                    occurrenceCount: 16,
+                  },
+                ],
+              },
+              { status: 201 },
+            ),
+          )
+          .mockResolvedValueOnce(
+            jsonResponse({ ...board, jobs: [...board.jobs, recurringJob] }),
+          ),
+      );
+      const user = userEvent.setup();
+      renderApp();
+
+      await screen.findByRole("heading", { name: "Good day, Addie!" });
+      await user.click(screen.getByText("Routines"));
+      await user.selectOptions(screen.getByLabelText("Repeats"), "weekly");
+      await user.click(screen.getByRole("checkbox", { name: "Monday" }));
+      await user.click(screen.getByRole("checkbox", { name: "Saturday" }));
+      await user.type(
+        screen.getByLabelText("Weekly job name"),
+        "Pack sports kit",
+      );
+      await user.type(
+        screen.getByLabelText("Weekly job description"),
+        "Check the kit bag.",
+      );
+      await user.clear(screen.getByLabelText("Weekly job points"));
+      await user.type(screen.getByLabelText("Weekly job points"), "4");
+      await user.selectOptions(
+        screen.getByLabelText("Weekly job part of day"),
+        "evening",
+      );
+      await user.type(
+        screen.getByLabelText("Weekly job time (optional)"),
+        "18:15",
+      );
+      await user.click(
+        screen.getByRole("button", { name: "Create weekly job" }),
+      );
+
+      const heading = await screen.findByRole("heading", {
+        name: "Pack sports kit",
+      });
+      const card = heading.closest("article");
+      expect(card).not.toBeNull();
+      expect(
+        within(card as HTMLElement).getByText("Weekly · Evening · 18:15"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Weekly job created through 2026-10-23."),
+      ).toHaveAttribute("role", "status");
+    },
+  );
+
+  it.each(["native", "fallback"])(
+    "creates a monthly recurring job for a calendar day (%s UUID)",
+    async (mode) => {
+      if (mode === "fallback") {
+        vi.stubGlobal("crypto", {
+          getRandomValues: crypto.getRandomValues.bind(crypto),
+        });
+      }
+      const recurringJob = {
+        id: "89201fbb-f714-4910-b68d-c98682a83db2",
+        childId: fredster.id,
+        childDisplayName: fredster.displayName,
+        name: "Clean the fridge",
+        description: "Check every shelf.",
+        points: 5,
+        scheduledDate: board.date,
+        agendaPeriod: "morning",
+        scheduledTime: "09:15:00",
+        recurringJobSeriesId: "ba767aa3-dd5d-49fb-9125-4a17d2da46a8",
+        recurrenceFrequency: "monthly",
+        status: "open",
+        completedAtUtc: null,
+        approvedAtUtc: null,
+        latestRejection: null,
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce(jsonResponse(board))
+          .mockResolvedValueOnce(
+            jsonResponse(
+              {
+                assignments: [
+                  {
+                    seriesId: recurringJob.recurringJobSeriesId,
+                    childId: fredster.id,
+                    generatedThrough: "2026-10-23",
+                    occurrenceCount: 2,
+                  },
+                ],
+              },
+              { status: 201 },
+            ),
+          )
+          .mockResolvedValueOnce(
+            jsonResponse({ ...board, jobs: [...board.jobs, recurringJob] }),
+          ),
+      );
+      const user = userEvent.setup();
+      renderApp();
+
+      await screen.findByRole("heading", { name: "Good day, Addie!" });
+      await user.click(screen.getByText("Routines"));
+      await user.selectOptions(screen.getByLabelText("Repeats"), "monthly");
+      expect(screen.getByLabelText("Day of month")).toHaveValue(29);
+      expect(
+        screen.getByText("In shorter months, the job runs on the final day."),
+      ).toBeInTheDocument();
+      await user.type(
+        screen.getByLabelText("Monthly job name"),
+        "Clean the fridge",
+      );
+      await user.type(
+        screen.getByLabelText("Monthly job description"),
+        "Check every shelf.",
+      );
+      await user.clear(screen.getByLabelText("Monthly job points"));
+      await user.type(screen.getByLabelText("Monthly job points"), "5");
+      await user.selectOptions(
+        screen.getByLabelText("Monthly job part of day"),
+        "morning",
+      );
+      await user.type(
+        screen.getByLabelText("Monthly job time (optional)"),
+        "09:15",
+      );
+      await user.click(
+        screen.getByRole("button", { name: "Create monthly job" }),
+      );
+
+      const heading = await screen.findByRole("heading", {
+        name: "Clean the fridge",
+      });
+      const card = heading.closest("article");
+      expect(card).not.toBeNull();
+      expect(
+        within(card as HTMLElement).getByText("Monthly · Morning · 09:15"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Monthly job created through 2026-10-23."),
+      ).toHaveAttribute("role", "status");
+    },
+  );
+
+  it("keeps recurring details and sends no request when random generation fails", async () => {
+    const fetch = vi.fn().mockResolvedValue(jsonResponse(board));
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal("crypto", {});
     const user = userEvent.setup();
     renderApp();
-
     await screen.findByRole("heading", { name: "Good day, Addie!" });
-    const recurringTools = screen.getByText("Routines").closest("details");
-    expect(recurringTools).not.toBeNull();
     await user.click(screen.getByText("Routines"));
-    await user.click(
-      within(recurringTools as HTMLElement).getByRole("checkbox", {
-        name: "Harrie",
-      }),
-    );
-    await user.type(screen.getByLabelText("Daily job name"), "Feed the fish");
-    await user.type(
-      screen.getByLabelText("Daily job description"),
-      "Add one small scoop.",
-    );
-    await user.clear(screen.getByLabelText("Daily job points"));
-    await user.type(screen.getByLabelText("Daily job points"), "3");
-    await user.selectOptions(
-      screen.getByLabelText("Daily job part of day"),
-      "morning",
-    );
-    await user.type(
-      screen.getByLabelText("Daily job time (optional)"),
-      "07:30",
-    );
+    const name = screen.getByLabelText("Daily job name");
+    await user.type(name, "Feed the fish");
     await user.click(screen.getByRole("button", { name: "Create daily job" }));
-
-    const headings = await screen.findAllByRole("heading", {
-      name: "Feed the fish",
-    });
-    expect(headings).toHaveLength(2);
-    const card = headings[0]!.closest("article");
-    expect(card).not.toBeNull();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Your browser couldn't prepare this recurring job",
+    );
+    expect(name).toHaveValue("Feed the fish");
     expect(
-      within(card as HTMLElement).getByText("Daily · Morning · 07:30"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Daily job created through 2026-10-23."),
-    ).toHaveAttribute("role", "status");
-  });
-
-  it("creates a weekly recurring job for selected weekdays", async () => {
-    const recurringJob = {
-      id: "372ee9d4-1bfc-4daa-a111-39a29eebcb3c",
-      childId: fredster.id,
-      childDisplayName: fredster.displayName,
-      name: "Pack sports kit",
-      description: "Check the kit bag.",
-      points: 4,
-      scheduledDate: board.date,
-      agendaPeriod: "evening",
-      scheduledTime: "18:15:00",
-      recurringJobSeriesId: "afcd56e4-ed26-4399-b342-673905d55079",
-      recurrenceFrequency: "weekly",
-      status: "open",
-      completedAtUtc: null,
-      approvedAtUtc: null,
-      latestRejection: null,
-    };
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(jsonResponse(board))
-        .mockResolvedValueOnce(
-          jsonResponse(
-            {
-              assignments: [
-                {
-                  seriesId: recurringJob.recurringJobSeriesId,
-                  childId: fredster.id,
-                  generatedThrough: "2026-10-23",
-                  occurrenceCount: 16,
-                },
-              ],
-            },
-            { status: 201 },
-          ),
-        )
-        .mockResolvedValueOnce(
-          jsonResponse({ ...board, jobs: [...board.jobs, recurringJob] }),
-        ),
-    );
-    const user = userEvent.setup();
-    renderApp();
-
-    await screen.findByRole("heading", { name: "Good day, Addie!" });
-    await user.click(screen.getByText("Routines"));
-    await user.selectOptions(screen.getByLabelText("Repeats"), "weekly");
-    await user.click(screen.getByRole("checkbox", { name: "Monday" }));
-    await user.click(screen.getByRole("checkbox", { name: "Saturday" }));
-    await user.type(
-      screen.getByLabelText("Weekly job name"),
-      "Pack sports kit",
-    );
-    await user.type(
-      screen.getByLabelText("Weekly job description"),
-      "Check the kit bag.",
-    );
-    await user.clear(screen.getByLabelText("Weekly job points"));
-    await user.type(screen.getByLabelText("Weekly job points"), "4");
-    await user.selectOptions(
-      screen.getByLabelText("Weekly job part of day"),
-      "evening",
-    );
-    await user.type(
-      screen.getByLabelText("Weekly job time (optional)"),
-      "18:15",
-    );
-    await user.click(screen.getByRole("button", { name: "Create weekly job" }));
-
-    const heading = await screen.findByRole("heading", {
-      name: "Pack sports kit",
-    });
-    const card = heading.closest("article");
-    expect(card).not.toBeNull();
-    expect(
-      within(card as HTMLElement).getByText("Weekly · Evening · 18:15"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Weekly job created through 2026-10-23."),
-    ).toHaveAttribute("role", "status");
-  });
-
-  it("creates a monthly recurring job for a calendar day", async () => {
-    const recurringJob = {
-      id: "89201fbb-f714-4910-b68d-c98682a83db2",
-      childId: fredster.id,
-      childDisplayName: fredster.displayName,
-      name: "Clean the fridge",
-      description: "Check every shelf.",
-      points: 5,
-      scheduledDate: board.date,
-      agendaPeriod: "morning",
-      scheduledTime: "09:15:00",
-      recurringJobSeriesId: "ba767aa3-dd5d-49fb-9125-4a17d2da46a8",
-      recurrenceFrequency: "monthly",
-      status: "open",
-      completedAtUtc: null,
-      approvedAtUtc: null,
-      latestRejection: null,
-    };
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(jsonResponse(board))
-        .mockResolvedValueOnce(
-          jsonResponse(
-            {
-              assignments: [
-                {
-                  seriesId: recurringJob.recurringJobSeriesId,
-                  childId: fredster.id,
-                  generatedThrough: "2026-10-23",
-                  occurrenceCount: 2,
-                },
-              ],
-            },
-            { status: 201 },
-          ),
-        )
-        .mockResolvedValueOnce(
-          jsonResponse({ ...board, jobs: [...board.jobs, recurringJob] }),
-        ),
-    );
-    const user = userEvent.setup();
-    renderApp();
-
-    await screen.findByRole("heading", { name: "Good day, Addie!" });
-    await user.click(screen.getByText("Routines"));
-    await user.selectOptions(screen.getByLabelText("Repeats"), "monthly");
-    expect(screen.getByLabelText("Day of month")).toHaveValue(29);
-    expect(
-      screen.getByText("In shorter months, the job runs on the final day."),
-    ).toBeInTheDocument();
-    await user.type(
-      screen.getByLabelText("Monthly job name"),
-      "Clean the fridge",
-    );
-    await user.type(
-      screen.getByLabelText("Monthly job description"),
-      "Check every shelf.",
-    );
-    await user.clear(screen.getByLabelText("Monthly job points"));
-    await user.type(screen.getByLabelText("Monthly job points"), "5");
-    await user.selectOptions(
-      screen.getByLabelText("Monthly job part of day"),
-      "morning",
-    );
-    await user.type(
-      screen.getByLabelText("Monthly job time (optional)"),
-      "09:15",
-    );
-    await user.click(
-      screen.getByRole("button", { name: "Create monthly job" }),
-    );
-
-    const heading = await screen.findByRole("heading", {
-      name: "Clean the fridge",
-    });
-    const card = heading.closest("article");
-    expect(card).not.toBeNull();
-    expect(
-      within(card as HTMLElement).getByText("Monthly · Morning · 09:15"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Monthly job created through 2026-10-23."),
-    ).toHaveAttribute("role", "status");
+      fetch.mock.calls.every(([request]) => request.method === "GET"),
+    ).toBe(true);
   });
 
   it("reports recurring-job server failures without clearing the form", async () => {
