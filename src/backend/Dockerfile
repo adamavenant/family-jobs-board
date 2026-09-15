@@ -13,6 +13,7 @@ COPY src/backend/FamilyJobsBoard.Migrations/FamilyJobsBoard.Migrations.csproj sr
 COPY src/backend/FamilyJobsBoard.Api.IntegrationTests/FamilyJobsBoard.Api.IntegrationTests.csproj src/backend/FamilyJobsBoard.Api.IntegrationTests/
 COPY src/backend/FamilyJobsBoard.Application.Tests/FamilyJobsBoard.Application.Tests.csproj src/backend/FamilyJobsBoard.Application.Tests/
 COPY src/backend/FamilyJobsBoard.Domain.Tests/FamilyJobsBoard.Domain.Tests.csproj src/backend/FamilyJobsBoard.Domain.Tests/
+COPY src/backend/FamilyJobsBoard.ArchitectureTests/FamilyJobsBoard.ArchitectureTests.csproj src/backend/FamilyJobsBoard.ArchitectureTests/
 RUN dotnet restore src/backend/FamilyJobsBoard.sln
 
 COPY src/backend src/backend
