@@ -29,6 +29,7 @@ import {
   rejectJob,
 } from "../api/today";
 import { LoadingPage } from "./LoadingPage";
+import { createRequestId } from "./requestId";
 import { AuthPage } from "../features/identity/AuthPage";
 import { TodayPage } from "../features/today/TodayPage";
 import type { TodayBoard } from "../api/today";
@@ -472,10 +473,6 @@ async function addRecurringJobAction(
   form: FormData,
 ): Promise<AddRecurringJobActionResult> {
   const submittedRequestId = form.get("requestId");
-  const requestId =
-    typeof submittedRequestId === "string" && submittedRequestId.length > 0
-      ? submittedRequestId
-      : crypto.randomUUID();
   const recurrenceFrequency = form.get("recurrenceFrequency");
   const childIds = form
     .getAll("childIds")
@@ -535,6 +532,19 @@ async function addRecurringJobAction(
   }
 
   try {
+    let requestId: string;
+    try {
+      requestId =
+        typeof submittedRequestId === "string" && submittedRequestId.length > 0
+          ? submittedRequestId
+          : createRequestId();
+    } catch {
+      return {
+        intent: "addRecurring",
+        error:
+          "Your browser couldn't prepare this recurring job. Try again or use another browser. Your details have been kept.",
+      };
+    }
     const recurringRequest = {
       requestId,
       childIds,

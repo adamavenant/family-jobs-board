@@ -219,7 +219,9 @@ export async function authenticatedFetch(
     );
   }
 
-  const headers = new Headers(init.headers);
+  const headers = new Headers(
+    init.headers ?? (input instanceof Request ? input.headers : undefined),
+  );
   headers.set("Authorization", `Bearer ${session.accessToken}`);
   const response = await fetch(input, {
     ...init,
