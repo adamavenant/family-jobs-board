@@ -11,6 +11,7 @@ import { AddJobForm } from "./AddJobForm";
 import { RecurringJobForm } from "./RecurringJobForm";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { FamilyMembersPanel } from "../identity/FamilyMembersPanel";
+import { AdminDataResetPanel } from "../administration/AdminDataResetPanel";
 
 export function TodayPage({ board }: { board: TodayBoard }) {
   const children = board.members.filter((member) => !member.isAdult);
@@ -78,6 +79,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
             selectedDate={board.date}
           />
           <RecurringJobForm children={children} today={currentDate} />
+          <AdminDataResetPanel />
         </div>
       ) : null}
 
