@@ -16,3 +16,7 @@ This repository uses a single-context structure with root `CONTEXT.md` and `docs
 
 Before modifying any code, read and follow `docs/agents/developer-rules.md`.
 Do not begin implementation until you have done so.
+
+### Test Users
+
+For browser testing, test users have been provisioned. See `docs/agents/test-users.md`. Their PINs are held outside this repository.
