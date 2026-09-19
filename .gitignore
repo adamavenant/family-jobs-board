@@ -62,3 +62,6 @@ dist/
 .vite/
 playwright-report/
 test-results/
+
+# Editor settings
+.vscode/
