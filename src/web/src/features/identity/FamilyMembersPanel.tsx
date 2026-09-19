@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 
 import type {
@@ -123,11 +123,28 @@ function CreateMemberForm({
 }: {
   fetcher: ReturnType<typeof useFetcher<FamilyMembersActionResult>>;
 }) {
+  const formRef = useRef<HTMLFormElement>(null);
   const error =
     fetcher.data?.intent === "createMember" ? fetcher.data.error : undefined;
+  const createdMemberId =
+    fetcher.data?.intent === "createMember" && !fetcher.data.error
+      ? fetcher.data.affectedMemberId
+      : undefined;
   const submitting = fetcher.state === "submitting";
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && createdMemberId) {
+      formRef.current?.reset();
+    }
+  }, [createdMemberId, fetcher.state]);
+
   return (
-    <fetcher.Form method="post" action="/family" className="family-member-form">
+    <fetcher.Form
+      method="post"
+      action="/family"
+      className="family-member-form"
+      ref={formRef}
+    >
       <input type="hidden" name="intent" value="createMember" />
       <div className="form-group">
         <label htmlFor="member-first-name">First name</label>

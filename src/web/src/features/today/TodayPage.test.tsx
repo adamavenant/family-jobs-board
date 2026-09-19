@@ -1021,6 +1021,61 @@ describe("Today page", () => {
       nickname: "Fredster",
       role: "child",
     });
+    expect(createMember.getByLabelText("First name")).toHaveValue("");
+    expect(createMember.getByLabelText("Surname")).toHaveValue("");
+    expect(createMember.getByLabelText("Nickname (optional)")).toHaveValue("");
+    expect(createMember.getByLabelText("Role")).toHaveValue("child");
+  });
+
+  it("keeps family member details after a failed creation", async () => {
+    const fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = input instanceof Request ? input : null;
+        const path = requestPath(input);
+        const method = request?.method ?? init?.method ?? "GET";
+        if (path === "/api/users" && method === "POST") {
+          return jsonResponse(
+            { detail: "That family member already exists." },
+            { status: 409 },
+          );
+        }
+        if (path === "/api/users") {
+          return jsonResponse([managedMember(addie, true, "Avenant")]);
+        }
+        return jsonResponse(board);
+      },
+    );
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Manage family"));
+    await screen.findByRole("heading", { name: "Family members" });
+    const addButton = screen.getByRole("button", {
+      name: "Add family member",
+    });
+    const createForm = addButton.closest("form");
+    expect(createForm).not.toBeNull();
+    const createMember = within(createForm as HTMLFormElement);
+    await user.type(createMember.getByLabelText("First name"), "Fred");
+    await user.type(createMember.getByLabelText("Surname"), "Avenant");
+    await user.type(
+      createMember.getByLabelText("Nickname (optional)"),
+      "Fredster",
+    );
+    await user.selectOptions(createMember.getByLabelText("Role"), "adult");
+    await user.click(addButton);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "That family member already exists.",
+    );
+    expect(createMember.getByLabelText("First name")).toHaveValue("Fred");
+    expect(createMember.getByLabelText("Surname")).toHaveValue("Avenant");
+    expect(createMember.getByLabelText("Nickname (optional)")).toHaveValue(
+      "Fredster",
+    );
+    expect(createMember.getByLabelText("Role")).toHaveValue("adult");
   });
 
   it("confirms a PIN reset before signing out for the private handoff", async () => {
