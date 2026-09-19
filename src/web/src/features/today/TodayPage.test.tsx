@@ -225,10 +225,9 @@ describe("Today page", () => {
     const addedHeading = await screen.findByRole("heading", {
       name: "Put toys away",
     });
-    expect(screen.getByText("Job scheduled for 2026-08-29.")).toHaveAttribute(
-      "role",
-      "status",
-    );
+    expect(
+      await screen.findByText("Job scheduled for 2026-08-29."),
+    ).toHaveAttribute("role", "status");
     expect(screen.getByLabelText("Points")).toHaveValue(1);
     const addedCard = addedHeading.closest("article");
     expect(addedCard).not.toBeNull();
@@ -454,7 +453,7 @@ describe("Today page", () => {
         within(card as HTMLElement).getByText("Daily · Morning · 07:30"),
       ).toBeInTheDocument();
       expect(
-        screen.getByText("Daily job created through 2026-10-23."),
+        await screen.findByText("Daily job created through 2026-10-23."),
       ).toHaveAttribute("role", "status");
     },
   );
@@ -547,7 +546,7 @@ describe("Today page", () => {
         within(card as HTMLElement).getByText("Weekly · Evening · 18:15"),
       ).toBeInTheDocument();
       expect(
-        screen.getByText("Weekly job created through 2026-10-23."),
+        await screen.findByText("Weekly job created through 2026-10-23."),
       ).toHaveAttribute("role", "status");
     },
   );
@@ -642,7 +641,7 @@ describe("Today page", () => {
         within(card as HTMLElement).getByText("Monthly · Morning · 09:15"),
       ).toBeInTheDocument();
       expect(
-        screen.getByText("Monthly job created through 2026-10-23."),
+        await screen.findByText("Monthly job created through 2026-10-23."),
       ).toHaveAttribute("role", "status");
     },
   );
