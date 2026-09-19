@@ -6,6 +6,7 @@ import type {
   FamilyMembersActionResult,
 } from "../../app/routes";
 import type { FamilyMember } from "../../api/members";
+import { useSuccessToast } from "../../app/SuccessToast";
 
 export function FamilyMembersPanel({
   currentMemberId,
@@ -13,6 +14,7 @@ export function FamilyMembersPanel({
   currentMemberId: string;
 }) {
   const family = useFetcher<FamilyMembersActionResult>();
+  const { showSuccess } = useSuccessToast();
   const members = family.data?.members ?? [];
   const affected = members.find(
     (member) => member.id === family.data?.affectedMemberId,
@@ -23,6 +25,12 @@ export function FamilyMembersPanel({
     family.data?.intent,
     family.data?.error ? undefined : affected,
   );
+
+  useEffect(() => {
+    if (family.state === "idle" && success) {
+      showSuccess(success);
+    }
+  }, [family.state, showSuccess, success]);
 
   return (
     <details
@@ -68,11 +76,6 @@ export function FamilyMembersPanel({
           </div>
         ) : (
           <>
-            {success ? (
-              <p className="success-message" role="status">
-                {success}
-              </p>
-            ) : null}
             <ul className="family-member-list" aria-label="Family members">
               {active.map((member) => (
                 <FamilyMemberCard
@@ -192,6 +195,8 @@ function FamilyMemberCard({
   fetcher: ReturnType<typeof useFetcher<FamilyMembersActionResult>>;
 }) {
   const handoff = useFetcher<AppActionResult>();
+  const editDetailsRef = useRef<HTMLDetailsElement>(null);
+  const editFormRef = useRef<HTMLFormElement>(null);
   const [confirmingDeactivation, setConfirmingDeactivation] = useState(false);
   const [confirmingPinReset, setConfirmingPinReset] = useState(false);
   const handoffError =
@@ -205,6 +210,20 @@ function FamilyMemberCard({
     memberAction?.intent !== "createMember" ? memberAction?.error : undefined;
   const submitting = fetcher.state !== "idle";
   const fullName = [member.firstName, member.surname].filter(Boolean).join(" ");
+
+  useEffect(() => {
+    if (
+      fetcher.state === "idle" &&
+      memberAction?.intent === "updateMember" &&
+      !memberAction.error
+    ) {
+      editFormRef.current?.reset();
+      if (editDetailsRef.current) {
+        editDetailsRef.current.open = false;
+      }
+    }
+  }, [fetcher.state, memberAction]);
+
   return (
     <li className={member.isActive ? undefined : "family-member--inactive"}>
       <div className="family-member-list__identity">
@@ -297,9 +316,9 @@ function FamilyMemberCard({
           </button>
         )
       ) : null}
-      <details className="family-member-edit">
+      <details className="family-member-edit" ref={editDetailsRef}>
         <summary>Edit profile</summary>
-        <fetcher.Form method="post" action="/family">
+        <fetcher.Form method="post" action="/family" ref={editFormRef}>
           <input type="hidden" name="intent" value="updateMember" />
           <input type="hidden" name="memberId" value={member.id} />
           <label>

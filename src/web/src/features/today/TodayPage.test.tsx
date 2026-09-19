@@ -1146,10 +1146,9 @@ describe("Today page", () => {
     );
     await user.click(addButton);
 
-    expect(await screen.findByText(/Fredster was added/)).toHaveAttribute(
-      "role",
-      "status",
-    );
+    const createdToast = await screen.findByText(/Fredster was added/);
+    expect(createdToast).toHaveAttribute("role", "status");
+    expect(createdToast.closest(".status-toast")).not.toBeNull();
     expect(
       screen.getByRole("button", { name: "Set up PIN now" }),
     ).toBeInTheDocument();
@@ -1308,6 +1307,58 @@ describe("Today page", () => {
     expect(JSON.parse(String(resetRequest?.[1]?.body))).toEqual({});
   });
 
+  it("keeps an edited profile open and populated when saving fails", async () => {
+    const members = [
+      managedMember(addie, true, "Avenant"),
+      managedMember(fredster, true, "Avenant"),
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const request = input instanceof Request ? input : null;
+        const path = requestPath(input);
+        if (
+          path === `/api/users/${fredster.id}` &&
+          request?.method === "PATCH"
+        ) {
+          return jsonResponse(
+            { detail: "That profile couldn't be updated." },
+            { status: 409 },
+          );
+        }
+        if (path === "/api/users") {
+          return jsonResponse(members);
+        }
+        return jsonResponse(board);
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Manage family"));
+    const profile = within(
+      await screen.findByRole("list", { name: "Family members" }),
+    )
+      .getByText("Fredster")
+      .closest("li");
+    expect(profile).not.toBeNull();
+    const editProfile = within(profile as HTMLLIElement);
+    await user.click(editProfile.getByText("Edit profile"));
+    await user.clear(editProfile.getByLabelText("First name"));
+    await user.type(editProfile.getByLabelText("First name"), "Frederick");
+    await user.click(editProfile.getByRole("button", { name: "Save profile" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "That profile couldn't be updated.",
+    );
+    expect(
+      editProfile.getByText("Edit profile").closest("details"),
+    ).toHaveAttribute("open");
+    expect(editProfile.getByLabelText("First name")).toHaveValue("Frederick");
+    expect(screen.queryByText(/profile was updated/)).not.toBeInTheDocument();
+  });
+
   it("edits, deliberately deactivates, and restores a family profile", async () => {
     let members = [
       managedMember(addie, true, "Avenant"),
@@ -1389,9 +1440,14 @@ describe("Today page", () => {
       within(fredsterProfile).getByRole("button", { name: "Save profile" }),
     );
 
+    const updateToast = await screen.findByText(
+      "Freddie's profile was updated.",
+    );
+    expect(updateToast).toHaveAttribute("role", "status");
+    expect(updateToast.closest(".status-toast")).not.toBeNull();
     expect(
-      await screen.findByText("Freddie's profile was updated."),
-    ).toHaveAttribute("role", "status");
+      within(fredsterProfile).getByText("Edit profile").closest("details"),
+    ).not.toHaveAttribute("open");
     const editRequest = fetch.mock.calls.find(([input]) => {
       const request = input instanceof Request ? input : null;
       return (
@@ -1408,6 +1464,20 @@ describe("Today page", () => {
 
     const updatedProfile = screen.getByText("Freddie").closest("li");
     expect(updatedProfile).not.toBeNull();
+    await user.click(
+      within(updatedProfile as HTMLLIElement).getByText("Edit profile"),
+    );
+    expect(
+      within(updatedProfile as HTMLLIElement).getByLabelText("First name"),
+    ).toHaveValue("Frederick");
+    expect(
+      within(updatedProfile as HTMLLIElement).getByLabelText(
+        "Nickname (optional)",
+      ),
+    ).toHaveValue("Freddie");
+    await user.click(
+      within(updatedProfile as HTMLLIElement).getByText("Edit profile"),
+    );
     await user.click(
       within(updatedProfile as HTMLLIElement).getByRole("button", {
         name: "Deactivate profile",
@@ -1428,6 +1498,9 @@ describe("Today page", () => {
     expect(
       await screen.findByText(/Freddie's profile is inactive/),
     ).toHaveAttribute("role", "status");
+    expect(
+      screen.queryByText("Freddie's profile was updated."),
+    ).not.toBeInTheDocument();
     const inactiveList = screen.getByRole("list", {
       name: "Inactive family members",
     });

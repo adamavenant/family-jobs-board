@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useFetcher, useNavigate } from "react-router";
 
 import type { TodayActionResult } from "../../app/routes";
+import { useSuccessToast } from "../../app/SuccessToast";
 import type { HouseholdMember } from "../../api/today";
 import { ChildAssignmentPicker } from "./ChildAssignmentPicker";
 
@@ -16,6 +17,7 @@ export function AddJobForm({
 }) {
   const fetcher = useFetcher<TodayActionResult>();
   const navigate = useNavigate();
+  const { showSuccess } = useSuccessToast();
   const formRef = useRef<HTMLFormElement>(null);
   const result = fetcher.data?.intent === "add" ? fetcher.data : undefined;
   const isSubmitting = fetcher.state !== "idle";
@@ -23,6 +25,7 @@ export function AddJobForm({
   useEffect(() => {
     if (fetcher.state === "idle" && result?.success) {
       formRef.current?.reset();
+      showSuccess(`Job scheduled for ${result.scheduledDate}.`);
       if (result.scheduledDate && result.scheduledDate !== selectedDate) {
         void navigate(`/?date=${result.scheduledDate}`);
       }
@@ -33,6 +36,7 @@ export function AddJobForm({
     result?.scheduledDate,
     result?.success,
     selectedDate,
+    showSuccess,
   ]);
 
   const defaultDate = selectedDate < currentDate ? currentDate : selectedDate;
@@ -119,12 +123,6 @@ export function AddJobForm({
           {result?.error ? (
             <p role="alert" className="error-message" id="add-job-error">
               {result.error}
-            </p>
-          ) : null}
-
-          {result?.success && !isSubmitting ? (
-            <p role="status" className="success-message">
-              Job scheduled for {result.scheduledDate}.
             </p>
           ) : null}
 
