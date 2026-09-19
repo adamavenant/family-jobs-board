@@ -1,4 +1,5 @@
 using FamilyJobsBoard.Api.Composition;
+using FamilyJobsBoard.Api.Features.Administration;
 using FamilyJobsBoard.Api.Features.Health;
 using FamilyJobsBoard.Api.Features.Identity;
 using FamilyJobsBoard.Api.Features.Today;
@@ -29,6 +30,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapHealthEndpoints();
+app.MapAdministrationEndpoints();
 app.MapIdentityEndpoints();
 app.MapTodayEndpoints();
 

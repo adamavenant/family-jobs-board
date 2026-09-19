@@ -10,6 +10,53 @@
     }
   ],
   "paths": {
+    "/api/admin/jobs-and-points/reset": {
+      "post": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Irreversibly clear household job and points data.",
+        "description": "Deletes jobs, recurring series, review decisions, and points entries in one transaction. Requires the exact confirmation phrase 'RESET TASKS AND POINTS'. User profiles and credentials are preserved.",
+        "operationId": "ResetJobsAndPoints",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetJobsAndPointsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetJobsAndPointsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
     "/api/auth/start": {
       "get": {
         "tags": [
@@ -1985,6 +2032,73 @@
           }
         }
       },
+      "ResetJobsAndPointsRequest": {
+        "required": [
+          "confirmation"
+        ],
+        "type": "object",
+        "properties": {
+          "confirmation": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ResetJobsAndPointsResponse": {
+        "required": [
+          "resetId",
+          "occurredAtUtc",
+          "deletedJobCount",
+          "deletedRecurringSeriesCount",
+          "deletedReviewDecisionCount",
+          "deletedPointsEntryCount"
+        ],
+        "type": "object",
+        "properties": {
+          "resetId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "occurredAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deletedJobCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "deletedRecurringSeriesCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "deletedReviewDecisionCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "deletedPointsEntryCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "SetupPinRequest": {
         "required": [
           "setupToken",
@@ -2163,6 +2277,9 @@
     }
   },
   "tags": [
+    {
+      "name": "Administration"
+    },
     {
       "name": "Identity"
     },

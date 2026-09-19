@@ -928,6 +928,149 @@ describe("Today page", () => {
     expect(window.localStorage).toHaveLength(0);
   });
 
+  it("requires deliberate confirmation before resetting task and points data", async () => {
+    let reset = false;
+    const fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = input instanceof Request ? input : null;
+        const path = requestPath(input);
+        const method = request?.method ?? init?.method ?? "GET";
+        if (path === "/api/admin/jobs-and-points/reset" && method === "POST") {
+          expect(await request?.clone().json()).toEqual({
+            confirmation: "RESET TASKS AND POINTS",
+          });
+          reset = true;
+          return jsonResponse({
+            resetId: "64e3c39d-4d90-4ef5-b561-5f1283841b70",
+            occurredAtUtc: "2026-09-19T13:30:00Z",
+            deletedJobCount: 3,
+            deletedRecurringSeriesCount: 1,
+            deletedReviewDecisionCount: 2,
+            deletedPointsEntryCount: 1,
+          });
+        }
+        if (path === "/api/today") {
+          return jsonResponse(
+            reset ? { ...board, jobs: [], pendingApprovalCount: 0 } : board,
+          );
+        }
+        return jsonResponse({}, { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    const resetTools = screen.getByText("Reset data").closest("details");
+    expect(resetTools).not.toBeNull();
+    await user.click(within(resetTools as HTMLElement).getByText("Reset data"));
+    await user.click(
+      within(resetTools as HTMLElement).getByRole("button", {
+        name: "Reset task and points data",
+      }),
+    );
+    expect(
+      within(resetTools as HTMLElement).getByRole("heading", {
+        name: "This cannot be undone",
+      }),
+    ).toBeVisible();
+    const finalReset = within(resetTools as HTMLElement).getByRole("button", {
+      name: "Permanently reset data",
+    });
+    expect(finalReset).toBeDisabled();
+
+    await user.click(
+      within(resetTools as HTMLElement).getByRole("button", { name: "Cancel" }),
+    );
+    expect(
+      fetch.mock.calls.some(
+        ([input]) => requestPath(input) === "/api/admin/jobs-and-points/reset",
+      ),
+    ).toBe(false);
+
+    await user.click(
+      within(resetTools as HTMLElement).getByRole("button", {
+        name: "Reset task and points data",
+      }),
+    );
+    const confirmation = within(resetTools as HTMLElement).getByLabelText(
+      /Type RESET TASKS AND POINTS to continue/,
+    );
+    await user.type(confirmation, "RESET TASKS AND POINT");
+    expect(
+      within(resetTools as HTMLElement).getByRole("button", {
+        name: "Permanently reset data",
+      }),
+    ).toBeDisabled();
+    await user.type(confirmation, "S");
+    await user.click(
+      within(resetTools as HTMLElement).getByRole("button", {
+        name: "Permanently reset data",
+      }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Task and points data was reset. 3 jobs and 1 point entry were removed.",
+      ),
+    ).toHaveAttribute("role", "status");
+    expect(
+      screen.getByText("No jobs are scheduled for this day."),
+    ).toBeVisible();
+  });
+
+  it("keeps the reset confirmation available when the server fails", async () => {
+    const fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = input instanceof Request ? input : null;
+        const path = requestPath(input);
+        const method = request?.method ?? init?.method ?? "GET";
+        if (path === "/api/admin/jobs-and-points/reset" && method === "POST") {
+          return jsonResponse(
+            {
+              detail: "The reset could not be completed. No data was changed.",
+            },
+            { status: 500 },
+          );
+        }
+        return jsonResponse(board);
+      },
+    );
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    const resetTools = screen.getByText("Reset data").closest("details");
+    expect(resetTools).not.toBeNull();
+    await user.click(within(resetTools as HTMLElement).getByText("Reset data"));
+    await user.click(
+      within(resetTools as HTMLElement).getByRole("button", {
+        name: "Reset task and points data",
+      }),
+    );
+    const confirmation = within(resetTools as HTMLElement).getByLabelText(
+      /Type RESET TASKS AND POINTS to continue/,
+    );
+    await user.type(confirmation, "RESET TASKS AND POINTS");
+    await user.click(
+      within(resetTools as HTMLElement).getByRole("button", {
+        name: "Permanently reset data",
+      }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The reset could not be completed. No data was changed.",
+    );
+    expect(confirmation).toHaveValue("RESET TASKS AND POINTS");
+    expect(
+      within(resetTools as HTMLElement).getByRole("heading", {
+        name: "This cannot be undone",
+      }),
+    ).toBeVisible();
+  });
+
   it("loads active family members on demand and shows PIN readiness", async () => {
     vi.stubGlobal(
       "fetch",

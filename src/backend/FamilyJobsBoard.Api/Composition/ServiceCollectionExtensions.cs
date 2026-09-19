@@ -3,10 +3,12 @@ using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
 using FamilyJobsBoard.Api.Features.Identity;
+using FamilyJobsBoard.Application.Administration;
 using FamilyJobsBoard.Application.Clock;
 using FamilyJobsBoard.Application.Identity;
 using FamilyJobsBoard.Application.Today;
 using FamilyJobsBoard.Infrastructure.Data;
+using FamilyJobsBoard.Infrastructure.Administration;
 using FamilyJobsBoard.Infrastructure.Identity;
 using FamilyJobsBoard.Infrastructure.Time;
 using FamilyJobsBoard.Infrastructure.Today;
@@ -22,6 +24,7 @@ internal static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
+        services.AddScoped<AdministrationService>();
         services.AddScoped<TodayBoardService>();
         services.AddScoped<IdentityService>();
         return services;
@@ -36,6 +39,7 @@ internal static class ServiceCollectionExtensions
         var timeZoneId = configuration["Household:TimeZone"] ?? "Africa/Johannesburg";
 
         services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddScoped<IAdministrationRepository, EfAdministrationRepository>();
         services.AddScoped<ITodayBoardRepository, EfTodayBoardRepository>();
         services.AddScoped<IIdentityRepository, EfIdentityRepository>();
         services.AddSingleton<IHouseholdClock>(new SystemHouseholdClock(timeZoneId));

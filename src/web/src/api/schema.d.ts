@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/admin/jobs-and-points/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Irreversibly clear household job and points data.
+         * @description Deletes jobs, recurring series, review decisions, and points entries in one transaction. Requires the exact confirmation phrase 'RESET TASKS AND POINTS'. User profiles and credentials are preserved.
+         */
+        post: operations["ResetJobsAndPoints"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/start": {
         parameters: {
             query?: never;
@@ -563,6 +583,23 @@ export interface components {
         RejectJobRequest: {
             reason: null | string;
         };
+        ResetJobsAndPointsRequest: {
+            confirmation: null | string;
+        };
+        ResetJobsAndPointsResponse: {
+            /** Format: uuid */
+            resetId: string;
+            /** Format: date-time */
+            occurredAtUtc: string;
+            /** Format: int32 */
+            deletedJobCount: number | string;
+            /** Format: int32 */
+            deletedRecurringSeriesCount: number | string;
+            /** Format: int32 */
+            deletedReviewDecisionCount: number | string;
+            /** Format: int32 */
+            deletedPointsEntryCount: number | string;
+        };
         SetupPinRequest: {
             setupToken: null | string;
             pin: null | string;
@@ -610,6 +647,39 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    ResetJobsAndPoints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetJobsAndPointsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResetJobsAndPointsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
     GetAuthenticationStart: {
         parameters: {
             query?: never;
