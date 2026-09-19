@@ -104,6 +104,7 @@ public sealed class IdentityEndpointsTests : IAsyncLifetime
     [InlineData("POST", "/api/recurring-jobs/daily")]
     [InlineData("POST", "/api/recurring-jobs/weekly")]
     [InlineData("POST", "/api/recurring-jobs/monthly")]
+    [InlineData("POST", "/api/admin/jobs-and-points/reset")]
     [InlineData("GET", "/api/users")]
     [InlineData("POST", "/api/users")]
     [InlineData("PATCH", "/api/users/7009b529-733c-4770-ae56-1f6fa69f6363")]

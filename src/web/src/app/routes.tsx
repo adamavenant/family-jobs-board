@@ -42,6 +42,10 @@ import {
   updateFamilyMember,
 } from "../api/members";
 import type { FamilyMember } from "../api/members";
+import {
+  AdministrationApiError,
+  resetJobsAndPoints,
+} from "../api/administration";
 
 export interface CompleteActionResult {
   intent: "complete";
@@ -76,12 +80,21 @@ export interface RejectActionResult {
   error?: string;
 }
 
+export interface ResetJobsAndPointsActionResult {
+  intent: "resetJobsAndPoints";
+  success?: boolean;
+  deletedJobCount?: number;
+  deletedPointsEntryCount?: number;
+  error?: string;
+}
+
 export type TodayActionResult =
   | CompleteActionResult
   | AddJobActionResult
   | AddRecurringJobActionResult
   | ApproveActionResult
-  | RejectActionResult;
+  | RejectActionResult
+  | ResetJobsAndPointsActionResult;
 
 export interface IdentityActionResult {
   intent:
@@ -170,8 +183,41 @@ async function todayAction({
   if (form.get("intent") === "reject") {
     return rejectAction(form);
   }
+  if (form.get("intent") === "resetJobsAndPoints") {
+    return resetJobsAndPointsAction(form);
+  }
 
   return completeAction(form);
+}
+
+async function resetJobsAndPointsAction(
+  form: FormData,
+): Promise<ResetJobsAndPointsActionResult> {
+  const confirmation = form.get("confirmation");
+  if (typeof confirmation !== "string") {
+    return {
+      intent: "resetJobsAndPoints",
+      error: "Type the confirmation phrase to continue.",
+    };
+  }
+
+  try {
+    const result = await resetJobsAndPoints(confirmation);
+    return {
+      intent: "resetJobsAndPoints",
+      success: true,
+      deletedJobCount: result.deletedJobCount,
+      deletedPointsEntryCount: result.deletedPointsEntryCount,
+    };
+  } catch (error) {
+    return {
+      intent: "resetJobsAndPoints",
+      error:
+        error instanceof AdministrationApiError
+          ? error.message
+          : "Task and points data couldn't be reset.",
+    };
+  }
 }
 
 async function familyLoader(): Promise<FamilyMembersActionResult> {

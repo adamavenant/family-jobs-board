@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using FamilyJobsBoard.Application.Clock;
+using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Identity;
 using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Infrastructure.Data;
@@ -106,6 +107,208 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.All(
             await database.MemberCredentials.ToListAsync(),
             credential => Assert.Equal(CredentialState.NotSet, credential.State));
+    }
+
+    [Fact]
+    public async Task Adult_reset_atomically_clears_jobs_and_points_but_preserves_identity()
+    {
+        var client = Client;
+        await CompleteAndApproveAsync(DemoDataIds.FeedDog);
+        await CompleteAsync(DemoDataIds.PackBag);
+        using (var reject = await client.PostAsJsonAsync(
+            $"/api/jobs/{DemoDataIds.PackBag}/reject",
+            new { reason = "Needs another try." }))
+        {
+            reject.EnsureSuccessStatusCode();
+        }
+
+        using (var recurring = await client.PostAsJsonAsync(
+            "/api/recurring-jobs/daily",
+            new
+            {
+                requestId = Guid.NewGuid(),
+                childIds = new[] { DemoDataIds.Harrie },
+                name = "Read together",
+                description = "Ten minutes of reading.",
+                points = 2,
+                agendaPeriod = "evening",
+                scheduledTime = (string?)null,
+                startDate = CurrentDate,
+                endDate = CurrentDate.AddDays(2),
+            }))
+        {
+            Assert.Equal(HttpStatusCode.Created, recurring.StatusCode);
+        }
+
+        int jobCount;
+        int seriesCount;
+        int decisionCount;
+        int pointsCount;
+        MemberSnapshot[] memberSnapshots;
+        CredentialSnapshot[] credentialSnapshots;
+        await using (var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            jobCount = await database.Jobs.CountAsync();
+            seriesCount = await database.RecurringJobSeries.CountAsync();
+            decisionCount = await database.JobReviewDecisions.CountAsync();
+            pointsCount = await database.PointsLedgerEntries.CountAsync();
+            memberSnapshots = await database.HouseholdMembers
+                .OrderBy(member => member.Id)
+                .Select(member => new MemberSnapshot(
+                    member.Id,
+                    member.FirstName,
+                    member.Surname,
+                    member.Nickname,
+                    member.Role,
+                    member.IsActive))
+                .ToArrayAsync();
+            credentialSnapshots = await database.MemberCredentials
+                .OrderBy(credential => credential.MemberId)
+                .Select(credential => new CredentialSnapshot(
+                    credential.MemberId,
+                    credential.State,
+                    credential.PinHash,
+                    credential.PinSetAtUtc))
+                .ToArrayAsync();
+        }
+
+        Assert.True(jobCount > 0);
+        Assert.True(seriesCount > 0);
+        Assert.True(decisionCount > 0);
+        Assert.True(pointsCount > 0);
+
+        using var resetResponse = await client.PostAsJsonAsync(
+            "/api/admin/jobs-and-points/reset",
+            new { confirmation = "RESET TASKS AND POINTS" });
+        var reset = await resetResponse.Content.ReadFromJsonAsync<ResetJobsAndPointsResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, resetResponse.StatusCode);
+        Assert.NotNull(reset);
+        Assert.Equal(jobCount, reset.DeletedJobCount);
+        Assert.Equal(seriesCount, reset.DeletedRecurringSeriesCount);
+        Assert.Equal(decisionCount, reset.DeletedReviewDecisionCount);
+        Assert.Equal(pointsCount, reset.DeletedPointsEntryCount);
+
+        await using (var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.Empty(await database.Jobs.ToListAsync());
+            Assert.Empty(await database.RecurringJobSeries.ToListAsync());
+            Assert.Empty(await database.JobReviewDecisions.ToListAsync());
+            Assert.Empty(await database.PointsLedgerEntries.ToListAsync());
+            Assert.Equal(
+                memberSnapshots,
+                await database.HouseholdMembers
+                    .OrderBy(member => member.Id)
+                    .Select(member => new MemberSnapshot(
+                        member.Id,
+                        member.FirstName,
+                        member.Surname,
+                        member.Nickname,
+                        member.Role,
+                        member.IsActive))
+                    .ToArrayAsync());
+            Assert.Equal(
+                credentialSnapshots,
+                await database.MemberCredentials
+                    .OrderBy(credential => credential.MemberId)
+                    .Select(credential => new CredentialSnapshot(
+                        credential.MemberId,
+                        credential.State,
+                        credential.PinHash,
+                        credential.PinSetAtUtc))
+                    .ToArrayAsync());
+            var audit = Assert.Single(await database.HouseholdDataResets.ToListAsync());
+            Assert.Equal(DemoDataIds.Addie, audit.InitiatedByAdultId);
+            Assert.Equal(reset.ResetId, audit.Id);
+        }
+
+        var childBoard = await client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Fredster}");
+        Assert.NotNull(childBoard);
+        Assert.Empty(childBoard.Jobs);
+        Assert.Equal(0, childBoard.PointsBalance);
+        Assert.Empty(childBoard.PointEarnings);
+
+        using var repeatedResponse = await client.PostAsJsonAsync(
+            "/api/admin/jobs-and-points/reset",
+            new { confirmation = "RESET TASKS AND POINTS" });
+        var repeated = await repeatedResponse.Content
+            .ReadFromJsonAsync<ResetJobsAndPointsResponse>();
+        Assert.Equal(HttpStatusCode.OK, repeatedResponse.StatusCode);
+        Assert.NotNull(repeated);
+        Assert.Equal(0, repeated.DeletedJobCount);
+        Assert.Equal(0, repeated.DeletedRecurringSeriesCount);
+        Assert.Equal(0, repeated.DeletedReviewDecisionCount);
+        Assert.Equal(0, repeated.DeletedPointsEntryCount);
+    }
+
+    [Fact]
+    public async Task Reset_requires_exact_confirmation_and_an_adult()
+    {
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var initialJobCount = await database.Jobs.CountAsync();
+
+        using var unconfirmed = await Client.PostAsJsonAsync(
+            "/api/admin/jobs-and-points/reset",
+            new { confirmation = "reset" });
+        Assert.Equal(HttpStatusCode.BadRequest, unconfirmed.StatusCode);
+
+        using var childRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            "/api/admin/jobs-and-points/reset")
+        {
+            Content = JsonContent.Create(new { confirmation = "RESET TASKS AND POINTS" }),
+        };
+        childRequest.Headers.Add("X-Test-Member-Id", DemoDataIds.Fredster.ToString());
+        using var forbidden = await Client.SendAsync(childRequest);
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+
+        database.ChangeTracker.Clear();
+        Assert.Equal(initialJobCount, await database.Jobs.CountAsync());
+        Assert.Empty(await database.HouseholdDataResets.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Reset_rolls_back_every_delete_when_the_audit_write_fails()
+    {
+        var factory = _factory ?? throw new InvalidOperationException("Test API was not initialised.");
+        int initialJobCount;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            initialJobCount = await database.Jobs.CountAsync();
+            await database.Database.ExecuteSqlRawAsync(
+                """
+                CREATE FUNCTION fail_household_data_reset() RETURNS trigger AS $$
+                BEGIN
+                    RAISE EXCEPTION 'forced audit failure';
+                END;
+                $$ LANGUAGE plpgsql;
+                CREATE TRIGGER fail_household_data_reset
+                BEFORE INSERT ON household_data_resets
+                FOR EACH ROW EXECUTE FUNCTION fail_household_data_reset();
+                """);
+        }
+
+        using var response = await Client.PostAsJsonAsync(
+            "/api/admin/jobs-and-points/reset",
+            new { confirmation = "RESET TASKS AND POINTS" });
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+
+        await using var verificationScope = factory.Services.CreateAsyncScope();
+        var verificationDatabase = verificationScope.ServiceProvider
+            .GetRequiredService<AppDbContext>();
+        Assert.Equal(initialJobCount, await verificationDatabase.Jobs.CountAsync());
+        Assert.Empty(await verificationDatabase.HouseholdDataResets.ToListAsync());
     }
 
     [Fact]
@@ -1470,6 +1673,28 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         string JobName,
         int Points,
         DateTimeOffset AwardedAtUtc);
+
+    private sealed record ResetJobsAndPointsResponse(
+        Guid ResetId,
+        DateTimeOffset OccurredAtUtc,
+        int DeletedJobCount,
+        int DeletedRecurringSeriesCount,
+        int DeletedReviewDecisionCount,
+        int DeletedPointsEntryCount);
+
+    private sealed record MemberSnapshot(
+        Guid Id,
+        string FirstName,
+        string? Surname,
+        string? Nickname,
+        HouseholdRole Role,
+        bool IsActive);
+
+    private sealed record CredentialSnapshot(
+        Guid MemberId,
+        CredentialState State,
+        string? PinHash,
+        DateTimeOffset? PinSetAtUtc);
 
     private sealed class TestApiFactory : WebApplicationFactory<Program>
     {

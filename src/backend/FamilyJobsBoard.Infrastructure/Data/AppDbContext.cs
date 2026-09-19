@@ -1,3 +1,4 @@
+using FamilyJobsBoard.Domain.Administration;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Identity;
 using FamilyJobsBoard.Domain.Jobs;
@@ -30,6 +31,8 @@ public sealed class AppDbContext : DbContext
     public DbSet<JobReviewDecision> JobReviewDecisions => Set<JobReviewDecision>();
 
     public DbSet<PointsLedgerEntry> PointsLedgerEntries => Set<PointsLedgerEntry>();
+
+    public DbSet<HouseholdDataReset> HouseholdDataResets => Set<HouseholdDataReset>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
