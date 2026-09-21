@@ -108,3 +108,33 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  deploy:
+    name: Dispatch Serendipity deployment
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - publish
+    runs-on: ubuntu-latest
+    environment: serendipity-production
+    steps:
+      - name: Deploy exact published image set
+        env:
+          GH_TOKEN: ${{ secrets.SERENDIPITY_DEPLOY_TOKEN }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::SERENDIPITY_DEPLOY_TOKEN is required to dispatch production deployment"
+            exit 1
+          fi
+
+          if [[ ! "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Expected github.sha to be a full lowercase commit SHA"
+            exit 1
+          fi
+
+          gh workflow run deploy-family-dashboard.yml \
+            --repo adamavenant/serendipity-deploy \
+            --ref main \
+            --raw-field image_tag="$IMAGE_TAG"
