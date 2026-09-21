@@ -69,7 +69,9 @@ Omitting `points` on a retry means "the default", so it matches the original.
 `points_ledger_entries.good_behaviour_id`. A check constraint requires exactly
 one of the two sources; a unique index on each source column allows at most one
 ledger entry per job and per behaviour. `good_behaviours` has a unique index on
-`(request_id, child_id)`. Existing job entries are unaffected.
+`(request_id, child_id)`, introduced by the follow-up migration
+`ChangeGoodBehaviourRequestIndexToPerChild` (the first migration indexed
+`request_id` alone; migrations are forward-only, so it was not rewritten). Existing job entries are unaffected.
 
 Demo seeding adds Showing Kindness, Being Helpful, and Being Brave. Real
 households start with no behaviour types.

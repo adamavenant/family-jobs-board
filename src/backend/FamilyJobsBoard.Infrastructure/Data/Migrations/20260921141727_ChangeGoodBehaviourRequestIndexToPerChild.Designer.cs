@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260921133536_AddGoodBehaviours")]
-    partial class AddGoodBehaviours
+    [Migration("20260921141727_ChangeGoodBehaviourRequestIndexToPerChild")]
+    partial class ChangeGoodBehaviourRequestIndexToPerChild
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

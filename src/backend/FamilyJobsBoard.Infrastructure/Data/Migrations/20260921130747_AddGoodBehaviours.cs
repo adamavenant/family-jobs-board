@@ -145,9 +145,9 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                 column: "type_id");
 
             migrationBuilder.CreateIndex(
-                name: "ux_good_behaviours_request_id_child_id",
+                name: "ux_good_behaviours_request_id",
                 table: "good_behaviours",
-                columns: new[] { "request_id", "child_id" },
+                column: "request_id",
                 unique: true);
 
             migrationBuilder.AddForeignKey(
