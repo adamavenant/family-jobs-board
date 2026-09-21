@@ -78,6 +78,39 @@ Fetch the desired revision so the server has its Compose files, then set `IMAGE_
 
 Back up that Docker volume before server maintenance or significant upgrades. Stopping or replacing containers does not remove it.
 
+### Automatic deployment after image publication
+
+The `main` CI workflow dispatches `deploy-family-dashboard.yml` in
+`adamavenant/serendipity-deploy` only after the API, migration, and web image
+publication matrix succeeds. It passes the exact 40-character `github.sha`, so
+Serendipity deploys one matching image set. Pull-request workflows never run
+the deployment job. The deployment repository's scheduled and manual triggers
+remain available as fallbacks.
+
+Create a fine-grained personal access token for the `adamavenant` resource
+owner with access only to the `serendipity-deploy` repository. Grant repository
+permission **Actions: Read and write**; no Contents write or package permission
+is required. Record the token's expiry so it can be replaced before automatic
+deployments begin failing.
+
+In `adamavenant/family-jobs-board`, create an Actions environment named
+`serendipity-production`, restrict its deployment branches to the selected
+branch `main`, and store the token there as an environment secret named
+`SERENDIPITY_DEPLOY_TOKEN`. Environment scoping keeps the credential unavailable
+to pull-request jobs and branches that are not permitted to deploy.
+
+The token can be stored through GitHub's repository settings under **Secrets
+and variables → Actions**, or from an authenticated owner terminal:
+
+```sh
+gh secret set SERENDIPITY_DEPLOY_TOKEN \
+  --repo adamavenant/family-jobs-board \
+  --env serendipity-production
+```
+
+Paste the token only at the secure prompt. Never put it in a command argument,
+workflow file, deployment environment file, issue, or pull request.
+
 ## Roll back the application
 
 Choose a previously deployed, known-good commit whose images are still available in GHCR. Set `IMAGE_TAG` in the deployment environment file to that full commit SHA, then rerun both start commands. This rolls the API, migration runner, and web app back together.
