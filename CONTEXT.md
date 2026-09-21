@@ -27,8 +27,9 @@ A user with administrative privileges within the family system. Adults can manag
 
 #### Characteristics
 - All User characteristics
-- Implemented administration includes user management and job creation;
-  good-behaviour logging and point adjustments are planned, not yet implemented
+- Implemented administration includes user management, job creation, and
+  good-behaviour types and logging; point adjustments are planned, not yet
+  implemented
 
 ### Job
 A task or chore assigned to one child within the family system. An adult may
@@ -56,27 +57,35 @@ The process by which an Adult verifies that a Child has completed a Job before p
 4. Adult approves or rejects job completion
 5. Points awarded if approved, no points if rejected
 
-### Good Behaviour (planned, not yet implemented)
-A planned positive action observed and logged by an Adult that earns points for a Child.
+### Good Behaviour
+A positive action observed and logged by an Adult that earns points for a Child
+immediately. Points default to the type's points and can be changed when
+logging. Only Adults can log; Children see the result in their points history.
 
 #### Characteristics
 - ID (GUID)  
 - Type (GUID, linked to Good Behaviour Type)
-- Points (whole number)
+- Child and logging Adult
+- Points awarded (whole number, editable at logging time)
+- Name and description of the type as they were when logged
 - Logged Date and Time
 
-### Good Behaviour Type (planned, not yet implemented)
-Planned pre-defined categories of good behaviours that can be logged.
+### Good Behaviour Type
+A pre-defined category of good behaviour that Adults can log, such as Showing
+Kindness. Adults create, edit, and soft-delete types; Children can view the
+active ones and their usual points but cannot change them. Editing or deleting
+a type never changes behaviours already logged.
 
 #### Characteristics
 - ID (GUID)
 - Name (Text)
 - Description (free text)
-- Points
+- Points (usual amount awarded)
+- Active flag with audit of who created, edited, and deleted it
 
 ### Points
-The currency accumulated by Children. Job-earned awards and their append-only
-history are implemented. Good-behaviour awards and adult redemption or manual
+The currency accumulated by Children. Job-earned and good-behaviour awards and
+their append-only history are implemented. Adult redemption and manual
 adjustment are planned and are not yet implemented.
 
 #### Properties

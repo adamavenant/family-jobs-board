@@ -154,23 +154,56 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         Guid childId,
         CancellationToken cancellationToken)
     {
-        var earnings = await _database.PointsLedgerEntries
+        var entries = await _database.PointsLedgerEntries
             .AsNoTracking()
             .Where(entry => entry.ChildId == childId)
-            .Join(
-                _database.Jobs.AsNoTracking(),
-                entry => entry.JobId,
-                job => job.Id,
-                (entry, job) => new { Entry = entry, JobName = job.Name })
-            .OrderByDescending(result => result.Entry.AwardedAtUtc)
-            .ThenByDescending(result => result.Entry.Id)
-            .Select(result => new TodayPointEarning(
-                result.Entry.Id,
-                result.Entry.JobId,
-                result.JobName,
-                result.Entry.Amount,
-                result.Entry.AwardedAtUtc))
+            .OrderByDescending(entry => entry.AwardedAtUtc)
+            .ThenByDescending(entry => entry.Id)
             .ToListAsync(cancellationToken);
+
+        var jobIds = entries.Where(entry => entry.JobId is not null)
+            .Select(entry => entry.JobId!.Value)
+            .ToArray();
+        var jobNames = await _database.Jobs
+            .AsNoTracking()
+            .Where(job => jobIds.Contains(job.Id))
+            .ToDictionaryAsync(job => job.Id, job => job.Name, cancellationToken);
+
+        var behaviourIds = entries.Where(entry => entry.GoodBehaviourId is not null)
+            .Select(entry => entry.GoodBehaviourId!.Value)
+            .ToArray();
+        var behaviours = await _database.GoodBehaviours
+            .AsNoTracking()
+            .Where(behaviour => behaviourIds.Contains(behaviour.Id))
+            .ToDictionaryAsync(behaviour => behaviour.Id, cancellationToken);
+        var adultIds = behaviours.Values
+            .Select(behaviour => behaviour.LoggedByMemberId)
+            .Distinct()
+            .ToArray();
+        var adults = await _database.HouseholdMembers
+            .AsNoTracking()
+            .Where(member => adultIds.Contains(member.Id))
+            .ToDictionaryAsync(member => member.Id, member => member.DisplayName, cancellationToken);
+
+        var earnings = entries
+            .Select(entry => entry.GoodBehaviourId is { } behaviourId
+                ? new TodayPointEarning(
+                    entry.Id,
+                    PointEarningSource.GoodBehaviour,
+                    behaviours[behaviourId].TypeName,
+                    null,
+                    entry.Amount,
+                    entry.AwardedAtUtc,
+                    adults.GetValueOrDefault(behaviours[behaviourId].LoggedByMemberId))
+                : new TodayPointEarning(
+                    entry.Id,
+                    PointEarningSource.Job,
+                    jobNames[entry.JobId!.Value],
+                    entry.JobId,
+                    entry.Amount,
+                    entry.AwardedAtUtc,
+                    null))
+            .ToArray();
 
         return new TodayPointsSummary(
             earnings.Sum(earning => earning.Points),

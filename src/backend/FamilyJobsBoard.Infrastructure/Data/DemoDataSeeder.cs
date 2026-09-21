@@ -1,3 +1,4 @@
+using FamilyJobsBoard.Domain.GoodBehaviours;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Identity;
 using FamilyJobsBoard.Domain.Jobs;
@@ -47,7 +48,45 @@ public sealed class DemoDataSeeder
             householdDate,
             cancellationToken);
 
+        await AddGoodBehaviourTypeIfMissingAsync(
+            DemoDataIds.ShowingKindness,
+            "Showing Kindness",
+            "Did something kind for someone else.",
+            5,
+            cancellationToken);
+        await AddGoodBehaviourTypeIfMissingAsync(
+            DemoDataIds.BeingHelpful,
+            "Being Helpful",
+            "Helped out without being asked.",
+            5,
+            cancellationToken);
+        await AddGoodBehaviourTypeIfMissingAsync(
+            DemoDataIds.BeingBrave,
+            "Being Brave",
+            "Tried something that felt scary or hard.",
+            10,
+            cancellationToken);
+
         await _database.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task AddGoodBehaviourTypeIfMissingAsync(
+        Guid id,
+        string name,
+        string description,
+        int points,
+        CancellationToken cancellationToken)
+    {
+        if (!await _database.GoodBehaviourTypes.AnyAsync(type => type.Id == id, cancellationToken))
+        {
+            _database.GoodBehaviourTypes.Add(new GoodBehaviourType(
+                id,
+                name,
+                description,
+                points,
+                DemoDataIds.Addie,
+                DateTimeOffset.UtcNow));
+        }
     }
 
     private async Task AddCredentialIfMissingAsync(

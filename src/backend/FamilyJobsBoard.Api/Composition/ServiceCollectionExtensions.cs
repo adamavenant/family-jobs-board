@@ -6,11 +6,13 @@ using FamilyJobsBoard.Api.Features.Identity;
 using FamilyJobsBoard.Application.Administration;
 using FamilyJobsBoard.Application.Clock;
 using FamilyJobsBoard.Application.Identity;
+using FamilyJobsBoard.Application.GoodBehaviours;
 using FamilyJobsBoard.Application.Today;
 using FamilyJobsBoard.Infrastructure.Data;
 using FamilyJobsBoard.Infrastructure.Administration;
 using FamilyJobsBoard.Infrastructure.Identity;
 using FamilyJobsBoard.Infrastructure.Time;
+using FamilyJobsBoard.Infrastructure.GoodBehaviours;
 using FamilyJobsBoard.Infrastructure.Today;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -26,6 +28,7 @@ internal static class ServiceCollectionExtensions
     {
         services.AddScoped<AdministrationService>();
         services.AddScoped<TodayBoardService>();
+        services.AddScoped<GoodBehaviourService>();
         services.AddScoped<IdentityService>();
         return services;
     }
@@ -41,6 +44,7 @@ internal static class ServiceCollectionExtensions
         services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
         services.AddScoped<IAdministrationRepository, EfAdministrationRepository>();
         services.AddScoped<ITodayBoardRepository, EfTodayBoardRepository>();
+        services.AddScoped<IGoodBehaviourRepository, EfGoodBehaviourRepository>();
         services.AddScoped<IIdentityRepository, EfIdentityRepository>();
         services.AddSingleton<IHouseholdClock>(new SystemHouseholdClock(timeZoneId));
 

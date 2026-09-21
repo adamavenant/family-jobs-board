@@ -442,10 +442,12 @@ internal static class TodayEndpoints
     {
         return new PointEarningResponse(
             earning.Id,
+            earning.Source,
+            earning.Name,
             earning.JobId,
-            earning.JobName,
             earning.Points,
-            earning.AwardedAtUtc);
+            earning.AwardedAtUtc,
+            earning.LoggedByDisplayName);
     }
 
     private static JobResponse MapJob(TodayJob job)

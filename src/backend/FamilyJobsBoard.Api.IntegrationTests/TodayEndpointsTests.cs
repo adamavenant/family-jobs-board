@@ -1398,7 +1398,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var earning = Assert.Single(persisted.PointEarnings);
         Assert.NotEqual(Guid.Empty, earning.Id);
         Assert.Equal(target.Id, earning.JobId);
-        Assert.Equal(target.Name, earning.JobName);
+        Assert.Equal(target.Name, earning.Name);
         Assert.Equal(target.Points, earning.Points);
         Assert.NotEqual(default, earning.AwardedAtUtc);
         Assert.Equal(
@@ -1583,12 +1583,12 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             earning =>
             {
                 Assert.Equal(second.Id, earning.JobId);
-                Assert.Equal(second.Name, earning.JobName);
+                Assert.Equal(second.Name, earning.Name);
             },
             earning =>
             {
                 Assert.Equal(first.Id, earning.JobId);
-                Assert.Equal(first.Name, earning.JobName);
+                Assert.Equal(first.Name, earning.Name);
             });
     }
 
@@ -1744,10 +1744,12 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
     private sealed record PointEarningResponse(
         Guid Id,
-        Guid JobId,
-        string JobName,
+        string Source,
+        string Name,
+        Guid? JobId,
         int Points,
-        DateTimeOffset AwardedAtUtc);
+        DateTimeOffset AwardedAtUtc,
+        string? LoggedByDisplayName);
 
     private sealed record ResetJobsAndPointsResponse(
         Guid ResetId,
@@ -1771,7 +1773,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         string? PinHash,
         DateTimeOffset? PinSetAtUtc);
 
-    private sealed class TestApiFactory : WebApplicationFactory<Program>
+    internal sealed class TestApiFactory : WebApplicationFactory<Program>
     {
         private readonly string _connectionString;
 

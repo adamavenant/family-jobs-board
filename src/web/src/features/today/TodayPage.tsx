@@ -12,6 +12,8 @@ import { RecurringJobForm } from "./RecurringJobForm";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { FamilyMembersPanel } from "../identity/FamilyMembersPanel";
 import { AdminDataResetPanel } from "../administration/AdminDataResetPanel";
+import { GoodBehavioursPanel } from "../goodBehaviours/GoodBehavioursPanel";
+import { GoodBehaviourTypesList } from "../goodBehaviours/GoodBehaviourTypesList";
 
 export function TodayPage({ board }: { board: TodayBoard }) {
   const children = board.members.filter((member) => !member.isAdult);
@@ -83,6 +85,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
             selectedChildId={board.selectedChildId}
           />
           <RecurringJobForm children={children} today={currentDate} />
+          <GoodBehavioursPanel children={children} />
           <AdminDataResetPanel />
         </div>
       ) : null}
@@ -179,10 +182,15 @@ export function TodayPage({ board }: { board: TodayBoard }) {
       </section>
 
       {!board.viewer.isAdult ? (
-        <PointsHistory
-          childName={board.viewer.displayName}
-          earnings={board.pointEarnings}
-        />
+        <>
+          <div className="grown-up-toolbox">
+            <GoodBehaviourTypesList />
+          </div>
+          <PointsHistory
+            childName={board.viewer.displayName}
+            earnings={board.pointEarnings}
+          />
+        </>
       ) : null}
     </main>
   );
@@ -292,12 +300,13 @@ function PointsHistory({
           <p className="eyebrow">Points</p>
           <h2 id="points-history-heading">How {childName} earned them</h2>
         </div>
-        <p>Approved jobs appear here, newest first.</p>
+        <p>Approved jobs and good behaviours appear here, newest first.</p>
       </div>
 
       {earnings.length === 0 ? (
         <p className="points-history__empty">
-          No points earned yet. Complete and approve a job to start the list.
+          No points earned yet. Complete and approve a job, or show a good
+          behaviour, to start the list.
         </p>
       ) : (
         <ol className="earning-list">
@@ -305,7 +314,14 @@ function PointsHistory({
             <li key={earning.id}>
               <span className="earning-list__points">+{earning.points}</span>
               <span>
-                <strong>{earning.jobName}</strong>
+                <strong>{earning.name}</strong>
+                <span className="earning-list__source">
+                  {earning.source === "goodBehaviour"
+                    ? earning.loggedByDisplayName
+                      ? `Good behaviour · logged by ${earning.loggedByDisplayName}`
+                      : "Good behaviour"
+                    : "Job"}
+                </span>
                 <time dateTime={earning.awardedAtUtc}>
                   {formatAwardTime(earning.awardedAtUtc)}
                 </time>

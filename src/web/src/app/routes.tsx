@@ -47,6 +47,10 @@ import {
   resetJobsAndPoints,
 } from "../api/administration";
 import { SuccessToastProvider } from "./SuccessToast";
+import {
+  goodBehavioursAction,
+  goodBehavioursLoader,
+} from "../features/goodBehaviours/goodBehavioursRoute";
 
 export interface CompleteActionResult {
   intent: "complete";
@@ -830,6 +834,11 @@ export const routes: RouteObject[] = [
     path: "/family",
     loader: familyLoader,
     action: familyAction,
+  },
+  {
+    path: "/good-behaviours",
+    loader: goodBehavioursLoader,
+    action: goodBehavioursAction,
   },
 ];
 
