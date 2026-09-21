@@ -663,6 +663,23 @@ for (const viewport of [
     const editedProfile = activeList
       .getByRole("listitem")
       .filter({ hasText: "Freddie" });
+    const editPanel = editedProfile.locator("details.family-member-edit");
+    await expect(editPanel).not.toHaveAttribute("open", "");
+    const toast = page.locator(".status-toast");
+    const toastBox = await toast.boundingBox();
+    expect(toastBox).not.toBeNull();
+    expect((toastBox?.y ?? 0) + (toastBox?.height ?? 0)).toBeGreaterThanOrEqual(
+      viewport.height - 40,
+    );
+
+    await editedProfile.getByText("Edit profile").click();
+    await expect(editedProfile.getByLabel("First name")).toHaveValue(
+      "Frederick",
+    );
+    await expect(editedProfile.getByLabel("Nickname (optional)")).toHaveValue(
+      "Freddie",
+    );
+    await editedProfile.getByText("Edit profile").click();
     await editedProfile
       .getByRole("button", { name: "Deactivate profile" })
       .click();

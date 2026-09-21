@@ -46,6 +46,7 @@ import {
   AdministrationApiError,
   resetJobsAndPoints,
 } from "../api/administration";
+import { SuccessToastProvider } from "./SuccessToast";
 
 export interface CompleteActionResult {
   intent: "complete";
@@ -830,7 +831,9 @@ export const routes: RouteObject[] = [
 function AppPage() {
   const data = useLoaderData() as AppLoaderData;
   return data.state === "authenticated" ? (
-    <TodayPage board={data.board} />
+    <SuccessToastProvider>
+      <TodayPage board={data.board} />
+    </SuccessToastProvider>
   ) : (
     <AuthPage state={data} />
   );

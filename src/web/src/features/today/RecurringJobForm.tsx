@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 
 import type { TodayActionResult } from "../../app/routes";
+import { useSuccessToast } from "../../app/SuccessToast";
 import type { HouseholdMember } from "../../api/today";
 import { ChildAssignmentPicker } from "./ChildAssignmentPicker";
 
@@ -45,6 +46,7 @@ export function RecurringJobForm({
 }) {
   const fetcher = useFetcher<TodayActionResult>();
   const formRef = useRef<HTMLFormElement>(null);
+  const { showSuccess } = useSuccessToast();
   const [frequency, setFrequency] = useState<RecurrenceFrequency>("daily");
   const result =
     fetcher.data?.intent === "addRecurring" ? fetcher.data : undefined;
@@ -54,8 +56,17 @@ export function RecurringJobForm({
   useEffect(() => {
     if (fetcher.state === "idle" && result?.success) {
       formRef.current?.reset();
+      showSuccess(
+        `${frequencyName(result.frequency ?? "daily")} job created through ${result.generatedThrough}.`,
+      );
     }
-  }, [fetcher.state, result?.success]);
+  }, [
+    fetcher.state,
+    result?.frequency,
+    result?.generatedThrough,
+    result?.success,
+    showSuccess,
+  ]);
 
   return (
     <details className="grown-up-tools grown-up-tools--recurring">
@@ -215,13 +226,6 @@ export function RecurringJobForm({
               {result.error}
             </p>
           ) : null}
-          {result?.success && !isSubmitting ? (
-            <p role="status" className="success-message">
-              {frequencyName(result.frequency ?? "daily")} job created through{" "}
-              {result.generatedThrough}.
-            </p>
-          ) : null}
-
           <button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Creating…" : `Create ${frequency} job`}
           </button>

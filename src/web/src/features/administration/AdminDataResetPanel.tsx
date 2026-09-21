@@ -1,18 +1,29 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useFetcher } from "react-router";
 
 import type { TodayActionResult } from "../../app/routes";
+import { useSuccessToast } from "../../app/SuccessToast";
 
 const requiredConfirmation = "RESET TASKS AND POINTS";
 
 export function AdminDataResetPanel() {
   const fetcher = useFetcher<TodayActionResult>();
+  const { showSuccess } = useSuccessToast();
   const [confirming, setConfirming] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const result =
     fetcher.data?.intent === "resetJobsAndPoints" ? fetcher.data : undefined;
   const submitting = fetcher.state !== "idle";
   const confirmed = confirmation === requiredConfirmation;
+  const successMessage = result?.success
+    ? `Task and points data was reset. ${formatCount(result.deletedJobCount, "job")} and ${formatCount(result.deletedPointsEntryCount, "point entry")} were removed.`
+    : undefined;
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && successMessage) {
+      showSuccess(successMessage);
+    }
+  }, [fetcher.state, showSuccess, successMessage]);
 
   return (
     <details className="grown-up-tools admin-data-reset">
@@ -30,15 +41,6 @@ export function AdminDataResetPanel() {
             and PIN.
           </p>
         </div>
-
-        {result?.success ? (
-          <p className="success-message" role="status">
-            Task and points data was reset.{" "}
-            {formatCount(result.deletedJobCount, "job")} and{" "}
-            {formatCount(result.deletedPointsEntryCount, "point entry")} were
-            removed.
-          </p>
-        ) : null}
 
         {!confirming || result?.success ? (
           <button
