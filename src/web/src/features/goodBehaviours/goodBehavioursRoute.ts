@@ -8,7 +8,10 @@ import {
   logGoodBehaviour,
   updateGoodBehaviourType,
 } from "../../api/goodBehaviours";
-import type { GoodBehaviourType } from "../../api/goodBehaviours";
+import type {
+  GoodBehaviourType,
+  LoggedGoodBehaviour,
+} from "../../api/goodBehaviours";
 import { createRequestId } from "../../app/requestId";
 
 export interface GoodBehavioursActionResult {
@@ -16,6 +19,7 @@ export interface GoodBehavioursActionResult {
   types?: GoodBehaviourType[] | undefined;
   affectedTypeId?: string | undefined;
   message?: string | undefined;
+  logged?: LoggedGoodBehaviour | undefined;
   error?: string | undefined;
 }
 
@@ -103,15 +107,24 @@ async function logBehaviour(
   form: FormData,
   typeId: string,
 ): Promise<GoodBehavioursActionResult> {
-  const childId = text(form, "childId");
+  const childIds = form
+    .getAll("childIds")
+    .filter((value): value is string => typeof value === "string");
   const pointsValue = text(form, "points").trim();
   const points = pointsValue === "" ? null : Number(pointsValue);
   const requestId = text(form, "requestId") || safeRequestId();
-  if (!typeId || !childId || (points !== null && !isWholeNumber(points))) {
+  if (childIds.length === 0 || new Set(childIds).size !== childIds.length) {
     return {
       intent: "logBehaviour",
       types: await reloadTypes(),
-      error: "Choose a child and a good behaviour, with zero or more points.",
+      error: "Choose one or more children.",
+    };
+  }
+  if (!typeId || (points !== null && !isWholeNumber(points))) {
+    return {
+      intent: "logBehaviour",
+      types: await reloadTypes(),
+      error: "Choose a good behaviour with zero or more points.",
     };
   }
   if (!requestId) {
@@ -123,12 +136,17 @@ async function logBehaviour(
     };
   }
 
-  const logged = await logGoodBehaviour({ requestId, typeId, childId, points });
+  const logged = await logGoodBehaviour({
+    requestId,
+    typeId,
+    childIds,
+    points,
+  });
   return {
     intent: "logBehaviour",
     types: await reloadTypes(),
     affectedTypeId: typeId,
-    message: `Logged ${logged.typeName}: +${logged.points} points.`,
+    logged,
   };
 }
 

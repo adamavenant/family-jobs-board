@@ -59,7 +59,8 @@ describe("Good behaviours", () => {
     });
     expect(within(form).getByLabelText("Points to award")).toHaveValue(10);
 
-    await user.selectOptions(within(form).getByLabelText("Child"), "Harrie");
+    await user.click(within(form).getByLabelText("Fredster"));
+    await user.click(within(form).getByLabelText("Harrie"));
     await user.selectOptions(
       within(form).getByLabelText("Good behaviour"),
       "Being Helpful",
@@ -72,15 +73,66 @@ describe("Good behaviours", () => {
     );
 
     expect(
-      await screen.findByText("Logged Being Helpful: +8 points."),
+      await screen.findByText("Logged Being Helpful for Harrie: +8 points."),
     ).toHaveAttribute("role", "status");
     expect(api.logRequests).toHaveLength(1);
     expect(api.logRequests[0]).toEqual({
       requestId: expect.any(String),
       typeId: helpful.id,
-      childId: harrie.id,
+      childIds: [harrie.id],
       points: 8,
     });
+  });
+
+  it("logs one behaviour for both children with the same picker as jobs", async () => {
+    const api = fakeApi(adultBoard, [brave]);
+    const user = userEvent.setup();
+    renderApp(addie);
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Log or manage good behaviours"));
+    const form = await screen.findByRole("form", {
+      name: "Log a good behaviour",
+    });
+    expect(
+      within(form).getByRole("group", { name: "Log for" }),
+    ).toBeInTheDocument();
+    expect(within(form).getByLabelText("Fredster")).toBeChecked();
+    expect(within(form).getByLabelText("Harrie")).not.toBeChecked();
+
+    await user.click(within(form).getByLabelText("Harrie"));
+    await user.click(
+      within(form).getByRole("button", { name: "Log behaviour" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Logged Being Brave for Fredster and Harrie: +10 points each.",
+      ),
+    ).toBeInTheDocument();
+    expect(api.logRequests).toHaveLength(1);
+    expect(api.logRequests[0]?.childIds).toEqual([fredster.id, harrie.id]);
+  });
+
+  it("asks for a child and sends nothing when none is selected", async () => {
+    const api = fakeApi(adultBoard, [brave]);
+    const user = userEvent.setup();
+    renderApp(addie);
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Log or manage good behaviours"));
+    const form = await screen.findByRole("form", {
+      name: "Log a good behaviour",
+    });
+    await user.click(within(form).getByLabelText("Fredster"));
+    await user.click(
+      within(form).getByRole("button", { name: "Log behaviour" }),
+    );
+
+    expect(
+      await within(form).findByText("Choose one or more children."),
+    ).toHaveAttribute("role", "alert");
+    expect(api.logRequests).toHaveLength(0);
   });
 
   it("reuses the request ID after a failure and uses a new one after success", async () => {
@@ -99,7 +151,7 @@ describe("Good behaviours", () => {
     await user.click(submit);
     expect(await within(form).findByRole("alert")).toBeInTheDocument();
     await user.click(submit);
-    await screen.findByText("Logged Being Brave: +10 points.");
+    await screen.findByText("Logged Being Brave for Fredster: +10 points.");
     await vi.waitFor(() => expect(submit).toBeEnabled());
     await user.click(submit);
     await vi.waitFor(() => expect(api.logRequests).toHaveLength(3));
@@ -219,7 +271,7 @@ describe("Good behaviours", () => {
 interface LoggedRequest {
   requestId: string;
   typeId: string;
-  childId: string;
+  childIds: string[];
   points: number | null;
 }
 
@@ -277,19 +329,22 @@ function fakeApi(board: unknown, initialTypes: StoredType[]) {
           );
         }
         const type = state.types.find((item) => item.id === body.typeId);
+        const points = body.points ?? type?.points ?? 0;
         return jsonResponse(
           {
-            behaviour: {
-              id: crypto.randomUUID(),
-              typeId: body.typeId,
-              typeName: type?.name ?? "",
-              typeDescription: type?.description ?? "",
-              childId: body.childId,
-              loggedByMemberId: addie.id,
-              points: body.points ?? type?.points ?? 0,
-              loggedAtUtc: "2026-09-21T08:00:00Z",
-            },
-            pointsBalance: body.points ?? type?.points ?? 0,
+            awards: body.childIds.map((childId) => ({
+              behaviour: {
+                id: crypto.randomUUID(),
+                typeId: body.typeId,
+                typeName: type?.name ?? "",
+                typeDescription: type?.description ?? "",
+                childId,
+                loggedByMemberId: addie.id,
+                points,
+                loggedAtUtc: "2026-09-21T08:00:00Z",
+              },
+              pointsBalance: points,
+            })),
           },
           { status: 201 },
         );

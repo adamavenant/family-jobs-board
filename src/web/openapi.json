@@ -1353,8 +1353,8 @@
         "tags": [
           "Good behaviours"
         ],
-        "summary": "Log a good behaviour for a child and award its points.",
-        "description": "Adult-only. Creates the behaviour and its points ledger entry in one transaction. Points default to the type's points. Repeating a request ID with the same details returns the original result without a second award; reusing it for different details returns 409.",
+        "summary": "Log a good behaviour for one or more children and award its points.",
+        "description": "Adult-only. Creates an independent behaviour and points ledger entry for each selected child, all in one transaction. Points default to the type's points and apply to each child. Repeating a request ID with the same details returns the original result without a second award; reusing it for different details returns 409.",
         "operationId": "LogGoodBehaviour",
         "requestBody": {
           "content": {
@@ -1927,6 +1927,26 @@
           }
         }
       },
+      "GoodBehaviourAwardResponse": {
+        "required": [
+          "behaviour",
+          "pointsBalance"
+        ],
+        "type": "object",
+        "properties": {
+          "behaviour": {
+            "$ref": "#/components/schemas/GoodBehaviourResponse"
+          },
+          "pointsBalance": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "GoodBehaviourResponse": {
         "required": [
           "id",
@@ -2215,7 +2235,7 @@
         "required": [
           "requestId",
           "typeId",
-          "childId",
+          "childIds",
           "points"
         ],
         "type": "object",
@@ -2228,9 +2248,15 @@
             "type": "string",
             "format": "uuid"
           },
-          "childId": {
-            "type": "string",
-            "format": "uuid"
+          "childIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           "points": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -2245,21 +2271,15 @@
       },
       "LogGoodBehaviourResponse": {
         "required": [
-          "behaviour",
-          "pointsBalance"
+          "awards"
         ],
         "type": "object",
         "properties": {
-          "behaviour": {
-            "$ref": "#/components/schemas/GoodBehaviourResponse"
-          },
-          "pointsBalance": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
+          "awards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GoodBehaviourAwardResponse"
+            }
           }
         }
       },

@@ -21,14 +21,14 @@ export interface GoodBehaviourTypeInput {
 export interface LogGoodBehaviourInput {
   requestId: string;
   typeId: string;
-  childId: string;
+  childIds: string[];
   points: number | null;
 }
 
 export interface LoggedGoodBehaviour {
   typeName: string;
   points: number;
-  pointsBalance: number;
+  childIds: string[];
 }
 
 export class GoodBehaviourApiError extends Error {
@@ -105,10 +105,17 @@ export async function logGoodBehaviour(
     );
   }
 
+  const first = data.awards[0]?.behaviour;
+  if (!first) {
+    throw new GoodBehaviourApiError(
+      "The good behaviour response contained no awards.",
+    );
+  }
+
   return {
-    typeName: data.behaviour.typeName,
-    points: Number(data.behaviour.points),
-    pointsBalance: Number(data.pointsBalance),
+    typeName: first.typeName,
+    points: Number(first.points),
+    childIds: data.awards.map((award) => award.behaviour.childId),
   };
 }
 

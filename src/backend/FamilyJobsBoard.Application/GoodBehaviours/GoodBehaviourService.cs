@@ -1,5 +1,6 @@
 using FamilyJobsBoard.Application.Clock;
 using FamilyJobsBoard.Domain.GoodBehaviours;
+using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Points;
 
 namespace FamilyJobsBoard.Application.GoodBehaviours;
@@ -82,12 +83,13 @@ public sealed class GoodBehaviourService
             });
         }
 
-        var existing = await _repository.GetBehaviourByRequestAsync(
+        var childIds = request.ChildIds ?? [];
+        var existing = await _repository.GetBehavioursByRequestAsync(
             request.RequestId,
             cancellationToken);
-        if (existing is not null)
+        if (existing.Count > 0)
         {
-            return await ReplayAsync(existing, request, cancellationToken);
+            return await ReplayAsync(existing, request, childIds, cancellationToken);
         }
 
         var errors = new Dictionary<string, string[]>();
@@ -102,10 +104,19 @@ public sealed class GoodBehaviourService
             errors[nameof(LogGoodBehaviour.TypeId)] = ["Choose an available good behaviour."];
         }
 
-        var child = await _repository.GetActiveChildAsync(request.ChildId, cancellationToken);
-        if (child is null)
+        IReadOnlyList<HouseholdMember> children = [];
+        if (childIds.Count == 0 || childIds.Distinct().Count() != childIds.Count)
         {
-            errors[nameof(LogGoodBehaviour.ChildId)] = ["Choose an active child in this household."];
+            errors[nameof(LogGoodBehaviour.ChildIds)] = ["Choose one or more different children."];
+        }
+        else
+        {
+            children = await _repository.GetActiveChildrenAsync(childIds, cancellationToken);
+            if (children.Count != childIds.Count)
+            {
+                errors[nameof(LogGoodBehaviour.ChildIds)] =
+                    ["Choose active children in this household."];
+            }
         }
 
         if (errors.Count > 0)
@@ -115,61 +126,88 @@ public sealed class GoodBehaviourService
 
         var loggedAtUtc = _clock.UtcNow;
         var points = request.Points ?? type!.Points;
-        var behaviour = new GoodBehaviour(
-            Guid.NewGuid(),
-            request.RequestId,
-            type!,
-            child!.Id,
-            request.LoggedByMemberId,
-            points,
-            loggedAtUtc);
-        var award = PointsLedgerEntry.ForGoodBehaviour(
-            Guid.NewGuid(),
-            child.Id,
-            behaviour.Id,
-            points,
-            loggedAtUtc);
+        var entries = children
+            .Select(child =>
+            {
+                var behaviour = new GoodBehaviour(
+                    Guid.NewGuid(),
+                    request.RequestId,
+                    type!,
+                    child.Id,
+                    request.LoggedByMemberId,
+                    points,
+                    loggedAtUtc);
+                var award = PointsLedgerEntry.ForGoodBehaviour(
+                    Guid.NewGuid(),
+                    child.Id,
+                    behaviour.Id,
+                    points,
+                    loggedAtUtc);
+                return (Behaviour: behaviour, Award: award);
+            })
+            .ToArray();
 
-        await _repository.AddBehaviourAsync(behaviour, award, cancellationToken);
+        await _repository.AddBehavioursAsync(entries, cancellationToken);
         try
         {
             await _repository.SaveChangesAsync(cancellationToken);
         }
         catch (DuplicateGoodBehaviourRequestException)
         {
-            var winner = await _repository.GetBehaviourByRequestAsync(
+            var winners = await _repository.GetBehavioursByRequestAsync(
                 request.RequestId,
-                cancellationToken)
-                ?? throw new GoodBehaviourRequestConflictException(request.RequestId);
-            return await ReplayAsync(winner, request, cancellationToken);
+                cancellationToken);
+            if (winners.Count == 0)
+            {
+                throw new GoodBehaviourRequestConflictException(request.RequestId);
+            }
+
+            return await ReplayAsync(winners, request, childIds, cancellationToken);
         }
 
-        return new GoodBehaviourLogResult(
-            MapBehaviour(behaviour),
-            await _repository.GetPointsBalanceAsync(child.Id, cancellationToken),
-            WasCreated: true);
+        return await BuildResultAsync(
+            entries.Select(entry => entry.Behaviour).ToArray(),
+            wasCreated: true,
+            cancellationToken);
     }
 
     private async Task<GoodBehaviourLogResult> ReplayAsync(
-        GoodBehaviour existing,
+        IReadOnlyList<GoodBehaviour> existing,
         LogGoodBehaviour request,
+        IReadOnlyList<Guid> childIds,
         CancellationToken cancellationToken)
     {
         // A retry repeats the original payload; an omitted amount means "the type's default
         // at the time", which is whatever the original request resolved to.
-        var samePayload = existing.TypeId == request.TypeId
-            && existing.ChildId == request.ChildId
-            && existing.LoggedByMemberId == request.LoggedByMemberId
-            && (request.Points is null || existing.Points == request.Points);
+        var samePayload = existing.All(item =>
+                item.TypeId == request.TypeId
+                && item.LoggedByMemberId == request.LoggedByMemberId
+                && (request.Points is null || item.Points == request.Points))
+            && existing.Select(item => item.ChildId).Order()
+                .SequenceEqual(childIds.Distinct().Order());
         if (!samePayload)
         {
             throw new GoodBehaviourRequestConflictException(request.RequestId);
         }
 
+        return await BuildResultAsync(existing, wasCreated: false, cancellationToken);
+    }
+
+    private async Task<GoodBehaviourLogResult> BuildResultAsync(
+        IReadOnlyList<GoodBehaviour> behaviours,
+        bool wasCreated,
+        CancellationToken cancellationToken)
+    {
+        var balances = await _repository.GetPointsBalancesAsync(
+            behaviours.Select(item => item.ChildId).ToArray(),
+            cancellationToken);
         return new GoodBehaviourLogResult(
-            MapBehaviour(existing),
-            await _repository.GetPointsBalanceAsync(existing.ChildId, cancellationToken),
-            WasCreated: false);
+            behaviours
+                .Select(item => new GoodBehaviourAward(
+                    MapBehaviour(item),
+                    balances.GetValueOrDefault(item.ChildId)))
+                .ToArray(),
+            wasCreated);
     }
 
     private async Task<GoodBehaviourType> GetTypeAsync(

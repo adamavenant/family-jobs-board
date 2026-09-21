@@ -15,7 +15,7 @@ public sealed record LogGoodBehaviour(
     Guid RequestId,
     Guid LoggedByMemberId,
     Guid TypeId,
-    Guid ChildId,
+    IReadOnlyList<Guid>? ChildIds,
     int? Points);
 
 public sealed record LoggedGoodBehaviour(
@@ -28,7 +28,10 @@ public sealed record LoggedGoodBehaviour(
     int Points,
     DateTimeOffset LoggedAtUtc);
 
-public sealed record GoodBehaviourLogResult(
+public sealed record GoodBehaviourAward(
     LoggedGoodBehaviour Behaviour,
-    int PointsBalance,
+    int PointsBalance);
+
+public sealed record GoodBehaviourLogResult(
+    IReadOnlyList<GoodBehaviourAward> Awards,
     bool WasCreated);

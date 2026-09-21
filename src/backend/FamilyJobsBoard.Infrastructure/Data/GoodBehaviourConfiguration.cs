@@ -7,7 +7,7 @@ namespace FamilyJobsBoard.Infrastructure.Data;
 
 internal sealed class GoodBehaviourConfiguration : IEntityTypeConfiguration<GoodBehaviour>
 {
-    public const string RequestIdIndexName = "ux_good_behaviours_request_id";
+    public const string RequestChildIndexName = "ux_good_behaviours_request_id_child_id";
 
     public void Configure(EntityTypeBuilder<GoodBehaviour> builder)
     {
@@ -29,9 +29,9 @@ internal sealed class GoodBehaviourConfiguration : IEntityTypeConfiguration<Good
             .HasColumnName("logged_by_member_id");
         builder.Property(behaviour => behaviour.Points).HasColumnName("points");
         builder.Property(behaviour => behaviour.LoggedAtUtc).HasColumnName("logged_at_utc");
-        builder.HasIndex(behaviour => behaviour.RequestId)
+        builder.HasIndex(behaviour => new { behaviour.RequestId, behaviour.ChildId })
             .IsUnique()
-            .HasDatabaseName(RequestIdIndexName);
+            .HasDatabaseName(RequestChildIndexName);
         builder.HasIndex(behaviour => new { behaviour.ChildId, behaviour.LoggedAtUtc });
         builder.HasOne<GoodBehaviourType>()
             .WithMany()

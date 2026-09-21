@@ -108,13 +108,13 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 
                     b.HasIndex("LoggedByMemberId");
 
-                    b.HasIndex("RequestId")
-                        .IsUnique()
-                        .HasDatabaseName("ux_good_behaviours_request_id");
-
                     b.HasIndex("TypeId");
 
                     b.HasIndex("ChildId", "LoggedAtUtc");
+
+                    b.HasIndex("RequestId", "ChildId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_good_behaviours_request_id_child_id");
 
                     b.ToTable("good_behaviours", null, t =>
                         {

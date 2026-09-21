@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 
-import type { GoodBehaviourType } from "../../api/goodBehaviours";
+import type {
+  GoodBehaviourType,
+  LoggedGoodBehaviour,
+} from "../../api/goodBehaviours";
 import type { HouseholdMember } from "../../api/today";
 import { createRequestId } from "../../app/requestId";
 import { useSuccessToast } from "../../app/SuccessToast";
+import { ChildAssignmentPicker } from "../today/ChildAssignmentPicker";
 import type { GoodBehavioursActionResult } from "./goodBehavioursRoute";
 
 type BehaviourFetcher = ReturnType<
@@ -19,7 +23,9 @@ export function GoodBehavioursPanel({
   const fetcher = useFetcher<GoodBehavioursActionResult>();
   const { showSuccess } = useSuccessToast();
   const types = fetcher.data?.types ?? [];
-  const message = fetcher.data?.error ? undefined : fetcher.data?.message;
+  const message = fetcher.data?.error
+    ? undefined
+    : (fetcher.data?.message ?? loggedMessage(fetcher.data?.logged, children));
 
   useEffect(() => {
     if (fetcher.state === "idle" && message) {
@@ -98,6 +104,22 @@ export function GoodBehavioursPanel({
   );
 }
 
+function loggedMessage(
+  logged: LoggedGoodBehaviour | undefined,
+  children: HouseholdMember[],
+): string | undefined {
+  if (!logged) {
+    return undefined;
+  }
+
+  const names = children
+    .filter((child) => logged.childIds.includes(child.id))
+    .map((child) => child.displayName);
+  const who = names.length > 0 ? ` for ${names.join(" and ")}` : "";
+  const each = logged.childIds.length > 1 ? " each" : "";
+  return `Logged ${logged.typeName}${who}: +${logged.points} points${each}.`;
+}
+
 function safeRequestId(): string | null {
   try {
     return createRequestId();
@@ -146,16 +168,7 @@ function LogBehaviourForm({
     >
       <input type="hidden" name="intent" value="logBehaviour" />
       <input type="hidden" name="requestId" value={requestId ?? ""} />
-      <div className="form-group">
-        <label htmlFor="behaviour-child">Child</label>
-        <select id="behaviour-child" name="childId" required>
-          {childMembers.map((child) => (
-            <option key={child.id} value={child.id}>
-              {child.displayName}
-            </option>
-          ))}
-        </select>
-      </div>
+      <ChildAssignmentPicker children={childMembers} legend="Log for" />
       <div className="form-group">
         <label htmlFor="behaviour-type">Good behaviour</label>
         <select

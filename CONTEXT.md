@@ -60,7 +60,9 @@ The process by which an Adult verifies that a Child has completed a Job before p
 ### Good Behaviour
 A positive action observed and logged by an Adult that earns points for a Child
 immediately. Points default to the type's points and can be changed when
-logging. Only Adults can log; Children see the result in their points history.
+logging. An Adult may log the same behaviour for several children in one action;
+this creates one independent Good Behaviour (and points award) per child. Only
+Adults can log; Children see the result in their points history.
 
 #### Characteristics
 - ID (GUID)  

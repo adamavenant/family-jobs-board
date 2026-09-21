@@ -17,7 +17,7 @@ public sealed record SaveGoodBehaviourTypeRequest(
 public sealed record LogGoodBehaviourRequest(
     Guid RequestId,
     Guid TypeId,
-    Guid ChildId,
+    IReadOnlyList<Guid>? ChildIds,
     int? Points);
 
 public sealed record GoodBehaviourResponse(
@@ -30,6 +30,9 @@ public sealed record GoodBehaviourResponse(
     int Points,
     DateTimeOffset LoggedAtUtc);
 
-public sealed record LogGoodBehaviourResponse(
+public sealed record GoodBehaviourAwardResponse(
     GoodBehaviourResponse Behaviour,
     int PointsBalance);
+
+public sealed record LogGoodBehaviourResponse(
+    IReadOnlyList<GoodBehaviourAwardResponse> Awards);

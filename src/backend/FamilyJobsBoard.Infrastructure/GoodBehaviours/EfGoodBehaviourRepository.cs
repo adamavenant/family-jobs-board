@@ -40,43 +40,53 @@ public sealed class EfGoodBehaviourRepository : IGoodBehaviourRepository
         await _database.GoodBehaviourTypes.AddAsync(type, cancellationToken);
     }
 
-    public Task<HouseholdMember?> GetActiveChildAsync(
-        Guid childId,
+    public async Task<IReadOnlyList<HouseholdMember>> GetActiveChildrenAsync(
+        IReadOnlyCollection<Guid> childIds,
         CancellationToken cancellationToken)
     {
-        return _database.HouseholdMembers
+        return await _database.HouseholdMembers
             .AsNoTracking()
-            .SingleOrDefaultAsync(
-                member => member.Id == childId
-                    && member.IsActive
-                    && member.Role == HouseholdRole.Child,
-                cancellationToken);
+            .Where(member => childIds.Contains(member.Id)
+                && member.IsActive
+                && member.Role == HouseholdRole.Child)
+            .OrderBy(member => member.FirstName)
+            .ThenBy(member => member.Id)
+            .ToListAsync(cancellationToken);
     }
 
-    public Task<GoodBehaviour?> GetBehaviourByRequestAsync(
+    public async Task<IReadOnlyList<GoodBehaviour>> GetBehavioursByRequestAsync(
         Guid requestId,
         CancellationToken cancellationToken)
     {
-        return _database.GoodBehaviours
+        return await _database.GoodBehaviours
             .AsNoTracking()
-            .SingleOrDefaultAsync(behaviour => behaviour.RequestId == requestId, cancellationToken);
+            .Where(behaviour => behaviour.RequestId == requestId)
+            .OrderBy(behaviour => behaviour.ChildId)
+            .ToListAsync(cancellationToken);
     }
 
-    public async Task AddBehaviourAsync(
-        GoodBehaviour behaviour,
-        PointsLedgerEntry award,
+    public async Task AddBehavioursAsync(
+        IReadOnlyCollection<(GoodBehaviour Behaviour, PointsLedgerEntry Award)> entries,
         CancellationToken cancellationToken)
     {
-        await _database.GoodBehaviours.AddAsync(behaviour, cancellationToken);
-        await _database.PointsLedgerEntries.AddAsync(award, cancellationToken);
+        await _database.GoodBehaviours.AddRangeAsync(
+            entries.Select(entry => entry.Behaviour),
+            cancellationToken);
+        await _database.PointsLedgerEntries.AddRangeAsync(
+            entries.Select(entry => entry.Award),
+            cancellationToken);
     }
 
-    public Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyDictionary<Guid, int>> GetPointsBalancesAsync(
+        IReadOnlyCollection<Guid> childIds,
+        CancellationToken cancellationToken)
     {
-        return _database.PointsLedgerEntries
+        return await _database.PointsLedgerEntries
             .AsNoTracking()
-            .Where(entry => entry.ChildId == childId)
-            .SumAsync(entry => entry.Amount, cancellationToken);
+            .Where(entry => childIds.Contains(entry.ChildId))
+            .GroupBy(entry => entry.ChildId)
+            .Select(group => new { ChildId = group.Key, Balance = group.Sum(entry => entry.Amount) })
+            .ToDictionaryAsync(item => item.ChildId, item => item.Balance, cancellationToken);
     }
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
@@ -89,7 +99,7 @@ public sealed class EfGoodBehaviourRepository : IGoodBehaviourRepository
             when (exception.InnerException is PostgresException
             {
                 SqlState: PostgresErrorCodes.UniqueViolation,
-                ConstraintName: GoodBehaviourConfiguration.RequestIdIndexName,
+                ConstraintName: GoodBehaviourConfiguration.RequestChildIndexName,
             })
         {
             // The failed insert leaves the new entities tracked; detach them so the caller

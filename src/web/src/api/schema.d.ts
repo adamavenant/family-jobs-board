@@ -431,8 +431,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Log a good behaviour for a child and award its points.
-         * @description Adult-only. Creates the behaviour and its points ledger entry in one transaction. Points default to the type's points. Repeating a request ID with the same details returns the original result without a second award; reusing it for different details returns 409.
+         * Log a good behaviour for one or more children and award its points.
+         * @description Adult-only. Creates an independent behaviour and points ledger entry for each selected child, all in one transaction. Points default to the type's points and apply to each child. Repeating a request ID with the same details returns the original result without a second award; reusing it for different details returns 409.
          */
         post: operations["LogGoodBehaviour"];
         delete?: never;
@@ -553,6 +553,11 @@ export interface components {
             isCredentialReady: boolean;
             isActive: boolean;
         };
+        GoodBehaviourAwardResponse: {
+            behaviour: components["schemas"]["GoodBehaviourResponse"];
+            /** Format: int32 */
+            pointsBalance: number | string;
+        };
         GoodBehaviourResponse: {
             /** Format: uuid */
             id: string;
@@ -633,15 +638,12 @@ export interface components {
             requestId: string;
             /** Format: uuid */
             typeId: string;
-            /** Format: uuid */
-            childId: string;
+            childIds: null | string[];
             /** Format: int32 */
             points: null | number | string;
         };
         LogGoodBehaviourResponse: {
-            behaviour: components["schemas"]["GoodBehaviourResponse"];
-            /** Format: int32 */
-            pointsBalance: number | string;
+            awards: components["schemas"]["GoodBehaviourAwardResponse"][];
         };
         MemberResponse: {
             /** Format: uuid */

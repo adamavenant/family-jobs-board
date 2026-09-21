@@ -42,9 +42,9 @@ internal static class GoodBehaviourEndpoints
         group.MapPost("/good-behaviours", LogAsync)
             .RequireAuthorization("Adult")
             .WithName("LogGoodBehaviour")
-            .WithSummary("Log a good behaviour for a child and award its points.")
+            .WithSummary("Log a good behaviour for one or more children and award its points.")
             .WithDescription(
-                "Adult-only. Creates the behaviour and its points ledger entry in one transaction. Points default to the type's points. Repeating a request ID with the same details returns the original result without a second award; reusing it for different details returns 409.");
+                "Adult-only. Creates an independent behaviour and points ledger entry for each selected child, all in one transaction. Points default to the type's points and apply to each child. Repeating a request ID with the same details returns the original result without a second award; reusing it for different details returns 409.");
 
         return endpoints;
     }
@@ -160,14 +160,17 @@ internal static class GoodBehaviourEndpoints
                     request.RequestId,
                     IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
                     request.TypeId,
-                    request.ChildId,
+                    request.ChildIds,
                     request.Points),
                 cancellationToken);
             var response = new LogGoodBehaviourResponse(
-                MapBehaviour(result.Behaviour),
-                result.PointsBalance);
+                result.Awards
+                    .Select(award => new GoodBehaviourAwardResponse(
+                        MapBehaviour(award.Behaviour),
+                        award.PointsBalance))
+                    .ToArray());
             return result.WasCreated
-                ? TypedResults.Created($"/api/good-behaviours/{result.Behaviour.Id}", response)
+                ? TypedResults.Created($"/api/good-behaviours/{request.RequestId}", response)
                 : TypedResults.Ok(response);
         }
         catch (InvalidGoodBehaviourException exception)

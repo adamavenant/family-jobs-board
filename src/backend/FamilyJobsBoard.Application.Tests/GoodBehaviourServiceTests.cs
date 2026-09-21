@@ -15,6 +15,11 @@ public sealed class GoodBehaviourServiceTests
         "Fredster",
         "Avenant",
         HouseholdRole.Child);
+    private static readonly HouseholdMember SecondChild = new(
+        Guid.Parse("3fdb1469-df09-420e-8eeb-330717c710fe"),
+        "Harrie",
+        "Avenant",
+        HouseholdRole.Child);
 
     [Fact]
     public async Task Creating_a_type_makes_it_available_and_records_the_adult()
@@ -77,10 +82,11 @@ public sealed class GoodBehaviourServiceTests
             CancellationToken.None);
 
         Assert.True(result.WasCreated);
-        Assert.Equal(10, result.Behaviour.Points);
-        Assert.Equal(10, result.PointsBalance);
+        var logged = Assert.Single(result.Awards);
+        Assert.Equal(10, logged.Behaviour.Points);
+        Assert.Equal(10, logged.PointsBalance);
         var award = Assert.Single(repository.Awards);
-        Assert.Equal(result.Behaviour.Id, award.GoodBehaviourId);
+        Assert.Equal(logged.Behaviour.Id, award.GoodBehaviourId);
         Assert.Equal(10, award.Amount);
         Assert.Equal(1, repository.SaveCount);
     }
@@ -96,7 +102,7 @@ public sealed class GoodBehaviourServiceTests
             Request(type.Id, points: 3),
             CancellationToken.None);
 
-        Assert.Equal(3, result.Behaviour.Points);
+        Assert.Equal(3, Assert.Single(result.Awards).Behaviour.Points);
         Assert.Equal(3, Assert.Single(repository.Awards).Amount);
     }
 
@@ -113,9 +119,9 @@ public sealed class GoodBehaviourServiceTests
 
         Assert.True(first.WasCreated);
         Assert.False(retry.WasCreated);
-        Assert.Equal(first.Behaviour.Id, retry.Behaviour.Id);
+        Assert.Equal(first.Awards[0].Behaviour.Id, retry.Awards[0].Behaviour.Id);
         Assert.Single(repository.Awards);
-        Assert.Equal(10, retry.PointsBalance);
+        Assert.Equal(10, retry.Awards[0].PointsBalance);
     }
 
     [Fact]
@@ -135,9 +141,9 @@ public sealed class GoodBehaviourServiceTests
         await service.DeleteTypeAsync(AdultId, type.Id, CancellationToken.None);
         var retry = await service.LogAsync(request, CancellationToken.None);
 
-        Assert.Equal(first.Behaviour.Id, retry.Behaviour.Id);
-        Assert.Equal("Being Brave", retry.Behaviour.TypeName);
-        Assert.Equal(10, retry.Behaviour.Points);
+        Assert.Equal(first.Awards[0].Behaviour.Id, retry.Awards[0].Behaviour.Id);
+        Assert.Equal("Being Brave", retry.Awards[0].Behaviour.TypeName);
+        Assert.Equal(10, retry.Awards[0].Behaviour.Points);
         Assert.Single(repository.Awards);
     }
 
@@ -154,6 +160,10 @@ public sealed class GoodBehaviourServiceTests
             service.LogAsync(request with { Points = 6 }, CancellationToken.None));
         await Assert.ThrowsAsync<GoodBehaviourRequestConflictException>(() =>
             service.LogAsync(request with { LoggedByMemberId = Guid.NewGuid() }, CancellationToken.None));
+        await Assert.ThrowsAsync<GoodBehaviourRequestConflictException>(() =>
+            service.LogAsync(
+                request with { ChildIds = [Child.Id, SecondChild.Id] },
+                CancellationToken.None));
         Assert.Single(repository.Awards);
     }
 
@@ -193,12 +203,91 @@ public sealed class GoodBehaviourServiceTests
             service.LogAsync(Request(deleted.Id, null), CancellationToken.None));
         var noChild = await Assert.ThrowsAsync<InvalidGoodBehaviourException>(() =>
             service.LogAsync(
-                Request(deleted.Id, null) with { ChildId = Guid.NewGuid() },
+                Request(deleted.Id, null) with { ChildIds = [Guid.NewGuid()] },
                 CancellationToken.None));
 
         Assert.Contains("TypeId", missingType.Errors.Keys);
         Assert.Contains("TypeId", deletedType.Errors.Keys);
-        Assert.Contains("ChildId", noChild.Errors.Keys);
+        Assert.Contains("ChildIds", noChild.Errors.Keys);
+        Assert.Empty(repository.Awards);
+    }
+
+    [Fact]
+    public async Task Logging_for_both_children_creates_an_independent_award_for_each()
+    {
+        var repository = new FakeRepository();
+        var type = repository.AddType(points: 10);
+        var service = new GoodBehaviourService(repository, new FixedClock());
+
+        var result = await service.LogAsync(
+            Request(type.Id, points: 4) with { ChildIds = [Child.Id, SecondChild.Id] },
+            CancellationToken.None);
+
+        Assert.True(result.WasCreated);
+        Assert.Equal(2, result.Awards.Count);
+        Assert.Equal(2, result.Awards.Select(item => item.Behaviour.Id).Distinct().Count());
+        Assert.Equal(
+            new[] { Child.Id, SecondChild.Id }.Order(),
+            result.Awards.Select(item => item.Behaviour.ChildId).Order());
+        Assert.All(result.Awards, item =>
+        {
+            Assert.Equal(4, item.Behaviour.Points);
+            Assert.Equal(4, item.PointsBalance);
+        });
+        Assert.Equal(2, repository.Awards.Count);
+        Assert.Equal(1, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Retrying_a_multi_child_request_awards_each_child_once_in_any_order()
+    {
+        var repository = new FakeRepository();
+        var type = repository.AddType(points: 10);
+        var service = new GoodBehaviourService(repository, new FixedClock());
+        var request = Request(type.Id, null) with { ChildIds = [Child.Id, SecondChild.Id] };
+        await service.LogAsync(request, CancellationToken.None);
+
+        var retry = await service.LogAsync(
+            request with { ChildIds = [SecondChild.Id, Child.Id] },
+            CancellationToken.None);
+
+        Assert.False(retry.WasCreated);
+        Assert.Equal(2, retry.Awards.Count);
+        Assert.Equal(2, repository.Awards.Count);
+    }
+
+    [Fact]
+    public async Task One_invalid_child_rejects_the_whole_request_without_any_award()
+    {
+        var repository = new FakeRepository();
+        var type = repository.AddType();
+        var service = new GoodBehaviourService(repository, new FixedClock());
+
+        var exception = await Assert.ThrowsAsync<InvalidGoodBehaviourException>(() =>
+            service.LogAsync(
+                Request(type.Id, null) with { ChildIds = [Child.Id, Guid.NewGuid()] },
+                CancellationToken.None));
+
+        Assert.Contains("ChildIds", exception.Errors.Keys);
+        Assert.Empty(repository.Awards);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public async Task Logging_needs_one_or_more_distinct_children(int duplicates)
+    {
+        var repository = new FakeRepository();
+        var type = repository.AddType();
+        var service = new GoodBehaviourService(repository, new FixedClock());
+        IReadOnlyList<Guid> childIds = duplicates == 0 ? [] : [Child.Id, Child.Id];
+
+        var exception = await Assert.ThrowsAsync<InvalidGoodBehaviourException>(() =>
+            service.LogAsync(
+                Request(type.Id, null) with { ChildIds = childIds },
+                CancellationToken.None));
+
+        Assert.Contains("ChildIds", exception.Errors.Keys);
         Assert.Empty(repository.Awards);
     }
 
@@ -221,7 +310,7 @@ public sealed class GoodBehaviourServiceTests
     }
 
     private static LogGoodBehaviour Request(Guid typeId, int? points) =>
-        new(Guid.NewGuid(), AdultId, typeId, Child.Id, points);
+        new(Guid.NewGuid(), AdultId, typeId, [Child.Id], points);
 
     private sealed class FixedClock : IHouseholdClock
     {
@@ -264,27 +353,33 @@ public sealed class GoodBehaviourServiceTests
             return Task.CompletedTask;
         }
 
-        public Task<HouseholdMember?> GetActiveChildAsync(
-            Guid childId,
+        public Task<IReadOnlyList<HouseholdMember>> GetActiveChildrenAsync(
+            IReadOnlyCollection<Guid> childIds,
             CancellationToken cancellationToken) =>
-            Task.FromResult<HouseholdMember?>(childId == Child.Id ? Child : null);
+            Task.FromResult<IReadOnlyList<HouseholdMember>>(
+                new[] { Child, SecondChild }.Where(child => childIds.Contains(child.Id)).ToArray());
 
-        public Task<GoodBehaviour?> GetBehaviourByRequestAsync(
+        public Task<IReadOnlyList<GoodBehaviour>> GetBehavioursByRequestAsync(
             Guid requestId,
             CancellationToken cancellationToken) =>
-            Task.FromResult(Behaviours.SingleOrDefault(item => item.RequestId == requestId));
+            Task.FromResult<IReadOnlyList<GoodBehaviour>>(
+                Behaviours.Where(item => item.RequestId == requestId).ToArray());
 
-        public Task AddBehaviourAsync(
-            GoodBehaviour behaviour,
-            PointsLedgerEntry award,
+        public Task AddBehavioursAsync(
+            IReadOnlyCollection<(GoodBehaviour Behaviour, PointsLedgerEntry Award)> entries,
             CancellationToken cancellationToken)
         {
-            _pending = (behaviour, award);
+            _pending = entries.ToArray();
             return Task.CompletedTask;
         }
 
-        public Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken) =>
-            Task.FromResult(Awards.Where(entry => entry.ChildId == childId).Sum(entry => entry.Amount));
+        public Task<IReadOnlyDictionary<Guid, int>> GetPointsBalancesAsync(
+            IReadOnlyCollection<Guid> childIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, int>>(
+                Awards.Where(entry => childIds.Contains(entry.ChildId))
+                    .GroupBy(entry => entry.ChildId)
+                    .ToDictionary(group => group.Key, group => group.Sum(entry => entry.Amount)));
 
         public Task SaveChangesAsync(CancellationToken cancellationToken)
         {
@@ -298,14 +393,14 @@ public sealed class GoodBehaviourServiceTests
                     throw new DuplicateGoodBehaviourRequestException();
                 }
 
-                Behaviours.Add(pending.Behaviour);
-                Awards.Add(pending.Award);
+                Behaviours.AddRange(pending.Select(entry => entry.Behaviour));
+                Awards.AddRange(pending.Select(entry => entry.Award));
             }
 
             SaveCount++;
             return Task.CompletedTask;
         }
 
-        private (GoodBehaviour Behaviour, PointsLedgerEntry Award)? _pending;
+        private (GoodBehaviour Behaviour, PointsLedgerEntry Award)[]? _pending;
     }
 }

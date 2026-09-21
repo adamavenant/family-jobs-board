@@ -69,7 +69,7 @@ public sealed class GoodBehaviourEndpointsTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var logged = await response.Content.ReadFromJsonAsync<LogResponse>();
         Assert.NotNull(logged);
-        Assert.Equal(12, logged.PointsBalance);
+        Assert.Equal(12, Assert.Single(logged.Awards).PointsBalance);
 
         var board = await GetTodayAsync(DemoDataIds.Fredster);
         Assert.Equal(12, board.PointsBalance);
@@ -116,8 +116,10 @@ public sealed class GoodBehaviourEndpointsTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
         var firstBody = await first.Content.ReadFromJsonAsync<LogResponse>();
         var retryBody = await retry.Content.ReadFromJsonAsync<LogResponse>();
-        Assert.Equal(firstBody!.Behaviour.Id, retryBody!.Behaviour.Id);
-        Assert.Equal(10, retryBody.PointsBalance);
+        Assert.Equal(
+            Assert.Single(firstBody!.Awards).Behaviour.Id,
+            Assert.Single(retryBody!.Awards).Behaviour.Id);
+        Assert.Equal(10, retryBody.Awards[0].PointsBalance);
         Assert.Equal(1, await CountLedgerEntriesAsync(DemoDataIds.Harrie));
     }
 
@@ -155,6 +157,99 @@ public sealed class GoodBehaviourEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Logging_for_both_children_awards_each_child_independently()
+    {
+        using var response = await LogForAsync(
+            DemoDataIds.BeingBrave,
+            [DemoDataIds.Fredster, DemoDataIds.Harrie],
+            points: 7);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var logged = await response.Content.ReadFromJsonAsync<LogResponse>();
+        Assert.Equal(2, logged!.Awards.Count);
+        Assert.All(logged.Awards, award => Assert.Equal(7, award.PointsBalance));
+        Assert.Equal(
+            new[] { DemoDataIds.Fredster, DemoDataIds.Harrie }.Order(),
+            logged.Awards.Select(award => award.Behaviour.ChildId).Order());
+        Assert.Equal(1, await CountLedgerEntriesAsync(DemoDataIds.Fredster));
+        Assert.Equal(1, await CountLedgerEntriesAsync(DemoDataIds.Harrie));
+        foreach (var child in new[] { DemoDataIds.Fredster, DemoDataIds.Harrie })
+        {
+            var board = await GetTodayAsync(child);
+            Assert.Equal(7, board.PointsBalance);
+            Assert.Equal("goodBehaviour", Assert.Single(board.PointEarnings).Source);
+        }
+    }
+
+    [Fact]
+    public async Task Retrying_a_two_child_request_awards_each_child_once()
+    {
+        var requestId = Guid.NewGuid();
+        Guid[] children = [DemoDataIds.Fredster, DemoDataIds.Harrie];
+
+        using var first = await LogForAsync(DemoDataIds.BeingHelpful, children, null, requestId);
+        using var retry = await LogForAsync(
+            DemoDataIds.BeingHelpful,
+            [DemoDataIds.Harrie, DemoDataIds.Fredster],
+            null,
+            requestId);
+        var concurrent = await Task.WhenAll(Enumerable.Range(0, 4).Select(async _ =>
+        {
+            using var response = await LogForAsync(
+                DemoDataIds.BeingHelpful,
+                children,
+                null,
+                requestId);
+            return response.StatusCode;
+        }));
+
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        Assert.All(concurrent, status => Assert.Equal(HttpStatusCode.OK, status));
+        Assert.Equal(1, await CountLedgerEntriesAsync(DemoDataIds.Fredster));
+        Assert.Equal(1, await CountLedgerEntriesAsync(DemoDataIds.Harrie));
+    }
+
+    [Fact]
+    public async Task Changing_the_children_for_a_used_request_id_is_rejected()
+    {
+        var requestId = Guid.NewGuid();
+        using var first = await LogAsync(DemoDataIds.BeingBrave, DemoDataIds.Fredster, null, requestId);
+
+        using var wider = await LogForAsync(
+            DemoDataIds.BeingBrave,
+            [DemoDataIds.Fredster, DemoDataIds.Harrie],
+            null,
+            requestId);
+
+        Assert.Equal(HttpStatusCode.Conflict, wider.StatusCode);
+        Assert.Equal(0, await CountLedgerEntriesAsync(DemoDataIds.Harrie));
+    }
+
+    [Fact]
+    public async Task One_invalid_child_rejects_the_whole_request_and_awards_nobody()
+    {
+        using var withAdult = await LogForAsync(
+            DemoDataIds.BeingBrave,
+            [DemoDataIds.Fredster, DemoDataIds.Hellie],
+            null);
+        using var withUnknown = await LogForAsync(
+            DemoDataIds.BeingBrave,
+            [DemoDataIds.Fredster, Guid.NewGuid()],
+            null);
+        using var none = await LogForAsync(DemoDataIds.BeingBrave, [], null);
+        using var duplicate = await LogForAsync(
+            DemoDataIds.BeingBrave,
+            [DemoDataIds.Fredster, DemoDataIds.Fredster],
+            null);
+
+        Assert.All(
+            new[] { withAdult, withUnknown, none, duplicate },
+            response => Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode));
+        Assert.Equal(0, await CountLedgerEntriesAsync(DemoDataIds.Fredster));
+    }
+
+    [Fact]
     public async Task Children_cannot_create_edit_delete_types_or_log_behaviours()
     {
         var typeBody = new { name = "Sneaky", description = "", points = 100 };
@@ -162,7 +257,7 @@ public sealed class GoodBehaviourEndpointsTests : IAsyncLifetime
         {
             requestId = Guid.NewGuid(),
             typeId = DemoDataIds.BeingBrave,
-            childId = DemoDataIds.Fredster,
+            childIds = new[] { DemoDataIds.Fredster },
             points = (int?)null,
         };
 
@@ -347,13 +442,20 @@ public sealed class GoodBehaviourEndpointsTests : IAsyncLifetime
         Guid typeId,
         Guid childId,
         int? points,
+        Guid? requestId = null) =>
+        LogForAsync(typeId, [childId], points, requestId);
+
+    private Task<HttpResponseMessage> LogForAsync(
+        Guid typeId,
+        Guid[] childIds,
+        int? points,
         Guid? requestId = null)
     {
         return SendAsync(
             HttpMethod.Post,
             "/api/good-behaviours",
             DemoDataIds.Addie,
-            new { requestId = requestId ?? Guid.NewGuid(), typeId, childId, points });
+            new { requestId = requestId ?? Guid.NewGuid(), typeId, childIds, points });
     }
 
     private Task<HttpResponseMessage> SendAsync(
@@ -376,9 +478,16 @@ public sealed class GoodBehaviourEndpointsTests : IAsyncLifetime
 
     private sealed record TypesResponse(IReadOnlyList<TypeResponse> Types);
 
-    private sealed record BehaviourResponse(Guid Id, Guid TypeId, string TypeName, int Points);
+    private sealed record BehaviourResponse(
+        Guid Id,
+        Guid TypeId,
+        string TypeName,
+        Guid ChildId,
+        int Points);
 
-    private sealed record LogResponse(BehaviourResponse Behaviour, int PointsBalance);
+    private sealed record AwardResponse(BehaviourResponse Behaviour, int PointsBalance);
+
+    private sealed record LogResponse(IReadOnlyList<AwardResponse> Awards);
 
     private sealed record EarningResponse(
         Guid Id,
