@@ -26,7 +26,8 @@ Delivered scope includes pending state, adult controls on the daily board,
 approve/reject decisions, optional rejection feedback, one job-sourced ledger
 award per approval, balance calculation, and child earning history. A separate
 queue, reviewer identity, approval reason, point override, redemptions,
-adjustments, and non-job ledger categories are not implemented.
+and adjustments are not implemented. Good-behaviour awards were added to the
+same ledger in Phase 5; see `050-good-behaviours.md`.
 
 ## Domain rules and state
 

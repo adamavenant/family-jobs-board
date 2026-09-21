@@ -12,6 +12,21 @@ public sealed class PointsLedgerEntry
         Guid jobId,
         int amount,
         DateTimeOffset awardedAtUtc)
+        : this(id, childId, amount, awardedAtUtc)
+    {
+        if (jobId == Guid.Empty)
+        {
+            throw new ArgumentException("A points award needs a source job.", nameof(jobId));
+        }
+
+        JobId = jobId;
+    }
+
+    private PointsLedgerEntry(
+        Guid id,
+        Guid childId,
+        int amount,
+        DateTimeOffset awardedAtUtc)
     {
         if (id == Guid.Empty)
         {
@@ -23,11 +38,6 @@ public sealed class PointsLedgerEntry
             throw new ArgumentException("A points award needs a child.", nameof(childId));
         }
 
-        if (jobId == Guid.Empty)
-        {
-            throw new ArgumentException("A points award needs a source job.", nameof(jobId));
-        }
-
         if (amount < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(amount), "Awarded points cannot be negative.");
@@ -35,7 +45,6 @@ public sealed class PointsLedgerEntry
 
         Id = id;
         ChildId = childId;
-        JobId = jobId;
         Amount = amount;
         AwardedAtUtc = awardedAtUtc.ToUniversalTime();
     }
@@ -44,9 +53,31 @@ public sealed class PointsLedgerEntry
 
     public Guid ChildId { get; private set; }
 
-    public Guid JobId { get; private set; }
+    public Guid? JobId { get; private set; }
+
+    public Guid? GoodBehaviourId { get; private set; }
 
     public int Amount { get; private set; }
 
     public DateTimeOffset AwardedAtUtc { get; private set; }
+
+    public static PointsLedgerEntry ForGoodBehaviour(
+        Guid id,
+        Guid childId,
+        Guid goodBehaviourId,
+        int amount,
+        DateTimeOffset awardedAtUtc)
+    {
+        if (goodBehaviourId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "A points award needs a source good behaviour.",
+                nameof(goodBehaviourId));
+        }
+
+        return new PointsLedgerEntry(id, childId, amount, awardedAtUtc)
+        {
+            GoodBehaviourId = goodBehaviourId,
+        };
+    }
 }

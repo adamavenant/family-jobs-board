@@ -1262,6 +1262,55 @@ h1 {
   color: var(--muted);
   font-size: 0.9rem;
 }
+.earning-list__source {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+.good-behaviours__note {
+  margin: 16px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.good-behaviours h3 {
+  margin: 0 0 12px;
+}
+.good-behaviours .family-member-form {
+  margin-top: 16px;
+}
+.good-behaviour-description,
+.good-behaviours .family-member-form .form-group:last-of-type {
+  grid-column: 1 / -1;
+}
+.good-behaviour-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.good-behaviour-list > li {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto;
+  gap: 12px 16px;
+  align-items: center;
+  padding: 14px;
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.good-behaviour-list > li > details,
+.good-behaviour-list > li > button,
+.good-behaviour-list > li > .deactivate-confirmation {
+  grid-column: 1 / -1;
+}
+.good-behaviour-list__points {
+  padding: 5px 10px;
+  color: var(--approved-text);
+  background: var(--approved-bg);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
 .error-message {
   margin-top: -16px !important;
   padding: 10px 12px;

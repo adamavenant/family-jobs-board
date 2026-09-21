@@ -1158,6 +1158,262 @@
           }
         ]
       }
+    },
+    "/api/good-behaviour-types": {
+      "get": {
+        "tags": [
+          "Good behaviours"
+        ],
+        "summary": "List the good behaviour types adults can log.",
+        "description": "Returns active types with the points each usually earns. Any signed-in family member may read this list; the amount awarded for a logged behaviour can differ.",
+        "operationId": "ListGoodBehaviourTypes",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoodBehaviourTypesResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Good behaviours"
+        ],
+        "summary": "Create a good behaviour type.",
+        "description": "Adult-only. The type is immediately available to log for any active child.",
+        "operationId": "CreateGoodBehaviourType",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveGoodBehaviourTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoodBehaviourTypeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/good-behaviour-types/{id}": {
+      "put": {
+        "tags": [
+          "Good behaviours"
+        ],
+        "summary": "Edit a good behaviour type.",
+        "description": "Adult-only. Previously logged behaviours keep the name, description, and points they were logged with. Returns 409 for a deleted type.",
+        "operationId": "UpdateGoodBehaviourType",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveGoodBehaviourTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoodBehaviourTypeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Good behaviours"
+        ],
+        "summary": "Delete a good behaviour type.",
+        "description": "Adult-only soft delete: the type can no longer be logged, and history is unchanged. Repeating the request succeeds.",
+        "operationId": "DeleteGoodBehaviourType",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/good-behaviours": {
+      "post": {
+        "tags": [
+          "Good behaviours"
+        ],
+        "summary": "Log a good behaviour for one or more children and award its points.",
+        "description": "Adult-only. Creates an independent behaviour and points ledger entry for each selected child, all in one transaction. Points default to the type's points and apply to each child. Repeating a request ID with the same details returns the original result without a second award; reusing it for different details returns 409.",
+        "operationId": "LogGoodBehaviour",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogGoodBehaviourRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogGoodBehaviourResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogGoodBehaviourResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1671,6 +1927,118 @@
           }
         }
       },
+      "GoodBehaviourAwardResponse": {
+        "required": [
+          "behaviour",
+          "pointsBalance"
+        ],
+        "type": "object",
+        "properties": {
+          "behaviour": {
+            "$ref": "#/components/schemas/GoodBehaviourResponse"
+          },
+          "pointsBalance": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "GoodBehaviourResponse": {
+        "required": [
+          "id",
+          "typeId",
+          "typeName",
+          "typeDescription",
+          "childId",
+          "loggedByMemberId",
+          "points",
+          "loggedAtUtc"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "typeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "typeName": {
+            "type": "string"
+          },
+          "typeDescription": {
+            "type": "string"
+          },
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "loggedByMemberId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "points": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "loggedAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "GoodBehaviourTypeResponse": {
+        "required": [
+          "id",
+          "name",
+          "description",
+          "points"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "points": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "GoodBehaviourTypesResponse": {
+        "required": [
+          "types"
+        ],
+        "type": "object",
+        "properties": {
+          "types": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GoodBehaviourTypeResponse"
+            }
+          }
+        }
+      },
       "HttpValidationProblemDetails": {
         "type": "object",
         "properties": {
@@ -1863,6 +2231,58 @@
           }
         }
       },
+      "LogGoodBehaviourRequest": {
+        "required": [
+          "requestId",
+          "typeId",
+          "childIds",
+          "points"
+        ],
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "typeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "points": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "LogGoodBehaviourResponse": {
+        "required": [
+          "awards"
+        ],
+        "type": "object",
+        "properties": {
+          "awards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GoodBehaviourAwardResponse"
+            }
+          }
+        }
+      },
       "MemberResponse": {
         "required": [
           "id",
@@ -1921,10 +2341,12 @@
       "PointEarningResponse": {
         "required": [
           "id",
+          "source",
+          "name",
           "jobId",
-          "jobName",
           "points",
-          "awardedAtUtc"
+          "awardedAtUtc",
+          "loggedByDisplayName"
         ],
         "type": "object",
         "properties": {
@@ -1932,12 +2354,18 @@
             "type": "string",
             "format": "uuid"
           },
-          "jobId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "jobName": {
+          "source": {
             "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "jobId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           },
           "points": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1950,6 +2378,12 @@
           "awardedAtUtc": {
             "type": "string",
             "format": "date-time"
+          },
+          "loggedByDisplayName": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2108,6 +2542,36 @@
             "format": "int32"
           },
           "deletedPointsEntryCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "SaveGoodBehaviourTypeRequest": {
+        "required": [
+          "name",
+          "description",
+          "points"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "points": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
@@ -2314,6 +2778,9 @@
     },
     {
       "name": "Today"
+    },
+    {
+      "name": "Good behaviours"
     }
   ]
 }

@@ -101,7 +101,9 @@ public sealed record JobApprovalResponse(JobResponse Job, int PointsBalance);
 
 public sealed record PointEarningResponse(
     Guid Id,
-    Guid JobId,
-    string JobName,
+    string Source,
+    string Name,
+    Guid? JobId,
     int Points,
-    DateTimeOffset AwardedAtUtc);
+    DateTimeOffset AwardedAtUtc,
+    string? LoggedByDisplayName);

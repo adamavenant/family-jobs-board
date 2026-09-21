@@ -373,6 +373,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/good-behaviour-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the good behaviour types adults can log.
+         * @description Returns active types with the points each usually earns. Any signed-in family member may read this list; the amount awarded for a logged behaviour can differ.
+         */
+        get: operations["ListGoodBehaviourTypes"];
+        put?: never;
+        /**
+         * Create a good behaviour type.
+         * @description Adult-only. The type is immediately available to log for any active child.
+         */
+        post: operations["CreateGoodBehaviourType"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/good-behaviour-types/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Edit a good behaviour type.
+         * @description Adult-only. Previously logged behaviours keep the name, description, and points they were logged with. Returns 409 for a deleted type.
+         */
+        put: operations["UpdateGoodBehaviourType"];
+        post?: never;
+        /**
+         * Delete a good behaviour type.
+         * @description Adult-only soft delete: the type can no longer be logged, and history is unchanged. Repeating the request succeeds.
+         */
+        delete: operations["DeleteGoodBehaviourType"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/good-behaviours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log a good behaviour for one or more children and award its points.
+         * @description Adult-only. Creates an independent behaviour and points ledger entry for each selected child, all in one transaction. Points default to the type's points and apply to each child. Repeating a request ID with the same details returns the original result without a second award; reusing it for different details returns 409.
+         */
+        post: operations["LogGoodBehaviour"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -485,6 +553,38 @@ export interface components {
             isCredentialReady: boolean;
             isActive: boolean;
         };
+        GoodBehaviourAwardResponse: {
+            behaviour: components["schemas"]["GoodBehaviourResponse"];
+            /** Format: int32 */
+            pointsBalance: number | string;
+        };
+        GoodBehaviourResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            typeId: string;
+            typeName: string;
+            typeDescription: string;
+            /** Format: uuid */
+            childId: string;
+            /** Format: uuid */
+            loggedByMemberId: string;
+            /** Format: int32 */
+            points: number | string;
+            /** Format: date-time */
+            loggedAtUtc: string;
+        };
+        GoodBehaviourTypeResponse: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            /** Format: int32 */
+            points: number | string;
+        };
+        GoodBehaviourTypesResponse: {
+            types: components["schemas"]["GoodBehaviourTypeResponse"][];
+        };
         HttpValidationProblemDetails: {
             type?: null | string;
             title?: null | string;
@@ -533,6 +633,18 @@ export interface components {
             approvedAtUtc: null | string;
             latestRejection: null | components["schemas"]["JobRejectionResponse"];
         };
+        LogGoodBehaviourRequest: {
+            /** Format: uuid */
+            requestId: string;
+            /** Format: uuid */
+            typeId: string;
+            childIds: null | string[];
+            /** Format: int32 */
+            points: null | number | string;
+        };
+        LogGoodBehaviourResponse: {
+            awards: components["schemas"]["GoodBehaviourAwardResponse"][];
+        };
         MemberResponse: {
             /** Format: uuid */
             id: string;
@@ -551,13 +663,15 @@ export interface components {
         PointEarningResponse: {
             /** Format: uuid */
             id: string;
+            source: string;
+            name: string;
             /** Format: uuid */
-            jobId: string;
-            jobName: string;
+            jobId: null | string;
             /** Format: int32 */
             points: number | string;
             /** Format: date-time */
             awardedAtUtc: string;
+            loggedByDisplayName: null | string;
         };
         ProblemDetails: {
             type?: null | string;
@@ -599,6 +713,12 @@ export interface components {
             deletedReviewDecisionCount: number | string;
             /** Format: int32 */
             deletedPointsEntryCount: number | string;
+        };
+        SaveGoodBehaviourTypeRequest: {
+            name: null | string;
+            description: null | string;
+            /** Format: int32 */
+            points: number | string;
         };
         SetupPinRequest: {
             setupToken: null | string;
@@ -1476,6 +1596,192 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    ListGoodBehaviourTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoodBehaviourTypesResponse"];
+                };
+            };
+        };
+    };
+    CreateGoodBehaviourType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveGoodBehaviourTypeRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoodBehaviourTypeResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    UpdateGoodBehaviourType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveGoodBehaviourTypeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoodBehaviourTypeResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    DeleteGoodBehaviourType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    LogGoodBehaviour: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogGoodBehaviourRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogGoodBehaviourResponse"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogGoodBehaviourResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
             };
             /** @description Conflict */

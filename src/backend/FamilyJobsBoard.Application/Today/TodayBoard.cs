@@ -47,9 +47,17 @@ public sealed record TodayPointsSummary(
     int Balance,
     IReadOnlyList<TodayPointEarning> Earnings);
 
+public static class PointEarningSource
+{
+    public const string Job = "job";
+    public const string GoodBehaviour = "goodBehaviour";
+}
+
 public sealed record TodayPointEarning(
     Guid Id,
-    Guid JobId,
-    string JobName,
+    string Source,
+    string Name,
+    Guid? JobId,
     int Points,
-    DateTimeOffset AwardedAtUtc);
+    DateTimeOffset AwardedAtUtc,
+    string? LoggedByDisplayName);

@@ -49,10 +49,12 @@ export interface HouseholdMember {
 
 export interface PointEarning {
   id: string;
-  jobId: string;
-  jobName: string;
+  source: "job" | "goodBehaviour";
+  name: string;
+  jobId: string | null;
   points: number;
   awardedAtUtc: string;
+  loggedByDisplayName: string | null;
 }
 
 export interface JobApproval {
@@ -106,8 +108,13 @@ export async function getToday(
     pointsBalance:
       data.pointsBalance === null ? null : Number(data.pointsBalance),
     pointEarnings: data.pointEarnings.map((earning) => ({
-      ...earning,
+      id: earning.id,
+      source: earning.source === "goodBehaviour" ? "goodBehaviour" : "job",
+      name: earning.name,
+      jobId: earning.jobId,
       points: Number(earning.points),
+      awardedAtUtc: earning.awardedAtUtc,
+      loggedByDisplayName: earning.loggedByDisplayName,
     })),
     pendingApprovalCount: Number(data.pendingApprovalCount),
   };

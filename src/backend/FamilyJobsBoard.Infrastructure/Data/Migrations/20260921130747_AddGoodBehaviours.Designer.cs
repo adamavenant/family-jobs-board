@@ -3,6 +3,7 @@ using System;
 using FamilyJobsBoard.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260921130747_AddGoodBehaviours")]
+    partial class AddGoodBehaviours
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -108,13 +111,13 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 
                     b.HasIndex("LoggedByMemberId");
 
+                    b.HasIndex("RequestId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_good_behaviours_request_id");
+
                     b.HasIndex("TypeId");
 
                     b.HasIndex("ChildId", "LoggedAtUtc");
-
-                    b.HasIndex("RequestId", "ChildId")
-                        .IsUnique()
-                        .HasDatabaseName("ux_good_behaviours_request_id_child_id");
 
                     b.ToTable("good_behaviours", null, t =>
                         {

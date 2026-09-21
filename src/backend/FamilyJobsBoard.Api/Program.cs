@@ -2,6 +2,7 @@ using FamilyJobsBoard.Api.Composition;
 using FamilyJobsBoard.Api.Features.Administration;
 using FamilyJobsBoard.Api.Features.Health;
 using FamilyJobsBoard.Api.Features.Identity;
+using FamilyJobsBoard.Api.Features.GoodBehaviours;
 using FamilyJobsBoard.Api.Features.Today;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -33,6 +34,7 @@ app.MapHealthEndpoints();
 app.MapAdministrationEndpoints();
 app.MapIdentityEndpoints();
 app.MapTodayEndpoints();
+app.MapGoodBehaviourEndpoints();
 
 app.Run();
 

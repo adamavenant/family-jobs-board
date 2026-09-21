@@ -774,10 +774,12 @@ describe("Today page", () => {
       pointEarnings: [
         {
           id: "63fd708b-1296-409d-9ae4-7cd6fc501af7",
+          source: "job",
+          name: pendingJob.name,
           jobId: pendingJob.id,
-          jobName: pendingJob.name,
           points: 5,
           awardedAtUtc: "2026-08-29T10:30:00Z",
+          loggedByDisplayName: null,
         },
       ],
     };

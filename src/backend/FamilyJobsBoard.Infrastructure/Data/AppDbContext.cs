@@ -1,4 +1,5 @@
 using FamilyJobsBoard.Domain.Administration;
+using FamilyJobsBoard.Domain.GoodBehaviours;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Identity;
 using FamilyJobsBoard.Domain.Jobs;
@@ -31,6 +32,10 @@ public sealed class AppDbContext : DbContext
     public DbSet<JobReviewDecision> JobReviewDecisions => Set<JobReviewDecision>();
 
     public DbSet<PointsLedgerEntry> PointsLedgerEntries => Set<PointsLedgerEntry>();
+
+    public DbSet<GoodBehaviourType> GoodBehaviourTypes => Set<GoodBehaviourType>();
+
+    public DbSet<GoodBehaviour> GoodBehaviours => Set<GoodBehaviour>();
 
     public DbSet<HouseholdDataReset> HouseholdDataResets => Set<HouseholdDataReset>();
 
