@@ -16,6 +16,7 @@ export function FamilyMembersPanel({
   const family = useFetcher<FamilyMembersActionResult>();
   const { showSuccess } = useSuccessToast();
   const members = family.data?.members ?? [];
+  const hasLoadedMembers = family.data?.members !== undefined;
   const affected = members.find(
     (member) => member.id === family.data?.affectedMemberId,
   );
@@ -60,12 +61,10 @@ export function FamilyMembersPanel({
               ready to choose their PIN.
             </p>
           </div>
-          <CreateMemberForm fetcher={family} />
+          {hasLoadedMembers ? <CreateMemberForm fetcher={family} /> : null}
         </div>
 
-        {family.state === "loading" && family.data === undefined ? (
-          <p role="status">Loading family members…</p>
-        ) : family.data?.error && family.data.members === undefined ? (
+        {!hasLoadedMembers && family.data?.error ? (
           <div className="family-members__load-error">
             <p className="error-message" role="alert">
               {family.data.error}
@@ -74,6 +73,8 @@ export function FamilyMembersPanel({
               Try again
             </button>
           </div>
+        ) : !hasLoadedMembers ? (
+          <p role="status">Loading family members…</p>
         ) : (
           <>
             <ul className="family-member-list" aria-label="Family members">
