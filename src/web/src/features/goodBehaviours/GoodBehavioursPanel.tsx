@@ -23,6 +23,7 @@ export function GoodBehavioursPanel({
   const fetcher = useFetcher<GoodBehavioursActionResult>();
   const { showSuccess } = useSuccessToast();
   const types = fetcher.data?.types ?? [];
+  const hasLoadedTypes = fetcher.data?.types !== undefined;
   const message = fetcher.data?.error
     ? undefined
     : (fetcher.data?.message ?? loggedMessage(fetcher.data?.logged, children));
@@ -61,16 +62,16 @@ export function GoodBehavioursPanel({
               straight away. You can change the points each time.
             </p>
           </div>
-          <LogBehaviourForm
-            fetcher={fetcher}
-            childMembers={children}
-            types={types}
-          />
+          {hasLoadedTypes ? (
+            <LogBehaviourForm
+              fetcher={fetcher}
+              childMembers={children}
+              types={types}
+            />
+          ) : null}
         </div>
 
-        {fetcher.state === "loading" && fetcher.data === undefined ? (
-          <p role="status">Loading good behaviours…</p>
-        ) : fetcher.data?.error && fetcher.data.types === undefined ? (
+        {!hasLoadedTypes && fetcher.data?.error ? (
           <div className="family-members__load-error">
             <p className="error-message" role="alert">
               {fetcher.data.error}
@@ -82,6 +83,8 @@ export function GoodBehavioursPanel({
               Try again
             </button>
           </div>
+        ) : !hasLoadedTypes ? (
+          <p role="status">Loading good behaviours…</p>
         ) : (
           <section aria-labelledby="behaviour-types-heading">
             <h3 id="behaviour-types-heading">Behaviour types</h3>
