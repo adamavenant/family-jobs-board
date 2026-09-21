@@ -464,6 +464,86 @@ test("a grown-up assigns a recurring schedule to one child on a phone", async ({
   ).toBeVisible();
 });
 
+for (const viewport of [
+  { name: "phone", width: 390, height: 844 },
+  { name: "tablet", width: 820, height: 1180 },
+]) {
+  test(`a grown-up filters the daily agenda by child on a ${viewport.name}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    const jobs = [
+      assignmentJob(
+        "7009b529-733c-4770-ae56-1f6fa69f6363",
+        fredsterId,
+        "Fredster",
+        "Feed the dog",
+      ),
+      assignmentJob(
+        "453be344-5c87-4868-804e-666172da1e03",
+        harrieId,
+        "Harrie",
+        "Pack school bag",
+      ),
+    ];
+    await page.route("**/api/**", async (route) => {
+      const url = new URL(route.request().url());
+      if (!url.pathname.startsWith("/api/")) {
+        return route.continue();
+      }
+      if (url.pathname === "/api/auth/refresh") {
+        return json(route, auth(addieId, "Addie", "adult"));
+      }
+      if (url.pathname === "/api/today") {
+        const childId = url.searchParams.get("childId");
+        const response = assignmentBoard(
+          childId ? jobs.filter((job) => job.childId === childId) : jobs,
+          url.searchParams.get("date") ?? "2026-09-07",
+        );
+        return json(route, {
+          ...response,
+          selectedChildId: childId,
+          pendingApprovalCount: 2,
+        });
+      }
+      return problem(route, 404);
+    });
+
+    await page.goto("/");
+    await page.evaluate(() => {
+      (window as Window & { __filterTestPage?: string }).__filterTestPage =
+        "unchanged";
+    });
+    await page.getByRole("link", { name: "Harrie" }).click();
+
+    await expect(
+      page.getByRole("heading", { name: "Harrie’s jobs" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Pack school bag" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Feed the dog" }),
+    ).not.toBeVisible();
+    await expect(page.getByLabel("1 jobs on this day")).toBeVisible();
+    await expect(page.getByLabel("2 jobs awaiting review")).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`childId=${harrieId}`));
+    expect(
+      await page.evaluate(
+        () =>
+          (window as Window & { __filterTestPage?: string }).__filterTestPage,
+      ),
+    ).toBe("unchanged");
+
+    await page.getByRole("link", { name: "Next day →" }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`date=2026-09-08&childId=${harrieId}`),
+    );
+    await page.getByRole("link", { name: "Today" }).click();
+    await expect(page).toHaveURL(new RegExp(`childId=${harrieId}`));
+  });
+}
+
 test("an expired remembered session returns to the chooser", async ({
   page,
 }) => {
@@ -758,6 +838,7 @@ function board(
     members: [addie, child],
     date: "2026-09-06",
     currentDate: "2026-09-06",
+    selectedChildId: null,
     jobs: [job(status)],
     pointsBalance: isAdult ? null : status === "approved" ? 3 : 0,
     pointEarnings: [],
@@ -822,6 +903,7 @@ function assignmentBoard(
     ],
     date,
     currentDate: "2026-09-07",
+    selectedChildId: null,
     jobs,
     pointsBalance: null,
     pointEarnings: [],

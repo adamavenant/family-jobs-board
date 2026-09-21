@@ -32,6 +32,7 @@ export interface TodayBoard {
   members: HouseholdMember[];
   date: string;
   currentDate: string;
+  selectedChildId: string | null;
   jobs: TodayJob[];
   pointsBalance: number | null;
   pointEarnings: PointEarning[];
@@ -75,11 +76,22 @@ export class ApiError extends Error {
   }
 }
 
-export async function getToday(date?: string): Promise<TodayBoard> {
+export async function getToday(
+  date?: string,
+  childId?: string,
+): Promise<TodayBoard> {
   const client = apiClient();
-  const { data, error } = date
-    ? await client.GET("/api/today", { params: { query: { date } } })
-    : await client.GET("/api/today");
+  const { data, error } =
+    date || childId
+      ? await client.GET("/api/today", {
+          params: {
+            query: {
+              ...(date ? { date } : {}),
+              ...(childId ? { childId } : {}),
+            },
+          },
+        })
+      : await client.GET("/api/today");
   if (!data) {
     throw new ApiError(problemMessage(error, "We couldn't load today's jobs."));
   }
@@ -89,6 +101,7 @@ export async function getToday(date?: string): Promise<TodayBoard> {
     members: data.members,
     date: data.date,
     currentDate: data.currentDate,
+    selectedChildId: data.selectedChildId,
     jobs: data.jobs.map(mapJob),
     pointsBalance:
       data.pointsBalance === null ? null : Number(data.pointsBalance),

@@ -16,6 +16,9 @@ import { AdminDataResetPanel } from "../administration/AdminDataResetPanel";
 export function TodayPage({ board }: { board: TodayBoard }) {
   const children = board.members.filter((member) => !member.isAdult);
   const currentDate = board.currentDate ?? board.date;
+  const selectedChild = children.find(
+    (child) => child.id === board.selectedChildId,
+  );
   const isToday = board.date === currentDate;
   const formattedDate = new Intl.DateTimeFormat("en", {
     weekday: "long",
@@ -77,6 +80,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
             children={children}
             currentDate={currentDate}
             selectedDate={board.date}
+            selectedChildId={board.selectedChildId}
           />
           <RecurringJobForm children={children} today={currentDate} />
           <AdminDataResetPanel />
@@ -84,14 +88,60 @@ export function TodayPage({ board }: { board: TodayBoard }) {
       ) : null}
 
       <section className="board" aria-labelledby="today-heading">
+        {board.viewer.isAdult ? (
+          <nav className="child-filter" aria-label="Filter agenda by child">
+            <span>Show jobs for</span>
+            <div>
+              <Link
+                to={boardHref(board.date, currentDate, null)}
+                aria-current={
+                  board.selectedChildId === null ? "page" : undefined
+                }
+              >
+                All children
+              </Link>
+              {children.map((child) => (
+                <Link
+                  key={child.id}
+                  to={boardHref(board.date, currentDate, child.id)}
+                  aria-current={
+                    board.selectedChildId === child.id ? "page" : undefined
+                  }
+                >
+                  {child.displayName}
+                </Link>
+              ))}
+            </div>
+          </nav>
+        ) : null}
         <nav className="date-navigation" aria-label="Daily agenda">
-          <Link to={dateHref(addDays(board.date, -1))}>← Previous day</Link>
+          <Link
+            to={boardHref(
+              addDays(board.date, -1),
+              currentDate,
+              board.selectedChildId,
+            )}
+          >
+            ← Previous day
+          </Link>
           {!isToday ? (
-            <Link to="/">Today</Link>
+            <Link
+              to={boardHref(currentDate, currentDate, board.selectedChildId)}
+            >
+              Today
+            </Link>
           ) : (
             <span aria-current="date">Today</span>
           )}
-          <Link to={dateHref(addDays(board.date, 1))}>Next day →</Link>
+          <Link
+            to={boardHref(
+              addDays(board.date, 1),
+              currentDate,
+              board.selectedChildId,
+            )}
+          >
+            Next day →
+          </Link>
         </nav>
         <div className="board__heading">
           <div>
@@ -100,9 +150,11 @@ export function TodayPage({ board }: { board: TodayBoard }) {
             </p>
             <h2 id="today-heading">
               {board.viewer.isAdult
-                ? isToday
-                  ? "Family jobs"
-                  : "Family agenda"
+                ? selectedChild
+                  ? `${selectedChild.displayName}’s jobs`
+                  : isToday
+                    ? "Family jobs"
+                    : "Family agenda"
                 : isToday
                   ? "Today’s jobs"
                   : "Your jobs"}
@@ -116,7 +168,11 @@ export function TodayPage({ board }: { board: TodayBoard }) {
         </div>
 
         {board.jobs.length === 0 ? (
-          <p className="board__empty">No jobs are scheduled for this day.</p>
+          <p className="board__empty">
+            {selectedChild
+              ? `No jobs are scheduled for ${selectedChild.displayName} on this day.`
+              : "No jobs are scheduled for this day."}
+          </p>
         ) : (
           <Agenda jobs={board.jobs} isAdult={board.viewer.isAdult} />
         )}
@@ -176,8 +232,20 @@ function addDays(date: string, days: number): string {
   return value.toISOString().slice(0, 10);
 }
 
-function dateHref(date: string): string {
-  return `/?date=${date}`;
+function boardHref(
+  date: string,
+  currentDate: string,
+  selectedChildId: string | null,
+): string {
+  const search = new URLSearchParams();
+  if (date !== currentDate) {
+    search.set("date", date);
+  }
+  if (selectedChildId) {
+    search.set("childId", selectedChildId);
+  }
+  const query = search.toString();
+  return query ? `/?${query}` : "/";
 }
 
 function IdentityControls({ viewer }: { viewer: HouseholdMember }) {

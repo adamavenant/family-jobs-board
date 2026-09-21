@@ -222,7 +222,7 @@ export interface paths {
         };
         /**
          * Get the authenticated family member's daily board.
-         * @description Returns the child-owned or adult household view for the optional household-local date.
+         * @description Returns the child-owned or adult household view for the optional household-local date and adult-only child filter.
          */
         get: operations["GetToday"];
         put?: never;
@@ -626,6 +626,8 @@ export interface components {
             date: string;
             /** Format: date */
             currentDate: string;
+            /** Format: uuid */
+            selectedChildId: null | string;
             jobs: components["schemas"]["JobResponse"][];
             /** Format: int32 */
             pointsBalance: null | number | string;
@@ -1140,6 +1142,7 @@ export interface operations {
         parameters: {
             query?: {
                 date?: string;
+                childId?: string;
             };
             header?: never;
             path?: never;
@@ -1154,6 +1157,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TodayResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
             };
         };

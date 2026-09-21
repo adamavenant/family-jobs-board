@@ -97,6 +97,7 @@ public sealed class IdentityEndpointsTests : IAsyncLifetime
 
     [Theory]
     [InlineData("GET", "/api/today")]
+    [InlineData("GET", "/api/today?childId=754de05d-b6f6-4626-bbad-79e2079cc5c3")]
     [InlineData("POST", "/api/today/jobs")]
     [InlineData("POST", "/api/jobs/7009b529-733c-4770-ae56-1f6fa69f6363/complete")]
     [InlineData("POST", "/api/jobs/7009b529-733c-4770-ae56-1f6fa69f6363/approve")]

@@ -42,6 +42,7 @@ const board = {
   members: [addie, hellie, fredster, harrie],
   date: "2026-08-29",
   currentDate: "2026-08-29",
+  selectedChildId: null,
   pointsBalance: null,
   pendingApprovalCount: 1,
   pointEarnings: [],
@@ -290,6 +291,68 @@ describe("Today page", () => {
         requestUrl(input).searchParams.has("date", nextDate),
       ),
     ).toBe(true);
+  });
+
+  it("filters the adult agenda by child and keeps the filter across dates", async () => {
+    const nextDate = "2026-08-30";
+    const fetch = vi.fn((input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      const childId = url.searchParams.get("childId");
+      return Promise.resolve(
+        jsonResponse({
+          ...board,
+          date: url.searchParams.get("date") ?? board.currentDate,
+          selectedChildId: childId,
+          jobs: childId === harrie.id ? [] : board.jobs,
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    acceptSession({
+      accessToken: "test-access-token",
+      accessTokenExpiresAtUtc: "2099-01-01T00:00:00Z",
+      member: { id: addie.id, displayName: addie.displayName, role: "adult" },
+    });
+    const router = createMemoryRouter(routes, { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+
+    await screen.findByRole("heading", { name: "Family jobs" });
+    await user.click(screen.getByRole("link", { name: "Harrie" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Harrie’s jobs" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText("No jobs are scheduled for Harrie on this day."),
+    ).toBeVisible();
+    expect(screen.getByLabelText("0 jobs on this day")).toBeVisible();
+    expect(screen.getByLabelText("1 jobs awaiting review")).toBeVisible();
+    expect(router.state.location.search).toBe(`?childId=${harrie.id}`);
+
+    await user.click(screen.getByRole("link", { name: "Next day →" }));
+
+    expect(await screen.findByText("Sunday, August 30")).toBeVisible();
+    expect(router.state.location.search).toBe(
+      `?date=${nextDate}&childId=${harrie.id}`,
+    );
+    expect(
+      fetch.mock.calls.some(([input]) => {
+        const url = requestUrl(input);
+        return (
+          url.searchParams.get("date") === nextDate &&
+          url.searchParams.get("childId") === harrie.id
+        );
+      }),
+    ).toBe(true);
+
+    await user.click(screen.getByRole("link", { name: "Today" }));
+    expect(router.state.location.search).toBe(`?childId=${harrie.id}`);
+    await user.click(screen.getByRole("link", { name: "All children" }));
+    expect(
+      await screen.findByRole("heading", { name: "Family jobs" }),
+    ).toBeVisible();
+    expect(router.state.location.search).toBe("");
   });
 
   it("assigns one job to both children with an accessible multi-selection", async () => {

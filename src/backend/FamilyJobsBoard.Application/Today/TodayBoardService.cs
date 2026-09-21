@@ -20,7 +20,7 @@ public sealed class TodayBoardService
 
     public async Task<TodayBoard> GetAsync(Guid viewerId, CancellationToken cancellationToken)
     {
-        return await GetAsync(viewerId, _clock.Today, cancellationToken);
+        return await GetAsync(viewerId, _clock.Today, null, cancellationToken);
     }
 
     public async Task<TodayBoard> GetAsync(
@@ -28,7 +28,15 @@ public sealed class TodayBoardService
         DateOnly date,
         CancellationToken cancellationToken)
     {
-        await EnsureRecurringJobsAsync(date, cancellationToken);
+        return await GetAsync(viewerId, date, null, cancellationToken);
+    }
+
+    public async Task<TodayBoard> GetAsync(
+        Guid viewerId,
+        DateOnly date,
+        Guid? childId,
+        CancellationToken cancellationToken)
+    {
         var members = await _repository.GetMembersAsync(cancellationToken);
         if (members.Count == 0)
         {
@@ -38,14 +46,40 @@ public sealed class TodayBoardService
         var viewer = members.SingleOrDefault(member => member.Id == viewerId)
             ?? throw new HouseholdMemberNotFoundException(viewerId);
         var children = members.Where(member => !member.IsAdult).ToArray();
-        var visibleChildren = viewer.IsAdult
+        if (childId is not null && !viewer.IsAdult)
+        {
+            throw new TodayBoardFilterForbiddenException();
+        }
+
+        var selectedChild = childId is null
+            ? null
+            : children.SingleOrDefault(child => child.Id == childId.Value);
+        if (childId is not null && selectedChild is null)
+        {
+            throw new InvalidTodayBoardFilterException(new Dictionary<string, string[]>
+            {
+                ["ChildId"] = ["Choose an active child in this household."],
+            });
+        }
+
+        await EnsureRecurringJobsAsync(date, cancellationToken);
+        var householdVisibleChildren = viewer.IsAdult
             ? children
             : children.Where(child => child.Id == viewer.Id).ToArray();
+        var visibleChildren = selectedChild is null
+            ? householdVisibleChildren
+            : [selectedChild];
+        var householdVisibleChildIds = householdVisibleChildren
+            .Select(child => child.Id)
+            .ToArray();
         var visibleChildIds = visibleChildren.Select(child => child.Id).ToArray();
-        var jobs = await _repository.GetJobsAsync(
-            visibleChildIds,
+        var householdVisibleJobs = await _repository.GetJobsAsync(
+            householdVisibleChildIds,
             date,
             cancellationToken);
+        var jobs = selectedChild is null
+            ? householdVisibleJobs
+            : householdVisibleJobs.Where(job => job.ChildId == selectedChild.Id).ToArray();
         var latestRejections = await _repository.GetLatestRejectionsAsync(
             visibleChildIds,
             date,
@@ -63,13 +97,14 @@ public sealed class TodayBoardService
             members.Select(MapMember).ToArray(),
             date,
             _clock.Today,
+            selectedChild?.Id,
             jobs.Select(job => MapJob(
                 job,
                 childById[job.ChildId],
                 rejectionByJobId.GetValueOrDefault(job.Id))).ToArray(),
             points?.Balance,
             points?.Earnings ?? [],
-            jobs.Count(job => job.Status == JobStatus.PendingApproval));
+            householdVisibleJobs.Count(job => job.Status == JobStatus.PendingApproval));
     }
 
     public async Task<TodayJob> CompleteAsync(

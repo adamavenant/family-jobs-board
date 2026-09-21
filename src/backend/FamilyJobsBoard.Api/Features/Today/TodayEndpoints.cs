@@ -17,7 +17,7 @@ internal static class TodayEndpoints
             .WithName("GetToday")
             .WithSummary("Get the authenticated family member's daily board.")
             .WithDescription(
-                "Returns the child-owned or adult household view for the optional household-local date.");
+                "Returns the child-owned or adult household view for the optional household-local date and adult-only child filter.");
 
         group.MapPost("/jobs/{id:guid}/complete", CompleteJobAsync)
             .RequireAuthorization("Child")
@@ -211,8 +211,13 @@ internal static class TodayEndpoints
         }
     }
 
-    private static async Task<Results<Ok<TodayResponse>, ProblemHttpResult>> GetTodayAsync(
+    private static async Task<Results<
+        Ok<TodayResponse>,
+        ValidationProblem,
+        ForbidHttpResult,
+        ProblemHttpResult>> GetTodayAsync(
         [FromQuery] DateOnly? date,
+        [FromQuery] Guid? childId,
         HttpContext context,
         TodayBoardService service,
         CancellationToken cancellationToken)
@@ -223,8 +228,19 @@ internal static class TodayEndpoints
             var board = await service.GetAsync(
                 memberId,
                 date ?? service.CurrentDate,
+                childId,
                 cancellationToken);
             return TypedResults.Ok(MapBoard(board));
+        }
+        catch (InvalidTodayBoardFilterException exception)
+        {
+            return TypedResults.ValidationProblem(
+                exception.Errors,
+                title: "Invalid daily board filter");
+        }
+        catch (TodayBoardFilterForbiddenException)
+        {
+            return TypedResults.Forbid();
         }
         catch (HouseholdMemberNotFoundException exception)
         {
@@ -394,6 +410,7 @@ internal static class TodayEndpoints
             board.Members.Select(MapMember).ToArray(),
             board.Date,
             board.CurrentDate,
+            board.SelectedChildId,
             board.Jobs.Select(MapJob).ToArray(),
             board.PointsBalance,
             board.PointEarnings.Select(MapPointEarning).ToArray(),

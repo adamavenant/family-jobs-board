@@ -332,6 +332,80 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Adult_can_filter_a_daily_board_without_filtering_the_pending_count()
+    {
+        using var createResponse = await Client.PostAsJsonAsync(
+            "/api/today/jobs",
+            new
+            {
+                childIds = new[] { DemoDataIds.Harrie },
+                name = "Filter target",
+                description = "Visible only for Harrie.",
+                points = 2,
+                scheduledDate = CurrentDate,
+                agendaPeriod = "morning",
+                scheduledTime = "07:30:00",
+            });
+        var created = await createResponse.Content.ReadFromJsonAsync<AddJobsResponse>();
+        createResponse.EnsureSuccessStatusCode();
+        var target = Assert.Single(created!.Jobs);
+
+        using var completeResponse = await Client.PostAsync(
+            $"/api/jobs/{DemoDataIds.FeedDog}/complete",
+            null);
+        Assert.True(
+            completeResponse.IsSuccessStatusCode
+            || completeResponse.StatusCode == HttpStatusCode.Conflict);
+
+        var household = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}");
+        var filtered = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}&childId={DemoDataIds.Harrie}");
+
+        Assert.NotNull(household);
+        Assert.Null(household.SelectedChildId);
+        Assert.NotNull(filtered);
+        Assert.Equal(DemoDataIds.Harrie, filtered.SelectedChildId);
+        Assert.NotEmpty(filtered.Jobs);
+        Assert.All(filtered.Jobs, job => Assert.Equal(DemoDataIds.Harrie, job.ChildId));
+        Assert.Contains(filtered.Jobs, job => job.Id == target.Id);
+        Assert.Equal(household.PendingApprovalCount, filtered.PendingApprovalCount);
+    }
+
+    [Fact]
+    public async Task Invalid_adult_filter_and_child_filter_are_rejected()
+    {
+        var inactiveChildId = Guid.NewGuid();
+        await using (var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            database.HouseholdMembers.Add(new HouseholdMember(
+                inactiveChildId,
+                "Inactive filter child",
+                false,
+                isActive: false));
+            await database.SaveChangesAsync();
+        }
+
+        foreach (var childId in new[] { Guid.NewGuid(), inactiveChildId, DemoDataIds.Addie })
+        {
+            using var invalid = await Client.GetAsync(
+                $"/api/today?memberId={DemoDataIds.Addie}&childId={childId}");
+            var problem = await invalid.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+            Assert.Equal("Invalid daily board filter", problem?.Title);
+            Assert.Contains("ChildId", problem?.Errors.Keys ?? []);
+        }
+
+        using var childFilter = await Client.GetAsync(
+            $"/api/today?childId={DemoDataIds.Fredster}");
+        Assert.Equal(HttpStatusCode.Forbidden, childFilter.StatusCode);
+    }
+
+    [Fact]
     public async Task Profile_migration_preserves_existing_jobs_and_moves_them_to_Fredster()
     {
         await using var postgres = new PostgreSqlBuilder("postgres:18-alpine")
@@ -1620,6 +1694,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         IReadOnlyList<MemberResponse> Members,
         DateOnly Date,
         DateOnly CurrentDate,
+        Guid? SelectedChildId,
         IReadOnlyList<JobResponse> Jobs,
         int? PointsBalance,
         IReadOnlyList<PointEarningResponse> PointEarnings,
