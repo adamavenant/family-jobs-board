@@ -49,7 +49,7 @@ export interface HouseholdMember {
 
 export interface PointEarning {
   id: string;
-  source: "job" | "goodBehaviour";
+  source: "job" | "goodBehaviour" | "manualAdjustment";
   name: string;
   jobId: string | null;
   points: number;
@@ -109,7 +109,7 @@ export async function getToday(
       data.pointsBalance === null ? null : Number(data.pointsBalance),
     pointEarnings: data.pointEarnings.map((earning) => ({
       id: earning.id,
-      source: earning.source === "goodBehaviour" ? "goodBehaviour" : "job",
+      source: earningSource(earning.source),
       name: earning.name,
       jobId: earning.jobId,
       points: Number(earning.points),
@@ -280,6 +280,12 @@ function apiClient() {
     baseUrl: window.location.origin,
     fetch: authenticatedFetch,
   });
+}
+
+function earningSource(value: string): PointEarning["source"] {
+  return value === "goodBehaviour" || value === "manualAdjustment"
+    ? value
+    : "job";
 }
 
 function mapJob(job: {

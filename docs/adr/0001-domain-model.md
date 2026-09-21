@@ -22,9 +22,9 @@ We have defined the core domain concepts for the Family Jobs Board application w
 - Good Behaviour Type: Adult-defined categories of good behaviours
 - Points: The currency accumulated by children for completing tasks and good behaviours
 
-The implemented points model contains job-sourced and good-behaviour-sourced
-awards and a derived child balance/history. Adult redemption and manual point
-adjustment remain planned and are not yet implemented.
+The implemented points model contains job-sourced, good-behaviour-sourced, and
+manual-adjustment entries and a derived child balance/history. Adult redemption
+remains planned and is not yet implemented.
 
 ## Consequences
 

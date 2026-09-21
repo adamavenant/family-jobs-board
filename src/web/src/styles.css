@@ -1262,6 +1262,35 @@ h1 {
   color: var(--muted);
   font-size: 0.9rem;
 }
+.earning-list__points--negative {
+  color: var(--error-text);
+}
+.adjustment-direction {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.adjustment-direction legend {
+  margin-bottom: 8px;
+  padding: 0;
+  font-weight: 700;
+}
+.adjustment-direction label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.adjustment-reason,
+.point-adjustments .family-member-form .form-group:last-of-type {
+  grid-column: 1 / -1;
+}
+.adjustment-warning h3 {
+  margin: 0 0 6px;
+}
 .earning-list__source {
   color: var(--muted);
   font-size: 0.86rem;

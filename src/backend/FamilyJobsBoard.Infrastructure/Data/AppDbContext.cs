@@ -3,6 +3,7 @@ using FamilyJobsBoard.Domain.GoodBehaviours;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Identity;
 using FamilyJobsBoard.Domain.Jobs;
+using FamilyJobsBoard.Domain.PointAdjustments;
 using FamilyJobsBoard.Domain.Points;
 using Microsoft.EntityFrameworkCore;
 
@@ -36,6 +37,8 @@ public sealed class AppDbContext : DbContext
     public DbSet<GoodBehaviourType> GoodBehaviourTypes => Set<GoodBehaviourType>();
 
     public DbSet<GoodBehaviour> GoodBehaviours => Set<GoodBehaviour>();
+
+    public DbSet<PointAdjustment> PointAdjustments => Set<PointAdjustment>();
 
     public DbSet<HouseholdDataReset> HouseholdDataResets => Set<HouseholdDataReset>();
 
