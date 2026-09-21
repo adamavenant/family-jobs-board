@@ -668,7 +668,7 @@
           "Today"
         ],
         "summary": "Get the authenticated family member's daily board.",
-        "description": "Returns the child-owned or adult household view for the optional household-local date.",
+        "description": "Returns the child-owned or adult household view for the optional household-local date and adult-only child filter.",
         "operationId": "GetToday",
         "parameters": [
           {
@@ -677,6 +677,14 @@
             "schema": {
               "type": "string",
               "format": "date"
+            }
+          },
+          {
+            "name": "childId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
             }
           }
         ],
@@ -687,6 +695,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TodayResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
                 }
               }
             }
@@ -2183,6 +2201,7 @@
           "members",
           "date",
           "currentDate",
+          "selectedChildId",
           "jobs",
           "pointsBalance",
           "pointEarnings",
@@ -2206,6 +2225,13 @@
           "currentDate": {
             "type": "string",
             "format": "date"
+          },
+          "selectedChildId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           },
           "jobs": {
             "type": "array",

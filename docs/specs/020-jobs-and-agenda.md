@@ -3,8 +3,7 @@
 ## Status
 
 Retrospective specification of the delivered Phase 2 slices. The phase remains
-in progress because job edit/cancel/delete and the adult child filter are not
-implemented.
+in progress because job edit/cancel/delete is not implemented.
 
 ## Outcome and user value
 
@@ -16,7 +15,7 @@ jobs and can submit open work for adult review.
 
 | Capability | Anonymous | Child | Adult |
 | --- | --- | --- | --- |
-| Read a daily board | No | Own jobs | All active children's jobs |
+| Read a daily board | No | Own jobs; cannot filter | All active children's jobs, optionally filtered to one active child |
 | Create once-off jobs | No | No | Yes |
 | Submit completion | No | Own open job only | No |
 
@@ -26,8 +25,8 @@ another viewer through request data.
 ## Scope
 
 Delivered scope includes household-local date browsing, agenda grouping,
-once-off creation, atomic multi-child assignment, and completion submission.
-Editing, cancelling, deleting, filtering the adult view by child, and a
+adult filtering by one active child, once-off creation, atomic multi-child
+assignment, and completion submission. Editing, cancelling, deleting, and a
 separate pending-approval page are outside the implemented slice.
 
 ## Domain rules and state
@@ -52,9 +51,11 @@ atomically. Existing migrations are forward-only.
 
 ## HTTP contract
 
-- `GET /api/today?date=YYYY-MM-DD` returns viewer, active members, selected and
-  current dates, visible jobs, points summary where applicable, and pending
-  approval count.
+- `GET /api/today?date=YYYY-MM-DD&childId=UUID` returns viewer, active members,
+  selected and current dates, the selected child when present, visible jobs,
+  points summary where applicable, and the household pending-approval count.
+  Only adults may supply `childId`, and it must identify an active child in the
+  household.
 - `POST /api/today/jobs` accepts `childIds`, name, description, points,
   `scheduledDate`, agenda period, and optional time; it returns the created
   child-specific jobs.
@@ -67,9 +68,11 @@ transitions `409`, and an unavailable board `503`.
 ## UI states
 
 The Today route has loading, empty, populated, action-in-progress, validation,
-and server-error states. Adults reveal job tools on demand and select one or
-more active children. Previous day, next day, and Today controls update the URL
-date. Jobs are grouped by agenda period. Phone and tablet journeys use native,
+and server-error states. Adults reveal job tools on demand, select one or more
+active children for assignment, and filter the agenda by child. Previous day,
+next day, and Today controls preserve the filter in the URL while updating the
+date. The heading, count, jobs, and empty state reflect the selected child.
+Jobs are grouped by agenda period. Phone and tablet journeys use native,
 labelled controls and touch-sized actions.
 
 ## Audit and security
@@ -89,6 +92,10 @@ its persistence dependency.
 - Given an adult selects two active children, when one dated job is submitted,
   then two independent jobs are committed and appear on that date.
 - Given a child views a date, then only that child's jobs are returned.
+- Given an adult selects an active child, then the agenda shows only that
+  child's jobs while the household pending-approval count remains unchanged.
+- Given a child attempts to use the child filter, then the API returns `403`;
+  unknown, inactive, and adult member selections return field validation.
 - Given a child completes an open owned job, then it becomes pending approval
   with one completion instant; a repeat does not create another submission.
 - Given invalid children, a past date, or invalid text/points, then no job copy
@@ -99,8 +106,9 @@ its persistence dependency.
 Domain tests cover job transitions. Application tests cover visibility,
 ownership, validation, multi-child creation, and persistence orchestration.
 Integration tests cover HTTP authorization and PostgreSQL behavior. Component
-and Playwright tests cover loading/errors, daily navigation, creation,
-multi-child assignment, and completion at phone/tablet sizes.
+and Playwright tests cover loading/errors, daily navigation, adult child
+filtering, creation, multi-child assignment, and completion at phone/tablet
+sizes.
 
 ## Compose demonstration
 
@@ -112,5 +120,5 @@ state persist.
 ## Unresolved decisions
 
 Job edit/cancel/delete semantics and their historical effects require a future
-issue before implementation. Adult child filtering is tracked separately. The
-owning issues must resolve those rules before Phase 2 is marked complete.
+issue before implementation. The owning issue must resolve those rules before
+Phase 2 is marked complete.

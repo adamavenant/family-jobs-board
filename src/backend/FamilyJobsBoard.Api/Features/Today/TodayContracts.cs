@@ -5,6 +5,7 @@ public sealed record TodayResponse(
     IReadOnlyList<MemberResponse> Members,
     DateOnly Date,
     DateOnly CurrentDate,
+    Guid? SelectedChildId,
     IReadOnlyList<JobResponse> Jobs,
     int? PointsBalance,
     IReadOnlyList<PointEarningResponse> PointEarnings,

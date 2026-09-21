@@ -132,12 +132,17 @@ async function appLoader({
   const active = currentSession() ?? (await refreshSession());
   if (active) {
     try {
-      const selectedDate = new URL(request.url).searchParams.get("date");
+      const searchParams = new URL(request.url).searchParams;
+      const selectedDate = searchParams.get("date");
+      const selectedChildId = searchParams.get("childId") || undefined;
       const date =
         selectedDate && /^\d{4}-\d{2}-\d{2}$/.test(selectedDate)
           ? selectedDate
           : undefined;
-      return { state: "authenticated", board: await getToday(date) };
+      return {
+        state: "authenticated",
+        board: await getToday(date, selectedChildId),
+      };
     } catch (error) {
       if (!(error instanceof AuthApiError) || error.status !== 401) {
         throw error;

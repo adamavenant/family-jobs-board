@@ -10,10 +10,12 @@ export function AddJobForm({
   children,
   currentDate,
   selectedDate,
+  selectedChildId,
 }: {
   children: HouseholdMember[];
   currentDate: string;
   selectedDate: string;
+  selectedChildId: string | null;
 }) {
   const fetcher = useFetcher<TodayActionResult>();
   const navigate = useNavigate();
@@ -27,7 +29,11 @@ export function AddJobForm({
       formRef.current?.reset();
       showSuccess(`Job scheduled for ${result.scheduledDate}.`);
       if (result.scheduledDate && result.scheduledDate !== selectedDate) {
-        void navigate(`/?date=${result.scheduledDate}`);
+        const search = new URLSearchParams({ date: result.scheduledDate });
+        if (selectedChildId) {
+          search.set("childId", selectedChildId);
+        }
+        void navigate(`/?${search.toString()}`);
       }
     }
   }, [
@@ -35,6 +41,7 @@ export function AddJobForm({
     navigate,
     result?.scheduledDate,
     result?.success,
+    selectedChildId,
     selectedDate,
     showSuccess,
   ]);

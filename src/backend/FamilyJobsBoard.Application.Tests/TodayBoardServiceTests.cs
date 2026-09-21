@@ -138,6 +138,65 @@ public sealed class TodayBoardServiceTests
     }
 
     [Fact]
+    public async Task Adult_filter_returns_one_child_but_keeps_household_pending_count()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild, SecondChild]);
+        var pendingJob = new Job(Guid.NewGuid(), FirstChild.Id, "Pending", "", 1, Today);
+        pendingJob.MarkComplete(new DateTimeOffset(2026, 9, 7, 7, 30, 0, TimeSpan.Zero));
+        repository.Jobs.AddRange(
+        [
+            pendingJob,
+            new Job(Guid.NewGuid(), SecondChild.Id, "Selected", "", 2, Today),
+        ]);
+        var service = new TodayBoardService(repository, new FixedClock());
+
+        var board = await service.GetAsync(
+            Adult.Id,
+            Today,
+            SecondChild.Id,
+            CancellationToken.None);
+
+        Assert.Equal(SecondChild.Id, board.SelectedChildId);
+        var job = Assert.Single(board.Jobs);
+        Assert.Equal(SecondChild.Id, job.ChildId);
+        Assert.Equal("Selected", job.Name);
+        Assert.Equal(1, board.PendingApprovalCount);
+    }
+
+    [Fact]
+    public async Task Adult_filter_rejects_a_member_who_is_not_an_active_child()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild, SecondChild]);
+        var service = new TodayBoardService(repository, new FixedClock());
+
+        var exception = await Assert.ThrowsAsync<InvalidTodayBoardFilterException>(() =>
+            service.GetAsync(
+                Adult.Id,
+                Today,
+                Adult.Id,
+                CancellationToken.None));
+
+        Assert.Contains("ChildId", exception.Errors.Keys);
+        Assert.Null(repository.LastGenerationHorizon);
+    }
+
+    [Fact]
+    public async Task Child_cannot_use_the_adult_daily_board_filter()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild, SecondChild]);
+        var service = new TodayBoardService(repository, new FixedClock());
+
+        await Assert.ThrowsAsync<TodayBoardFilterForbiddenException>(() =>
+            service.GetAsync(
+                FirstChild.Id,
+                Today,
+                FirstChild.Id,
+                CancellationToken.None));
+
+        Assert.Null(repository.LastGenerationHorizon);
+    }
+
+    [Fact]
     public async Task Browsing_beyond_the_rolling_horizon_advances_recurrence_generation()
     {
         var requestedDate = Today.AddDays(70);
