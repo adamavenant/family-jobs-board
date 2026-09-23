@@ -441,6 +441,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/point-adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Manually add or remove points for a child.
+         * @description Adult-only. Records a signed, non-zero adjustment with a required reason as its own append-only ledger entry; mistakes are corrected with a new opposite adjustment. An adjustment that would take the balance below zero returns 409 with code 'negativeBalanceConfirmationRequired' and the current and resulting balances unless confirmNegativeBalance is true. Repeating a request ID with the same details returns the original result without a second entry; reusing it for different details returns 409 with code 'requestConflict'.
+         */
+        post: operations["RecordPointAdjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -660,6 +680,19 @@ export interface components {
             targetDisplayName: string;
             targetRole: string;
         };
+        PointAdjustmentResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            childId: string;
+            /** Format: uuid */
+            adjustedByMemberId: string;
+            /** Format: int32 */
+            amount: number | string;
+            reason: string;
+            /** Format: date-time */
+            adjustedAtUtc: string;
+        };
         PointEarningResponse: {
             /** Format: uuid */
             id: string;
@@ -680,6 +713,21 @@ export interface components {
             status?: null | number | string;
             detail?: null | string;
             instance?: null | string;
+        };
+        RecordPointAdjustmentRequest: {
+            /** Format: uuid */
+            requestId: string;
+            /** Format: uuid */
+            childId: string;
+            /** Format: int32 */
+            amount: number | string;
+            reason: null | string;
+            confirmNegativeBalance: boolean;
+        };
+        RecordPointAdjustmentResponse: {
+            adjustment: components["schemas"]["PointAdjustmentResponse"];
+            /** Format: int32 */
+            pointsBalance: number | string;
         };
         RecurringJobAssignmentResponse: {
             /** Format: uuid */
@@ -1773,6 +1821,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LogGoodBehaviourResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    RecordPointAdjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordPointAdjustmentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordPointAdjustmentResponse"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordPointAdjustmentResponse"];
                 };
             };
             /** @description Bad Request */

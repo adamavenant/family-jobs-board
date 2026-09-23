@@ -25,6 +25,7 @@ public sealed class EfAdministrationRepository : IAdministrationRepository
         var deletedPointsEntryCount = await _database.PointsLedgerEntries
             .ExecuteDeleteAsync(cancellationToken);
         await _database.GoodBehaviours.ExecuteDeleteAsync(cancellationToken);
+        await _database.PointAdjustments.ExecuteDeleteAsync(cancellationToken);
         var deletedReviewDecisionCount = await _database.JobReviewDecisions
             .ExecuteDeleteAsync(cancellationToken);
         var deletedJobCount = await _database.Jobs.ExecuteDeleteAsync(cancellationToken);

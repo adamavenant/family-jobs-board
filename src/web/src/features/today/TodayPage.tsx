@@ -14,6 +14,7 @@ import { FamilyMembersPanel } from "../identity/FamilyMembersPanel";
 import { AdminDataResetPanel } from "../administration/AdminDataResetPanel";
 import { GoodBehavioursPanel } from "../goodBehaviours/GoodBehavioursPanel";
 import { GoodBehaviourTypesList } from "../goodBehaviours/GoodBehaviourTypesList";
+import { PointAdjustmentsPanel } from "../pointAdjustments/PointAdjustmentsPanel";
 
 export function TodayPage({ board }: { board: TodayBoard }) {
   const children = board.members.filter((member) => !member.isAdult);
@@ -86,6 +87,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
           />
           <RecurringJobForm children={children} today={currentDate} />
           <GoodBehavioursPanel children={children} />
+          <PointAdjustmentsPanel children={children} />
           <AdminDataResetPanel />
         </div>
       ) : null}
@@ -300,7 +302,10 @@ function PointsHistory({
           <p className="eyebrow">Points</p>
           <h2 id="points-history-heading">How {childName} earned them</h2>
         </div>
-        <p>Approved jobs and good behaviours appear here, newest first.</p>
+        <p>
+          Approved jobs, good behaviours, and adjustments appear here, newest
+          first.
+        </p>
       </div>
 
       {earnings.length === 0 ? (
@@ -312,15 +317,19 @@ function PointsHistory({
         <ol className="earning-list">
           {earnings.map((earning) => (
             <li key={earning.id}>
-              <span className="earning-list__points">+{earning.points}</span>
+              <span
+                className={
+                  earning.points < 0
+                    ? "earning-list__points earning-list__points--negative"
+                    : "earning-list__points"
+                }
+              >
+                {formatPoints(earning.points)}
+              </span>
               <span>
                 <strong>{earning.name}</strong>
                 <span className="earning-list__source">
-                  {earning.source === "goodBehaviour"
-                    ? earning.loggedByDisplayName
-                      ? `Good behaviour · logged by ${earning.loggedByDisplayName}`
-                      : "Good behaviour"
-                    : "Job"}
+                  {earningSourceLabel(earning)}
                 </span>
                 <time dateTime={earning.awardedAtUtc}>
                   {formatAwardTime(earning.awardedAtUtc)}
@@ -332,6 +341,22 @@ function PointsHistory({
       )}
     </section>
   );
+}
+
+function formatPoints(points: number): string {
+  return points < 0 ? `−${Math.abs(points)}` : `+${points}`;
+}
+
+function earningSourceLabel(earning: PointEarning): string {
+  const adult = earning.loggedByDisplayName;
+  if (earning.source === "goodBehaviour") {
+    return adult ? `Good behaviour · logged by ${adult}` : "Good behaviour";
+  }
+  if (earning.source === "manualAdjustment") {
+    return adult ? `Adjustment · by ${adult}` : "Adjustment";
+  }
+
+  return "Job";
 }
 
 function formatAwardTime(value: string) {

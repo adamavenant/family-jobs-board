@@ -51,6 +51,7 @@ public static class PointEarningSource
 {
     public const string Job = "job";
     public const string GoodBehaviour = "goodBehaviour";
+    public const string ManualAdjustment = "manualAdjustment";
 }
 
 public sealed record TodayPointEarning(

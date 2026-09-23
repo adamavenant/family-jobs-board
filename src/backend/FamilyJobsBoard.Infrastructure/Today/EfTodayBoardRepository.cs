@@ -176,8 +176,16 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
             .AsNoTracking()
             .Where(behaviour => behaviourIds.Contains(behaviour.Id))
             .ToDictionaryAsync(behaviour => behaviour.Id, cancellationToken);
+        var adjustmentIds = entries.Where(entry => entry.PointAdjustmentId is not null)
+            .Select(entry => entry.PointAdjustmentId!.Value)
+            .ToArray();
+        var adjustments = await _database.PointAdjustments
+            .AsNoTracking()
+            .Where(adjustment => adjustmentIds.Contains(adjustment.Id))
+            .ToDictionaryAsync(adjustment => adjustment.Id, cancellationToken);
         var adultIds = behaviours.Values
             .Select(behaviour => behaviour.LoggedByMemberId)
+            .Concat(adjustments.Values.Select(adjustment => adjustment.AdjustedByMemberId))
             .Distinct()
             .ToArray();
         var adults = await _database.HouseholdMembers
@@ -186,23 +194,33 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
             .ToDictionaryAsync(member => member.Id, member => member.DisplayName, cancellationToken);
 
         var earnings = entries
-            .Select(entry => entry.GoodBehaviourId is { } behaviourId
-                ? new TodayPointEarning(
+            .Select(entry => entry switch
+            {
+                { GoodBehaviourId: { } behaviourId } => new TodayPointEarning(
                     entry.Id,
                     PointEarningSource.GoodBehaviour,
                     behaviours[behaviourId].TypeName,
                     null,
                     entry.Amount,
                     entry.AwardedAtUtc,
-                    adults.GetValueOrDefault(behaviours[behaviourId].LoggedByMemberId))
-                : new TodayPointEarning(
+                    adults.GetValueOrDefault(behaviours[behaviourId].LoggedByMemberId)),
+                { PointAdjustmentId: { } adjustmentId } => new TodayPointEarning(
+                    entry.Id,
+                    PointEarningSource.ManualAdjustment,
+                    adjustments[adjustmentId].Reason,
+                    null,
+                    entry.Amount,
+                    entry.AwardedAtUtc,
+                    adults.GetValueOrDefault(adjustments[adjustmentId].AdjustedByMemberId)),
+                _ => new TodayPointEarning(
                     entry.Id,
                     PointEarningSource.Job,
                     jobNames[entry.JobId!.Value],
                     entry.JobId,
                     entry.Amount,
                     entry.AwardedAtUtc,
-                    null))
+                    null),
+            })
             .ToArray();
 
         return new TodayPointsSummary(

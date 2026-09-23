@@ -27,9 +27,8 @@ A user with administrative privileges within the family system. Adults can manag
 
 #### Characteristics
 - All User characteristics
-- Implemented administration includes user management, job creation, and
-  good-behaviour types and logging; point adjustments are planned, not yet
-  implemented
+- Implemented administration includes user management, job creation,
+  good-behaviour types and logging, and manual point adjustments
 
 ### Job
 A task or chore assigned to one child within the family system. An adult may
@@ -86,14 +85,17 @@ a type never changes behaviours already logged.
 - Active flag with audit of who created, edited, and deleted it
 
 ### Points
-The currency accumulated by Children. Job-earned and good-behaviour awards and
-their append-only history are implemented. Adult redemption and manual
-adjustment are planned and are not yet implemented.
+The currency accumulated by Children. Job-earned awards, good-behaviour awards,
+and manual adjustments, with their append-only history, are implemented. Adult
+redemption is planned and not yet implemented.
 
 #### Properties
 - Accumulated total per Child
 - Trackable history of point assignments
-- Adult redemption and manual adjustment are planned, not yet implemented
+- Manual adjustments by Adults are signed, need a reason, and may take a balance
+  negative only after explicit confirmation; mistakes are corrected with a new
+  opposite entry, never by editing history
+- Adult redemption is planned, not yet implemented
 - Do not expire
 
 ### Administration
@@ -103,7 +105,7 @@ Functions available to Adult users for managing the system.
 - Manage Users (create, update, soft-delete)
 - Manage Jobs (add, edit, schedule, delete)
 - Manage Good Behaviours (planned, not yet implemented)
-- Manually adjust accumulated points (planned, not yet implemented)
+- Manually adjust accumulated points (add or remove, with a required reason)
 - View audit trails for all actions (planned, not yet implemented)
 
 ## Relationships

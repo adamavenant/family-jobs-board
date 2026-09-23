@@ -1414,6 +1414,73 @@
           }
         ]
       }
+    },
+    "/api/point-adjustments": {
+      "post": {
+        "tags": [
+          "Point adjustments"
+        ],
+        "summary": "Manually add or remove points for a child.",
+        "description": "Adult-only. Records a signed, non-zero adjustment with a required reason as its own append-only ledger entry; mistakes are corrected with a new opposite adjustment. An adjustment that would take the balance below zero returns 409 with code 'negativeBalanceConfirmationRequired' and the current and resulting balances unless confirmNegativeBalance is true. Repeating a request ID with the same details returns the original result without a second entry; reusing it for different details returns 409 with code 'requestConflict'.",
+        "operationId": "RecordPointAdjustment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordPointAdjustmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordPointAdjustmentResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordPointAdjustmentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2338,6 +2405,46 @@
           }
         }
       },
+      "PointAdjustmentResponse": {
+        "required": [
+          "id",
+          "childId",
+          "adjustedByMemberId",
+          "amount",
+          "reason",
+          "adjustedAtUtc"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "adjustedByMemberId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "amount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "adjustedAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "PointEarningResponse": {
         "required": [
           "id",
@@ -2422,6 +2529,63 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "RecordPointAdjustmentRequest": {
+        "required": [
+          "requestId",
+          "childId",
+          "amount",
+          "reason",
+          "confirmNegativeBalance"
+        ],
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "amount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "confirmNegativeBalance": {
+            "type": "boolean"
+          }
+        }
+      },
+      "RecordPointAdjustmentResponse": {
+        "required": [
+          "adjustment",
+          "pointsBalance"
+        ],
+        "type": "object",
+        "properties": {
+          "adjustment": {
+            "$ref": "#/components/schemas/PointAdjustmentResponse"
+          },
+          "pointsBalance": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -2781,6 +2945,9 @@
     },
     {
       "name": "Good behaviours"
+    },
+    {
+      "name": "Point adjustments"
     }
   ]
 }
