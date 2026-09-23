@@ -1,7 +1,7 @@
 # Family Jobs Board delivery plan
 
 Status: active delivery plan
-Last updated: 2026-09-13
+Last updated: 2026-09-23
 Scope: MVP described by `CONTEXT.md`, `docs/product-brief.md`, `docs/mvp-features.md`, and `docs/mvp-nonfunctional-reqs-and-architecture.md`
 
 ## 1. Outcome
@@ -285,7 +285,7 @@ Delivery status on `main` as of 2026-09-13:
 
 - [x] Phase 0: containerized database-backed walking skeleton, real-PostgreSQL integration tests, and CI.
 - [x] Phase 1: household bootstrap, PIN sign-in/session security, and the implemented family-member administration lifecycle.
-- [ ] Phase 2: once-off creation, daily navigation, multi-child assignment, and completion submission are delivered; edit/cancel/delete and the adult child filter remain.
+- [x] Phase 2: once-off creation, editing, terminal cancellation, daily navigation, adult child filtering, multi-child assignment, and completion submission are delivered.
 - [ ] Phase 3: the submit/approve-or-reject/ledger loop and child balance/history are delivered; approval-time point override remains.
 - [x] Phase 4: daily, weekly, and monthly recurrence creation and adult day/week/month calendar views are delivered; series lifecycle (pause/end/edit) remains (issues #107, #108).
 - [x] Phase 5: adult-defined good-behaviour types, logging with an editable point value, atomic idempotent ledger awards, and child history/read-only listing are delivered.
@@ -353,7 +353,7 @@ Exit gate:
 
 Deliver from `docs/specs/020-jobs-and-agenda.md`:
 
-- adult job create/edit/cancel/soft-delete for once-off jobs;
+- adult job create/edit/terminal-cancel for once-off jobs;
 - assignee, name, description, whole-number points, date, optional time, and agenda period;
 - daily agenda for the selected user, grouped into Morning, Arriving Home, Evening, and Unscheduled;
 - previous/next-day navigation with an explicit household time zone;

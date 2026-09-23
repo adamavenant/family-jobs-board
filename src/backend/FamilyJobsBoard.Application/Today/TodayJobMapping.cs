@@ -51,6 +51,7 @@ internal static class TodayJobMapping
             JobStatus.Open => "open",
             JobStatus.PendingApproval => "pendingApproval",
             JobStatus.Approved => "approved",
+            JobStatus.Cancelled => "cancelled",
             _ => throw new InvalidOperationException($"Unknown job status '{status}'."),
         };
     }

@@ -373,6 +373,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Edit an open or pending-approval job occurrence.
+         * @description Updates only this job occurrence without changing its recurring series or points ledger; approved and cancelled jobs return 409.
+         */
+        put: operations["UpdateJob"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an open or pending-approval job occurrence.
+         * @description Records an optional reason, hides the occurrence from daily agendas, and leaves its recurring series and review history unchanged.
+         */
+        post: operations["CancelJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/good-behaviour-types": {
         parameters: {
             query?: never;
@@ -546,6 +586,9 @@ export interface components {
             /** Format: uuid */
             selectedChildId: null | string;
             days: components["schemas"]["CalendarDayResponse"][];
+        };
+        CancelJobRequest: {
+            reason: null | string;
         };
         CreateDailyRecurringJobRequest: {
             /** Format: uuid */
@@ -849,6 +892,17 @@ export interface components {
             firstName: null | string;
             surname: null | string;
             nickname: null | string;
+        };
+        UpdateJobRequest: {
+            name: null | string;
+            description: null | string;
+            /** Format: int32 */
+            points: number | string;
+            /** Format: date */
+            scheduledDate: null | string;
+            agendaPeriod: null | string;
+            /** Format: time */
+            scheduledTime: null | string;
         };
     };
     responses: never;
@@ -1658,6 +1712,112 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["RejectJobRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    UpdateJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateJobRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    CancelJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelJobRequest"];
             };
         };
         responses: {

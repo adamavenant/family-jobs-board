@@ -46,7 +46,10 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
     {
         return await _database.Jobs
             .AsNoTracking()
-            .Where(job => childIds.Contains(job.ChildId) && job.ScheduledDate == scheduledDate)
+            .Where(job =>
+                childIds.Contains(job.ChildId)
+                && job.ScheduledDate == scheduledDate
+                && job.Status != JobStatus.Cancelled)
             .OrderBy(job => job.AgendaPeriod)
             .ThenBy(job => job.ScheduledTime == null)
             .ThenBy(job => job.ScheduledTime)
@@ -98,7 +101,8 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
             .AsNoTracking()
             .Where(job => childIds.Contains(job.ChildId)
                 && job.ScheduledDate >= startDate
-                && job.ScheduledDate <= endDate)
+                && job.ScheduledDate <= endDate
+                && job.Status != JobStatus.Cancelled)
             .OrderBy(job => job.ScheduledDate)
             .ThenBy(job => job.AgendaPeriod)
             .ThenBy(job => job.ScheduledTime == null)

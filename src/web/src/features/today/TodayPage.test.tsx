@@ -132,6 +132,144 @@ describe("Today page", () => {
     expect(screen.getAllByText("For Fredster")[0]).toBeInTheDocument();
   });
 
+  it("lets an adult edit an open job and refreshes the agenda", async () => {
+    const original = {
+      ...board.jobs[0],
+      scheduledDate: board.date,
+      agendaPeriod: "morning",
+      scheduledTime: null,
+      recurringJobSeriesId: null,
+      recurrenceFrequency: null,
+    };
+    const initialBoard = { ...board, jobs: [original] };
+    const updated = {
+      ...original,
+      name: "Feed and water the dog",
+      description: "Fresh water and one scoop.",
+      points: 7,
+      agendaPeriod: "evening",
+      scheduledTime: "18:15:00",
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(initialBoard))
+      .mockResolvedValueOnce(jsonResponse(updated))
+      .mockResolvedValueOnce(
+        jsonResponse({ ...initialBoard, jobs: [updated] }),
+      );
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    const heading = await screen.findByRole("heading", {
+      name: "Feed the dog",
+    });
+    const card = heading.closest("article");
+    expect(card).not.toBeNull();
+    await user.click(within(card as HTMLElement).getByText("Edit job"));
+    const name = within(card as HTMLElement).getByLabelText("Edit job name");
+    await user.clear(name);
+    await user.type(name, "Feed and water the dog");
+    await user.clear(
+      within(card as HTMLElement).getByLabelText("Edit description"),
+    );
+    await user.type(
+      within(card as HTMLElement).getByLabelText("Edit description"),
+      "Fresh water and one scoop.",
+    );
+    await user.clear(within(card as HTMLElement).getByLabelText("Edit points"));
+    await user.type(
+      within(card as HTMLElement).getByLabelText("Edit points"),
+      "7",
+    );
+    await user.selectOptions(
+      within(card as HTMLElement).getByLabelText("Edit part of day"),
+      "evening",
+    );
+    await user.type(
+      within(card as HTMLElement).getByLabelText("Edit time (optional)"),
+      "18:15",
+    );
+    await user.click(
+      within(card as HTMLElement).getByRole("button", { name: "Save changes" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Feed and water the dog" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Evening · 18:15")).toBeInTheDocument();
+    const updateRequest = fetch.mock.calls[1]?.[0];
+    expect(updateRequest).toBeInstanceOf(Request);
+    expect((updateRequest as Request).method).toBe("PUT");
+    expect(await (updateRequest as Request).clone().json()).toMatchObject({
+      name: "Feed and water the dog",
+      points: 7,
+      agendaPeriod: "evening",
+      scheduledTime: "18:15",
+    });
+  });
+
+  it("lets an adult cancel a pending job and removes it from the agenda", async () => {
+    const pending = {
+      ...board.jobs[2],
+      scheduledDate: board.date,
+      agendaPeriod: "evening",
+      scheduledTime: null,
+      recurringJobSeriesId: null,
+      recurrenceFrequency: null,
+    };
+    const initialBoard = { ...board, jobs: [pending] };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(initialBoard))
+      .mockResolvedValueOnce(jsonResponse({ ...pending, status: "cancelled" }))
+      .mockResolvedValueOnce(
+        jsonResponse({ ...initialBoard, jobs: [], pendingApprovalCount: 0 }),
+      );
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    const heading = await screen.findByRole("heading", {
+      name: "Clear the table",
+    });
+    const card = heading.closest("article");
+    expect(card).not.toBeNull();
+    await user.click(within(card as HTMLElement).getByText("Cancel job"));
+    await user.type(
+      within(card as HTMLElement).getByLabelText(
+        "Cancellation reason (optional)",
+      ),
+      "No longer needed.",
+    );
+    await user.click(
+      within(card as HTMLElement).getByRole("button", {
+        name: "Cancel this job",
+      }),
+    );
+
+    expect(
+      await screen.findByText("No jobs are scheduled for this day."),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "Clear the table" }),
+    ).not.toBeInTheDocument();
+    const cancelRequest = fetch.mock.calls[1]?.[0];
+    expect(cancelRequest).toBeInstanceOf(Request);
+    expect(await (cancelRequest as Request).clone().json()).toEqual({
+      reason: "No longer needed.",
+    });
+  });
+
+  it("does not show job management controls to a child", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(childBoard)));
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Fredster!" });
+    expect(screen.queryByText("Edit job")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cancel job")).not.toBeInTheDocument();
+  });
+
   it("keeps grown-up tools collapsed until requested and defaults points to one", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(board)));
     const user = userEvent.setup();

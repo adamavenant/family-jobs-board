@@ -1225,6 +1225,10 @@ h1 {
   color: var(--approved-text);
   background: var(--approved-bg);
 }
+.status--cancelled {
+  color: var(--error-text);
+  background: var(--error-bg);
+}
 .points {
   color: var(--card-text);
   font-weight: 700;
@@ -1326,6 +1330,60 @@ h1 {
 .job-card .button--secondary:hover {
   color: var(--error-bg);
   background: var(--error-text);
+}
+.job-management {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--card-border);
+}
+.job-management > details > summary {
+  width: fit-content;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 700;
+}
+.job-management__form {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+}
+.job-management__form > label,
+.job-management__row label {
+  display: grid;
+  gap: 5px;
+  color: var(--card-text);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.job-management__form label span {
+  font-weight: 500;
+}
+.job-management__form input,
+.job-management__form select,
+.job-management__form textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 11px;
+  color: var(--text);
+  background: var(--input);
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+}
+.job-management__form textarea {
+  resize: vertical;
+}
+.job-management__row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.job-card .job-management__form .button--danger {
+  color: #fff;
+  background: var(--error-text);
+}
+.job-card .job-management__form .button--danger:hover {
+  background: color-mix(in srgb, var(--error-text) 84%, #000);
 }
 .open-job-actions {
   display: grid;
@@ -1737,6 +1795,9 @@ h1 {
     min-height: 300px;
   }
   .review-actions {
+    grid-template-columns: 1fr;
+  }
+  .job-management__row {
     grid-template-columns: 1fr;
   }
 }

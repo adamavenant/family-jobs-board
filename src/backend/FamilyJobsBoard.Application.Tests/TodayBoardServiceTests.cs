@@ -114,6 +114,77 @@ public sealed class TodayBoardServiceTests
     }
 
     [Fact]
+    public async Task Adult_can_edit_a_pending_job_without_awarding_points()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Original", "", 2, Today);
+        job.MarkComplete(new FixedClock().UtcNow);
+        repository.Jobs.Add(job);
+        var service = new TodayBoardService(repository, new FixedClock());
+
+        var updated = await service.UpdateJobAsync(
+            job.Id,
+            new UpdateTodayJob(
+                Adult.Id,
+                "Updated",
+                "Changed details.",
+                6,
+                Today.AddDays(1),
+                "evening",
+                new TimeOnly(19, 0)),
+            CancellationToken.None);
+
+        Assert.Equal("Updated", updated.Name);
+        Assert.Equal("pendingApproval", updated.Status);
+        Assert.Equal(6, updated.Points);
+        Assert.Equal(1, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Adult_can_cancel_a_recurring_occurrence_without_changing_its_series()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var series = RecurringJobSeries.Daily(
+            Guid.NewGuid(), FirstChild.Id, Adult.Id, "Daily", "", 1,
+            AgendaPeriod.Morning, null, Today, Today.AddDays(3), Guid.NewGuid());
+        repository.Series.Add(series);
+        var job = new Job(
+            Guid.NewGuid(), FirstChild.Id, "Daily", "", 1, Today,
+            AgendaPeriod.Morning, null, series.Id, RecurrenceFrequency.Daily);
+        repository.Jobs.Add(job);
+        var service = new TodayBoardService(repository, new FixedClock());
+
+        var cancelled = await service.CancelJobAsync(
+            job.Id, Adult.Id, "Not today.", CancellationToken.None);
+
+        Assert.Equal("cancelled", cancelled.Status);
+        Assert.Single(repository.Series);
+        Assert.Equal(series.Id, repository.Series[0].Id);
+        Assert.Equal(1, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Child_cannot_edit_or_cancel_a_job()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Original", "", 2, Today);
+        repository.Jobs.Add(job);
+        var service = new TodayBoardService(repository, new FixedClock());
+
+        await Assert.ThrowsAsync<JobManagementForbiddenException>(() =>
+            service.UpdateJobAsync(
+                job.Id,
+                new UpdateTodayJob(
+                    FirstChild.Id, "Updated", "", 2, Today, "morning", null),
+                CancellationToken.None));
+        await Assert.ThrowsAsync<JobManagementForbiddenException>(() =>
+            service.CancelJobAsync(job.Id, FirstChild.Id, null, CancellationToken.None));
+
+        Assert.Equal(JobStatus.Open, job.Status);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
     public async Task Requested_date_returns_only_that_days_visible_jobs()
     {
         var requestedDate = Today.AddDays(3);
@@ -315,7 +386,8 @@ public sealed class TodayBoardServiceTests
             Task.FromResult<IReadOnlyList<Job>>(Jobs
                 .Where(job => childIds.Contains(job.ChildId) && job.ScheduledDate == scheduledDate)
                 .ToArray());
-        public Task<Job?> GetJobAsync(Guid jobId, CancellationToken cancellationToken) => throw Unused();
+        public Task<Job?> GetJobAsync(Guid jobId, CancellationToken cancellationToken) =>
+            Task.FromResult(Jobs.SingleOrDefault(job => job.Id == jobId));
         public Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(IReadOnlyCollection<Guid> childIds, DateOnly scheduledDate, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TodayJobRejection>>([]);
         public Task<IReadOnlyList<Job>> GetJobsInRangeAsync(IReadOnlyCollection<Guid> childIds, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken) =>

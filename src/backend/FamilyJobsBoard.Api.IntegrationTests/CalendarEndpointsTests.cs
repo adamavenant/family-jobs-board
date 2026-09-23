@@ -127,6 +127,44 @@ public sealed class CalendarEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_cancelled_job_is_hidden_from_the_calendar_just_like_the_daily_agenda()
+    {
+        using var add = await SendAsync(
+            HttpMethod.Post,
+            "/api/today/jobs",
+            DemoDataIds.Addie,
+            new
+            {
+                childIds = new[] { DemoDataIds.Harrie },
+                name = "No longer needed",
+                description = "",
+                points = 4,
+                scheduledDate = CurrentDate,
+                agendaPeriod = "unscheduled",
+                scheduledTime = (string?)null,
+            });
+        add.EnsureSuccessStatusCode();
+        var addedJobId = (await add.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("jobs")[0].GetProperty("id").GetGuid();
+        using var cancel = await SendAsync(
+            HttpMethod.Post,
+            $"/api/jobs/{addedJobId}/cancel",
+            DemoDataIds.Addie,
+            new { reason = (string?)null });
+        cancel.EnsureSuccessStatusCode();
+
+        var dayView = await GetCalendarAsync(view: "day", date: CurrentDate);
+        var weekView = await GetCalendarAsync(view: "week", date: CurrentDate);
+        var agenda = await GetTodayAsync(CurrentDate);
+
+        Assert.DoesNotContain(dayView.Days[0].Jobs, job => job.Id == addedJobId);
+        Assert.DoesNotContain(
+            weekView.Days.SelectMany(day => day.Jobs),
+            job => job.Id == addedJobId);
+        Assert.DoesNotContain(agenda.Jobs, job => job.Id == addedJobId);
+    }
+
+    [Fact]
     public async Task Recurring_occurrences_are_generated_across_the_whole_visible_range()
     {
         using var create = await SendAsync(

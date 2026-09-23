@@ -28,6 +28,9 @@ export function jobStatusLabel(status: TodayJob["status"]): string {
   if (status === "pendingApproval") {
     return "Waiting for approval";
   }
+  if (status === "cancelled") {
+    return "Cancelled";
+  }
 
   return "Ready to do";
 }
@@ -38,7 +41,9 @@ export function jobStatusClassName(status: TodayJob["status"]): string {
       ? "approved"
       : status === "pendingApproval"
         ? "pending"
-        : "open";
+        : status === "cancelled"
+          ? "cancelled"
+          : "open";
   return `status status--${modifier}`;
 }
 

@@ -4,6 +4,7 @@ public sealed class Job
 {
     public const int MaximumNameLength = 160;
     public const int MaximumDescriptionLength = 1000;
+    public const int MaximumCancellationReasonLength = 500;
 
     private Job()
     {
@@ -103,6 +104,12 @@ public sealed class Job
 
     public DateTimeOffset? ApprovedAtUtc { get; private set; }
 
+    public Guid? CancelledByMemberId { get; private set; }
+
+    public DateTimeOffset? CancelledAtUtc { get; private set; }
+
+    public string? CancellationReason { get; private set; }
+
     public void MarkComplete(DateTimeOffset completedAtUtc)
     {
         if (Status != JobStatus.Open)
@@ -134,6 +141,77 @@ public sealed class Job
 
         Status = JobStatus.Open;
         CompletedAtUtc = null;
+    }
+
+    public void Edit(
+        string name,
+        string description,
+        int points,
+        DateOnly scheduledDate,
+        AgendaPeriod agendaPeriod,
+        TimeOnly? scheduledTime)
+    {
+        if (Status is not (JobStatus.Open or JobStatus.PendingApproval))
+        {
+            throw new JobEditRejectedException(Id);
+        }
+
+        var trimmedName = name.Trim();
+        if (trimmedName.Length == 0 || trimmedName.Length > MaximumNameLength)
+        {
+            throw new ArgumentException(
+                $"A job name must contain between 1 and {MaximumNameLength} characters.",
+                nameof(name));
+        }
+
+        var trimmedDescription = description.Trim();
+        if (trimmedDescription.Length > MaximumDescriptionLength)
+        {
+            throw new ArgumentException(
+                $"A job description cannot exceed {MaximumDescriptionLength} characters.",
+                nameof(description));
+        }
+
+        if (points < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(points), "Points cannot be negative.");
+        }
+
+        Name = trimmedName;
+        Description = trimmedDescription;
+        Points = points;
+        ScheduledDate = scheduledDate;
+        AgendaPeriod = agendaPeriod;
+        ScheduledTime = scheduledTime;
+    }
+
+    public void Cancel(
+        Guid cancelledByMemberId,
+        DateTimeOffset cancelledAtUtc,
+        string? reason)
+    {
+        if (Status is not (JobStatus.Open or JobStatus.PendingApproval))
+        {
+            throw new JobCancellationRejectedException(Id);
+        }
+
+        if (cancelledByMemberId == Guid.Empty)
+        {
+            throw new ArgumentException("A cancelling adult is required.", nameof(cancelledByMemberId));
+        }
+
+        var trimmedReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        if (trimmedReason?.Length > MaximumCancellationReasonLength)
+        {
+            throw new ArgumentException(
+                $"A cancellation reason cannot exceed {MaximumCancellationReasonLength} characters.",
+                nameof(reason));
+        }
+
+        Status = JobStatus.Cancelled;
+        CancelledByMemberId = cancelledByMemberId;
+        CancelledAtUtc = cancelledAtUtc.ToUniversalTime();
+        CancellationReason = trimmedReason;
     }
 
     public void ScheduleFor(DateOnly date)
