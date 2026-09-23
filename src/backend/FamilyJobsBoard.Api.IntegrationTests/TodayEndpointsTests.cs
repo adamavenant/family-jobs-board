@@ -94,6 +94,185 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Adult_edit_is_persisted_without_creating_a_ledger_entry()
+    {
+        var jobId = DemoDataIds.FeedDog;
+        using var response = await Client.PutAsJsonAsync(
+            $"/api/jobs/{jobId}",
+            new
+            {
+                name = "Feed and water the dog",
+                description = "Fresh water and one scoop of food.",
+                points = 7,
+                scheduledDate = CurrentDate.AddDays(1),
+                agendaPeriod = "evening",
+                scheduledTime = "18:15:00",
+            });
+        var updated = await response.Content.ReadFromJsonAsync<JobResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(updated);
+        Assert.Equal("Feed and water the dog", updated.Name);
+        Assert.Equal(CurrentDate.AddDays(1), updated.ScheduledDate);
+        Assert.Equal("evening", updated.AgendaPeriod);
+        Assert.Equal(new TimeOnly(18, 15), updated.ScheduledTime);
+
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(7, (await database.Jobs.SingleAsync(job => job.Id == jobId)).Points);
+        Assert.False(await database.PointsLedgerEntries.AnyAsync(entry => entry.JobId == jobId));
+    }
+
+    [Fact]
+    public async Task Approved_job_is_immutable_for_edit_and_cancel()
+    {
+        await CompleteAndApproveAsync(DemoDataIds.FeedDog);
+
+        using var edit = await Client.PutAsJsonAsync(
+            $"/api/jobs/{DemoDataIds.FeedDog}",
+            new
+            {
+                name = "Changed",
+                description = "",
+                points = 99,
+                scheduledDate = CurrentDate,
+                agendaPeriod = "morning",
+                scheduledTime = (string?)null,
+            });
+        using var cancel = await Client.PostAsJsonAsync(
+            $"/api/jobs/{DemoDataIds.FeedDog}/cancel",
+            new { reason = "Too late." });
+
+        Assert.Equal(HttpStatusCode.Conflict, edit.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, cancel.StatusCode);
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var job = await database.Jobs.SingleAsync(item => item.Id == DemoDataIds.FeedDog);
+        Assert.Equal(JobStatus.Approved, job.Status);
+        Assert.Equal(5, await database.PointsLedgerEntries
+            .Where(entry => entry.JobId == job.Id)
+            .SumAsync(entry => entry.Amount));
+    }
+
+    [Fact]
+    public async Task Adult_can_cancel_pending_job_while_preserving_review_history_and_awarding_no_points()
+    {
+        await CompleteAsync(DemoDataIds.PackBag);
+        using (var reject = await Client.PostAsJsonAsync(
+            $"/api/jobs/{DemoDataIds.PackBag}/reject",
+            new { reason = "Please check the lunchbox." }))
+        {
+            reject.EnsureSuccessStatusCode();
+        }
+        await CompleteAsync(DemoDataIds.PackBag);
+
+        using var cancel = await Client.PostAsJsonAsync(
+            $"/api/jobs/{DemoDataIds.PackBag}/cancel",
+            new { reason = "School is closed." });
+        var cancelled = await cancel.Content.ReadFromJsonAsync<JobResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
+        Assert.NotNull(cancelled);
+        Assert.Equal("cancelled", cancelled.Status);
+
+        var adultBoard = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}");
+        var childBoard = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Fredster}");
+        Assert.NotNull(adultBoard);
+        Assert.NotNull(childBoard);
+        Assert.DoesNotContain(adultBoard.Jobs, job => job.Id == DemoDataIds.PackBag);
+        Assert.DoesNotContain(childBoard.Jobs, job => job.Id == DemoDataIds.PackBag);
+
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var stored = await database.Jobs.SingleAsync(job => job.Id == DemoDataIds.PackBag);
+        Assert.Equal(JobStatus.Cancelled, stored.Status);
+        Assert.Equal(DemoDataIds.Addie, stored.CancelledByMemberId);
+        Assert.Equal("School is closed.", stored.CancellationReason);
+        Assert.NotNull(stored.CancelledAtUtc);
+        Assert.Single(await database.JobReviewDecisions
+            .Where(decision => decision.JobId == stored.Id)
+            .ToListAsync());
+        Assert.False(await database.PointsLedgerEntries.AnyAsync(entry => entry.JobId == stored.Id));
+    }
+
+    [Fact]
+    public async Task Child_cannot_edit_or_cancel_a_job()
+    {
+        using var editRequest = new HttpRequestMessage(
+            HttpMethod.Put,
+            $"/api/jobs/{DemoDataIds.FeedDog}")
+        {
+            Content = JsonContent.Create(new
+            {
+                name = "Changed",
+                description = "",
+                points = 2,
+                scheduledDate = CurrentDate,
+                agendaPeriod = "morning",
+                scheduledTime = (string?)null,
+            }),
+        };
+        editRequest.Headers.Add("X-Test-Member-Id", DemoDataIds.Fredster.ToString());
+        using var edit = await Client.SendAsync(editRequest);
+
+        using var cancelRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/jobs/{DemoDataIds.FeedDog}/cancel")
+        {
+            Content = JsonContent.Create(new { reason = "No." }),
+        };
+        cancelRequest.Headers.Add("X-Test-Member-Id", DemoDataIds.Fredster.ToString());
+        using var cancel = await Client.SendAsync(cancelRequest);
+
+        Assert.Equal(HttpStatusCode.Forbidden, edit.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, cancel.StatusCode);
+    }
+
+    [Fact]
+    public async Task Cancelling_one_recurring_occurrence_does_not_change_later_occurrences()
+    {
+        using var create = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/daily",
+            new
+            {
+                requestId = Guid.NewGuid(),
+                childIds = new[] { DemoDataIds.Fredster },
+                name = "Daily practice",
+                description = "Ten minutes.",
+                points = 2,
+                agendaPeriod = "evening",
+                scheduledTime = (string?)null,
+                startDate = CurrentDate,
+                endDate = CurrentDate.AddDays(2),
+            });
+        create.EnsureSuccessStatusCode();
+        var today = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}");
+        Assert.NotNull(today);
+        var occurrence = today.Jobs.Single(job => job.Name == "Daily practice");
+
+        using var cancel = await Client.PostAsJsonAsync(
+            $"/api/jobs/{occurrence.Id}/cancel",
+            new { reason = "Skip today." });
+        cancel.EnsureSuccessStatusCode();
+
+        var tomorrow = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}&date={CurrentDate.AddDays(1):yyyy-MM-dd}");
+        Assert.NotNull(tomorrow);
+        var laterOccurrence = Assert.Single(tomorrow.Jobs, job => job.Name == "Daily practice");
+        Assert.Equal("open", laterOccurrence.Status);
+        Assert.Equal(occurrence.RecurringJobSeriesId, laterOccurrence.RecurringJobSeriesId);
+    }
+
+    [Fact]
     public async Task Explicit_demo_seed_creates_not_set_credentials_for_every_profile()
     {
         await using var scope = (_factory

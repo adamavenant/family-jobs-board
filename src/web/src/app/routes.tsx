@@ -21,12 +21,14 @@ import {
   ApiError,
   addJob,
   approveJob,
+  cancelJob,
   completeJob,
   createDailyRecurringJob,
   createMonthlyRecurringJob,
   createWeeklyRecurringJob,
   getToday,
   rejectJob,
+  updateJob,
 } from "../api/today";
 import { LoadingPage } from "./LoadingPage";
 import { createRequestId } from "./requestId";
@@ -86,6 +88,19 @@ export interface RejectActionResult {
   error?: string;
 }
 
+export interface EditJobActionResult {
+  intent: "editJob";
+  jobId: string;
+  success?: boolean;
+  error?: string;
+}
+
+export interface CancelJobActionResult {
+  intent: "cancelJob";
+  jobId: string;
+  error?: string;
+}
+
 export interface ResetJobsAndPointsActionResult {
   intent: "resetJobsAndPoints";
   success?: boolean;
@@ -99,6 +114,8 @@ export type TodayActionResult =
   | AddJobActionResult
   | AddRecurringJobActionResult
   | ApproveActionResult
+  | EditJobActionResult
+  | CancelJobActionResult
   | RejectActionResult
   | ResetJobsAndPointsActionResult;
 
@@ -193,6 +210,12 @@ async function todayAction({
   }
   if (form.get("intent") === "reject") {
     return rejectAction(form);
+  }
+  if (form.get("intent") === "editJob") {
+    return editJobAction(form);
+  }
+  if (form.get("intent") === "cancelJob") {
+    return cancelJobAction(form);
   }
   if (form.get("intent") === "resetJobsAndPoints") {
     return resetJobsAndPointsAction(form);
@@ -674,6 +697,129 @@ async function rejectAction(form: FormData): Promise<RejectActionResult> {
         error instanceof ApiError
           ? error.message
           : "That job couldn't be rejected.",
+    };
+  }
+}
+
+async function editJobAction(form: FormData): Promise<EditJobActionResult> {
+  const jobId = form.get("jobId");
+  const name = form.get("name");
+  const description = form.get("description");
+  const pointsValue = form.get("points");
+  const scheduledDate = form.get("scheduledDate");
+  const agendaPeriod = form.get("agendaPeriod");
+  const scheduledTime = form.get("scheduledTime");
+  const points = Number(pointsValue);
+  const validAgendaPeriods = [
+    "morning",
+    "arrivingHome",
+    "evening",
+    "unscheduled",
+  ] as const;
+
+  if (typeof jobId !== "string") {
+    return {
+      intent: "editJob",
+      jobId: "",
+      error: "The selected job was missing.",
+    };
+  }
+  if (
+    typeof name !== "string" ||
+    name.trim().length === 0 ||
+    name.trim().length > 160
+  ) {
+    return {
+      intent: "editJob",
+      jobId,
+      error: "Enter a job name of 160 characters or fewer.",
+    };
+  }
+  if (typeof description !== "string" || description.trim().length > 1000) {
+    return {
+      intent: "editJob",
+      jobId,
+      error: "The description must be 1000 characters or fewer.",
+    };
+  }
+  if (
+    typeof pointsValue !== "string" ||
+    !Number.isInteger(points) ||
+    points < 0
+  ) {
+    return {
+      intent: "editJob",
+      jobId,
+      error: "Enter zero or more whole points.",
+    };
+  }
+  if (
+    typeof scheduledDate !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)
+  ) {
+    return { intent: "editJob", jobId, error: "Choose a scheduled date." };
+  }
+  if (
+    typeof agendaPeriod !== "string" ||
+    !validAgendaPeriods.some((value) => value === agendaPeriod)
+  ) {
+    return { intent: "editJob", jobId, error: "Choose a part of the day." };
+  }
+
+  try {
+    await updateJob(jobId, {
+      name,
+      description,
+      points,
+      scheduledDate,
+      agendaPeriod: agendaPeriod as (typeof validAgendaPeriods)[number],
+      scheduledTime:
+        typeof scheduledTime === "string" && scheduledTime.length > 0
+          ? scheduledTime
+          : null,
+    });
+    return { intent: "editJob", jobId, success: true };
+  } catch (error) {
+    return {
+      intent: "editJob",
+      jobId,
+      error:
+        error instanceof ApiError
+          ? error.message
+          : "That job couldn't be updated.",
+    };
+  }
+}
+
+async function cancelJobAction(form: FormData): Promise<CancelJobActionResult> {
+  const jobId = form.get("jobId");
+  const reason = form.get("reason");
+  if (typeof jobId !== "string") {
+    return {
+      intent: "cancelJob",
+      jobId: "",
+      error: "The selected job was missing.",
+    };
+  }
+  if (typeof reason === "string" && reason.trim().length > 500) {
+    return {
+      intent: "cancelJob",
+      jobId,
+      error: "The cancellation reason must be 500 characters or fewer.",
+    };
+  }
+
+  try {
+    await cancelJob(jobId, typeof reason === "string" ? reason : null);
+    return { intent: "cancelJob", jobId };
+  } catch (error) {
+    return {
+      intent: "cancelJob",
+      jobId,
+      error:
+        error instanceof ApiError
+          ? error.message
+          : "That job couldn't be cancelled.",
     };
   }
 }

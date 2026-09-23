@@ -75,6 +75,16 @@ public sealed record AddJobsResponse(IReadOnlyList<JobResponse> Jobs);
 
 public sealed record RejectJobRequest(string? Reason);
 
+public sealed record UpdateJobRequest(
+    string? Name,
+    string? Description,
+    int Points,
+    DateOnly? ScheduledDate,
+    string? AgendaPeriod,
+    TimeOnly? ScheduledTime);
+
+public sealed record CancelJobRequest(string? Reason);
+
 public sealed record JobResponse(
     Guid Id,
     Guid ChildId,
