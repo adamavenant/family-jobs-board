@@ -88,6 +88,57 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
             .ToArray();
     }
 
+    public async Task<IReadOnlyList<Job>> GetJobsInRangeAsync(
+        IReadOnlyCollection<Guid> childIds,
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken cancellationToken)
+    {
+        return await _database.Jobs
+            .AsNoTracking()
+            .Where(job => childIds.Contains(job.ChildId)
+                && job.ScheduledDate >= startDate
+                && job.ScheduledDate <= endDate)
+            .OrderBy(job => job.ScheduledDate)
+            .ThenBy(job => job.AgendaPeriod)
+            .ThenBy(job => job.ScheduledTime == null)
+            .ThenBy(job => job.ScheduledTime)
+            .ThenBy(job => job.Name)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsInRangeAsync(
+        IReadOnlyCollection<Guid> childIds,
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken cancellationToken)
+    {
+        var rejections = await _database.JobReviewDecisions
+            .AsNoTracking()
+            .Where(decision => decision.Outcome == JobReviewOutcome.Rejected)
+            .Join(
+                _database.Jobs.AsNoTracking().Where(job =>
+                    childIds.Contains(job.ChildId)
+                    && job.ScheduledDate >= startDate
+                    && job.ScheduledDate <= endDate),
+                decision => decision.JobId,
+                job => job.Id,
+                (decision, _) => decision)
+            .OrderByDescending(decision => decision.DecidedAtUtc)
+            .ThenByDescending(decision => decision.Id)
+            .Select(decision => new TodayJobRejection(
+                decision.Id,
+                decision.JobId,
+                decision.Reason,
+                decision.DecidedAtUtc))
+            .ToListAsync(cancellationToken);
+
+        return rejections
+            .GroupBy(rejection => rejection.JobId)
+            .Select(group => group.First())
+            .ToArray();
+    }
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         try

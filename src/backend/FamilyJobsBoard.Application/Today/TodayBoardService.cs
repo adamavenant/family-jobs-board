@@ -267,7 +267,7 @@ public sealed class TodayBoardService
         var occurrences = series
             .SelectMany(item => item
                 .GenerateThrough(horizon)
-                .Select(date => CreateOccurrence(item, date)))
+                .Select(date => RecurringOccurrenceGenerator.CreateOccurrence(item, date)))
             .ToArray();
 
         await _repository.AddRecurringJobSeriesAsync(series, cancellationToken);
@@ -378,7 +378,7 @@ public sealed class TodayBoardService
         var occurrences = series
             .SelectMany(item => item
                 .GenerateThrough(horizon)
-                .Select(date => CreateOccurrence(item, date)))
+                .Select(date => RecurringOccurrenceGenerator.CreateOccurrence(item, date)))
             .ToArray();
 
         await _repository.AddRecurringJobSeriesAsync(series, cancellationToken);
@@ -489,7 +489,7 @@ public sealed class TodayBoardService
         var occurrences = series
             .SelectMany(item => item
                 .GenerateThrough(horizon)
-                .Select(date => CreateOccurrence(item, date)))
+                .Select(date => RecurringOccurrenceGenerator.CreateOccurrence(item, date)))
             .ToArray();
 
         await _repository.AddRecurringJobSeriesAsync(series, cancellationToken);
@@ -575,42 +575,15 @@ public sealed class TodayBoardService
         return new RecurringJobCreation(assignments, false);
     }
 
-    private async Task EnsureRecurringJobsAsync(
+    private Task EnsureRecurringJobsAsync(
         DateOnly requestedDate,
         CancellationToken cancellationToken)
     {
-        var rollingHorizon = _clock.Today.AddDays(55);
-        var horizon = requestedDate > rollingHorizon ? requestedDate : rollingHorizon;
-        var seriesToAdvance = await _repository.GetRecurringJobSeriesNeedingGenerationAsync(
-            horizon,
+        return RecurringOccurrenceGenerator.EnsureGeneratedThroughAsync(
+            _repository,
+            _clock,
+            requestedDate,
             cancellationToken);
-        var occurrences = seriesToAdvance
-            .SelectMany(series => series
-                .GenerateThrough(horizon)
-                .Select(date => CreateOccurrence(series, date)))
-            .ToArray();
-        if (seriesToAdvance.Count == 0)
-        {
-            return;
-        }
-
-        await _repository.AddJobsAsync(occurrences, cancellationToken);
-        await _repository.SaveChangesAsync(cancellationToken);
-    }
-
-    private static Job CreateOccurrence(RecurringJobSeries series, DateOnly date)
-    {
-        return new Job(
-            Guid.NewGuid(),
-            series.ChildId,
-            series.Name,
-            series.Description,
-            series.Points,
-            date,
-            series.AgendaPeriod,
-            series.ScheduledTime,
-            series.Id,
-            series.Frequency);
     }
 
     public async Task<TodayJobApproval> ApproveAsync(
@@ -768,69 +741,17 @@ public sealed class TodayBoardService
         return parsed.Count == parsed.Distinct().Count();
     }
 
-    private static TodayMember MapMember(HouseholdMember member)
-    {
-        return new TodayMember(
-            member.Id,
-            member.FirstName,
-            member.Nickname,
-            member.DisplayName,
-            member.IsAdult);
-    }
+    private static TodayMember MapMember(HouseholdMember member) => TodayJobMapping.MapMember(member);
 
     private static TodayJob MapJob(
         Job job,
         HouseholdMember child,
-        TodayJobRejection? latestRejection)
-    {
-        var status = job.Status switch
-        {
-            JobStatus.Open => "open",
-            JobStatus.PendingApproval => "pendingApproval",
-            JobStatus.Approved => "approved",
-            _ => throw new InvalidOperationException($"Unknown job status '{job.Status}'."),
-        };
+        TodayJobRejection? latestRejection) =>
+        TodayJobMapping.MapJob(job, child, latestRejection);
 
-        return new TodayJob(
-            job.Id,
-            child.Id,
-            child.DisplayName,
-            job.Name,
-            job.Description,
-            job.Points,
-            job.ScheduledDate,
-            MapAgendaPeriod(job.AgendaPeriod),
-            job.ScheduledTime,
-            job.RecurringJobSeriesId,
-            job.RecurrenceFrequency is null
-                ? null
-                : MapRecurrenceFrequency(job.RecurrenceFrequency.Value),
-            status,
-            job.CompletedAtUtc,
-            job.ApprovedAtUtc,
-            job.Status == JobStatus.Open ? latestRejection : null);
-    }
+    private static string MapAgendaPeriod(AgendaPeriod agendaPeriod) =>
+        TodayJobMapping.MapAgendaPeriod(agendaPeriod);
 
-    private static string MapAgendaPeriod(AgendaPeriod agendaPeriod)
-    {
-        return agendaPeriod switch
-        {
-            AgendaPeriod.Morning => "morning",
-            AgendaPeriod.ArrivingHome => "arrivingHome",
-            AgendaPeriod.Evening => "evening",
-            AgendaPeriod.Unscheduled => "unscheduled",
-            _ => throw new InvalidOperationException($"Unknown agenda period '{agendaPeriod}'."),
-        };
-    }
-
-    private static string MapRecurrenceFrequency(RecurrenceFrequency frequency)
-    {
-        return frequency switch
-        {
-            RecurrenceFrequency.Daily => "daily",
-            RecurrenceFrequency.Weekly => "weekly",
-            RecurrenceFrequency.Monthly => "monthly",
-            _ => throw new InvalidOperationException($"Unknown recurrence frequency '{frequency}'."),
-        };
-    }
+    private static string MapRecurrenceFrequency(RecurrenceFrequency frequency) =>
+        TodayJobMapping.MapRecurrenceFrequency(frequency);
 }

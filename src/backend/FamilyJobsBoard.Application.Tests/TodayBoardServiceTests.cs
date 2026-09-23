@@ -318,6 +318,13 @@ public sealed class TodayBoardServiceTests
         public Task<Job?> GetJobAsync(Guid jobId, CancellationToken cancellationToken) => throw Unused();
         public Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(IReadOnlyCollection<Guid> childIds, DateOnly scheduledDate, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TodayJobRejection>>([]);
+        public Task<IReadOnlyList<Job>> GetJobsInRangeAsync(IReadOnlyCollection<Guid> childIds, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Job>>(Jobs
+                .Where(job => childIds.Contains(job.ChildId) && job.ScheduledDate >= startDate && job.ScheduledDate <= endDate)
+                .OrderBy(job => job.ScheduledDate)
+                .ToArray());
+        public Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsInRangeAsync(IReadOnlyCollection<Guid> childIds, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<TodayJobRejection>>([]);
         public Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesNeedingGenerationAsync(DateOnly horizon, CancellationToken cancellationToken)
         {
             LastGenerationHorizon = horizon;

@@ -12,6 +12,14 @@ import { RecurringJobForm } from "./RecurringJobForm";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { FamilyMembersPanel } from "../identity/FamilyMembersPanel";
 import { AdminDataResetPanel } from "../administration/AdminDataResetPanel";
+import {
+  addDays,
+  boardHref,
+  formatAgendaPeriod,
+  formatRecurrenceFrequency,
+  jobStatusClassName,
+  jobStatusLabel,
+} from "./jobFormatting";
 import { GoodBehavioursPanel } from "../goodBehaviours/GoodBehavioursPanel";
 import { GoodBehaviourTypesList } from "../goodBehaviours/GoodBehaviourTypesList";
 import { PointAdjustmentsPanel } from "../pointAdjustments/PointAdjustmentsPanel";
@@ -34,6 +42,11 @@ export function TodayPage({ board }: { board: TodayBoard }) {
         <div className="hero__toolbar">
           <p className="eyebrow">Family Jobs Board</p>
           <div className="hero__actions">
+            {board.viewer.isAdult ? (
+              <Link className="calendar-link" to="/calendar">
+                Calendar
+              </Link>
+            ) : null}
             <IdentityControls viewer={board.viewer} />
             <ThemeToggle />
           </div>
@@ -236,29 +249,7 @@ function Agenda({ jobs, isAdult }: { jobs: TodayJob[]; isAdult: boolean }) {
   );
 }
 
-function addDays(date: string, days: number): string {
-  const value = new Date(`${date}T12:00:00Z`);
-  value.setUTCDate(value.getUTCDate() + days);
-  return value.toISOString().slice(0, 10);
-}
-
-function boardHref(
-  date: string,
-  currentDate: string,
-  selectedChildId: string | null,
-): string {
-  const search = new URLSearchParams();
-  if (date !== currentDate) {
-    search.set("date", date);
-  }
-  if (selectedChildId) {
-    search.set("childId", selectedChildId);
-  }
-  const query = search.toString();
-  return query ? `/?${query}` : "/";
-}
-
-function IdentityControls({ viewer }: { viewer: HouseholdMember }) {
+export function IdentityControls({ viewer }: { viewer: HouseholdMember }) {
   const fetcher = useFetcher<AppActionResult>();
   const submitting = fetcher.state !== "idle";
 
@@ -391,14 +382,8 @@ function JobCard({
   return (
     <article className={`job-card job-card--${(index % 3) + 1}`}>
       <div className="job-card__topline">
-        <span
-          className={`status status--${isApproved ? "approved" : isPending ? "pending" : "open"}`}
-        >
-          {isApproved
-            ? "Points awarded"
-            : isPending
-              ? "Waiting for approval"
-              : "Ready to do"}
+        <span className={jobStatusClassName(job.status)}>
+          {jobStatusLabel(job.status)}
         </span>
         <span className="points">{job.points} pts</span>
       </div>
@@ -495,25 +480,4 @@ function JobCard({
       ) : null}
     </article>
   );
-}
-
-function formatAgendaPeriod(value: TodayJob["agendaPeriod"]) {
-  return value === "arrivingHome"
-    ? "Arriving home"
-    : value === "unscheduled"
-      ? "Any time"
-      : `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
-}
-
-function formatRecurrenceFrequency(
-  value: TodayJob["recurrenceFrequency"],
-): string {
-  if (value === "weekly") {
-    return "Weekly";
-  }
-  if (value === "monthly") {
-    return "Monthly";
-  }
-
-  return "Daily";
 }
