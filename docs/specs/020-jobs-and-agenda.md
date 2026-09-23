@@ -2,8 +2,7 @@
 
 ## Status
 
-Retrospective specification of the delivered Phase 2 slices. The phase remains
-in progress because job edit/cancel/delete is not implemented.
+Retrospective specification of the delivered Phase 2 slices.
 
 ## Outcome and user value
 
@@ -17,6 +16,8 @@ jobs and can submit open work for adult review.
 | --- | --- | --- | --- |
 | Read a daily board | No | Own jobs; cannot filter | All active children's jobs, optionally filtered to one active child |
 | Create once-off jobs | No | No | Yes |
+| Edit open or pending-approval jobs | No | No | Yes |
+| Cancel open or pending-approval jobs | No | No | Yes |
 | Submit completion | No | Own open job only | No |
 
 The authenticated session supplies the viewer identity. Clients cannot select
@@ -26,8 +27,9 @@ another viewer through request data.
 
 Delivered scope includes household-local date browsing, agenda grouping,
 adult filtering by one active child, once-off creation, atomic multi-child
-assignment, and completion submission. Editing, cancelling, deleting, and a
-separate pending-approval page are outside the implemented slice.
+assignment, occurrence editing, terminal cancellation, and completion
+submission. Recurring-series lifecycle operations and a separate
+pending-approval page are outside the implemented slice.
 
 ## Domain rules and state
 
@@ -42,12 +44,22 @@ Jobs start `Open`. Their child may transition them once to `PendingApproval`,
 capturing a UTC completion instant. Another child receives `403`; a missing job
 receives `404`; and an invalid repeat transition receives `409`.
 
+An adult may edit all job details while a job is `Open` or `PendingApproval`.
+Editing retains its workflow state, completion and review history, recurring
+series link, and creates no ledger entry. An adult may cancel either state with
+an optional reason. Cancellation records actor and UTC time, transitions the
+job to terminal `Cancelled`, hides it from every daily agenda, and never awards
+points. `Approved` and `Cancelled` jobs are immutable. Cancelling one recurring
+occurrence does not change its series or future occurrences; there is no
+un-cancel operation.
+
 ## Data and migration
 
 The `jobs` table stores the child, job details, household-local scheduled date,
 optional time, agenda period, workflow state, and UTC completion/approval
-instants. Foreign keys preserve member history. Multi-child copies commit
-atomically. Existing migrations are forward-only.
+instants. Cancellation additionally stores the adult actor, UTC instant, and
+optional reason. Foreign keys preserve member history. Multi-child copies
+commit atomically. Existing migrations are forward-only.
 
 ## HTTP contract
 
@@ -60,6 +72,10 @@ atomically. Existing migrations are forward-only.
   `scheduledDate`, agenda period, and optional time; it returns the created
   child-specific jobs.
 - `POST /api/jobs/{id}/complete` transitions the authenticated child's job.
+- `PUT /api/jobs/{id}` lets an adult replace the editable details of one open
+  or pending-approval occurrence.
+- `POST /api/jobs/{id}/cancel` lets an adult terminally cancel one open or
+  pending-approval occurrence with an optional reason.
 
 Validation returns Problem Details with field errors. Authentication failures
 are `401`, role/ownership failures `403`, missing records `404`, invalid state
@@ -73,7 +89,8 @@ active children for assignment, and filter the agenda by child. Previous day,
 next day, and Today controls preserve the filter in the URL while updating the
 date. The heading, count, jobs, and empty state reflect the selected child.
 Jobs are grouped by agenda period. Phone and tablet journeys use native,
-labelled controls and touch-sized actions.
+labelled controls and touch-sized actions. Each eligible adult job card exposes
+on-demand edit and cancellation forms; children never receive those controls.
 
 ## Audit and security
 
@@ -98,6 +115,15 @@ its persistence dependency.
   unknown, inactive, and adult member selections return field validation.
 - Given a child completes an open owned job, then it becomes pending approval
   with one completion instant; a repeat does not create another submission.
+- Given an adult edits an open or pending-approval job, then its details update
+  without changing workflow/review state or creating a ledger entry.
+- Given an adult cancels an open or pending-approval job, then it is retained as
+  `Cancelled`, disappears from every agenda, retains review history, and awards
+  no points.
+- Given an approved job, child caller, or already-cancelled job, then edit and
+  cancellation are rejected.
+- Given one recurring occurrence is cancelled, then later series occurrences
+  remain unchanged.
 - Given invalid children, a past date, or invalid text/points, then no job copy
   is persisted and field validation is returned.
 
@@ -107,8 +133,8 @@ Domain tests cover job transitions. Application tests cover visibility,
 ownership, validation, multi-child creation, and persistence orchestration.
 Integration tests cover HTTP authorization and PostgreSQL behavior. Component
 and Playwright tests cover loading/errors, daily navigation, adult child
-filtering, creation, multi-child assignment, and completion at phone/tablet
-sizes.
+filtering, creation, multi-child assignment, editing, cancellation, and
+completion at phone/tablet sizes.
 
 ## Compose demonstration
 
@@ -119,6 +145,6 @@ state persist.
 
 ## Unresolved decisions
 
-Job edit/cancel/delete semantics and their historical effects require a future
-issue before implementation. The owning issue must resolve those rules before
-Phase 2 is marked complete.
+Recurring-series edit, pause, and end semantics remain owned by the recurring
+jobs specification. Cancellation is the terminal retained-row behavior for
+once-off jobs; no separate physical-delete workflow is planned for Phase 2.

@@ -15,7 +15,7 @@ export interface TodayJob {
   scheduledTime: string | null;
   recurringJobSeriesId: string | null;
   recurrenceFrequency: "daily" | "weekly" | "monthly" | null;
-  status: "open" | "pendingApproval" | "approved";
+  status: "open" | "pendingApproval" | "approved" | "cancelled";
   completedAtUtc: string | null;
   approvedAtUtc: string | null;
   latestRejection: JobRejection | null;
@@ -160,6 +160,47 @@ export async function rejectJob(
   });
   if (!data) {
     throw new ApiError(problemMessage(error, "That job couldn't be rejected."));
+  }
+
+  return mapJob(data);
+}
+
+export async function updateJob(
+  id: string,
+  request: {
+    name: string;
+    description: string;
+    points: number;
+    scheduledDate: string;
+    agendaPeriod: "morning" | "arrivingHome" | "evening" | "unscheduled";
+    scheduledTime: string | null;
+  },
+): Promise<TodayJob> {
+  const client = apiClient();
+  const { data, error } = await client.PUT("/api/jobs/{id}", {
+    params: { path: { id } },
+    body: request,
+  });
+  if (!data) {
+    throw new ApiError(problemMessage(error, "That job couldn't be updated."));
+  }
+
+  return mapJob(data);
+}
+
+export async function cancelJob(
+  id: string,
+  reason: string | null,
+): Promise<TodayJob> {
+  const client = apiClient();
+  const { data, error } = await client.POST("/api/jobs/{id}/cancel", {
+    params: { path: { id } },
+    body: { reason },
+  });
+  if (!data) {
+    throw new ApiError(
+      problemMessage(error, "That job couldn't be cancelled."),
+    );
   }
 
   return mapJob(data);
@@ -325,7 +366,9 @@ function mapJob(job: {
         ? job.recurrenceFrequency
         : null,
     status:
-      job.status === "pendingApproval" || job.status === "approved"
+      job.status === "pendingApproval" ||
+      job.status === "approved" ||
+      job.status === "cancelled"
         ? job.status
         : "open",
   };

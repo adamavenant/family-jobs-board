@@ -65,7 +65,129 @@ internal static class TodayEndpoints
             .WithSummary("Reject a pending job and return it for another try.")
             .WithDescription("Records optional feedback and returns 409 unless the job is pending approval.");
 
+        group.MapPut("/jobs/{id:guid}", UpdateJobAsync)
+            .RequireAuthorization("Adult")
+            .WithName("UpdateJob")
+            .WithSummary("Edit an open or pending-approval job occurrence.")
+            .WithDescription(
+                "Updates only this job occurrence without changing its recurring series or points ledger; approved and cancelled jobs return 409.");
+
+        group.MapPost("/jobs/{id:guid}/cancel", CancelJobAsync)
+            .RequireAuthorization("Adult")
+            .WithName("CancelJob")
+            .WithSummary("Cancel an open or pending-approval job occurrence.")
+            .WithDescription(
+                "Records an optional reason, hides the occurrence from daily agendas, and leaves its recurring series and review history unchanged.");
+
         return endpoints;
+    }
+
+    private static async Task<Results<
+        Ok<JobResponse>,
+        ValidationProblem,
+        NotFound<ProblemDetails>,
+        Conflict<ProblemDetails>,
+        ForbidHttpResult>> UpdateJobAsync(
+        Guid id,
+        UpdateJobRequest request,
+        HttpContext context,
+        TodayBoardService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var job = await service.UpdateJobAsync(
+                id,
+                new UpdateTodayJob(
+                    IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
+                    request.Name,
+                    request.Description,
+                    request.Points,
+                    request.ScheduledDate,
+                    request.AgendaPeriod,
+                    request.ScheduledTime),
+                cancellationToken);
+            return TypedResults.Ok(MapJob(job));
+        }
+        catch (InvalidJobEditException exception)
+        {
+            return TypedResults.ValidationProblem(
+                exception.Errors,
+                title: "Invalid job data");
+        }
+        catch (JobNotFoundException exception)
+        {
+            return TypedResults.NotFound(new ProblemDetails
+            {
+                Title = "Job not found",
+                Detail = exception.Message,
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+        catch (JobEditRejectedException exception)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Job cannot be edited",
+                Detail = exception.Message,
+                Status = StatusCodes.Status409Conflict,
+            });
+        }
+        catch (JobManagementForbiddenException)
+        {
+            return TypedResults.Forbid();
+        }
+    }
+
+    private static async Task<Results<
+        Ok<JobResponse>,
+        ValidationProblem,
+        NotFound<ProblemDetails>,
+        Conflict<ProblemDetails>,
+        ForbidHttpResult>> CancelJobAsync(
+        Guid id,
+        CancelJobRequest request,
+        HttpContext context,
+        TodayBoardService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var job = await service.CancelJobAsync(
+                id,
+                IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
+                request.Reason,
+                cancellationToken);
+            return TypedResults.Ok(MapJob(job));
+        }
+        catch (InvalidJobCancellationException exception)
+        {
+            return TypedResults.ValidationProblem(
+                exception.Errors,
+                title: "Invalid cancellation data");
+        }
+        catch (JobNotFoundException exception)
+        {
+            return TypedResults.NotFound(new ProblemDetails
+            {
+                Title = "Job not found",
+                Detail = exception.Message,
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+        catch (JobCancellationRejectedException exception)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Job cannot be cancelled",
+                Detail = exception.Message,
+                Status = StatusCodes.Status409Conflict,
+            });
+        }
+        catch (JobManagementForbiddenException)
+        {
+            return TypedResults.Forbid();
+        }
     }
 
     private static async Task<Results<

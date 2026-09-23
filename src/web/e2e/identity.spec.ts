@@ -382,6 +382,89 @@ test("a grown-up browses and schedules a job on the next day", async ({
   await expect(page.getByText("Morning · 07:15")).toBeVisible();
 });
 
+test("a grown-up edits and cancels one job occurrence on a phone", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  let currentJob: ReturnType<typeof assignmentJob> | null = assignmentJob(
+    "af0ea2cc-56f3-4d1c-a67f-5fb95ec24273",
+    fredsterId,
+    "Fredster",
+    "Feed the cat",
+  );
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (!path.startsWith("/api/")) {
+      return route.continue();
+    }
+    if (path === "/api/auth/refresh") {
+      return json(route, auth(addieId, "Addie", "adult"));
+    }
+    if (path === `/api/jobs/${currentJob?.id}` && request.method() === "PUT") {
+      const body = request.postDataJSON();
+      currentJob = {
+        ...currentJob,
+        name: body.name,
+        description: body.description,
+        points: body.points,
+        scheduledDate: body.scheduledDate,
+        agendaPeriod: body.agendaPeriod,
+        scheduledTime: body.scheduledTime,
+      } as ReturnType<typeof assignmentJob>;
+      return json(route, currentJob);
+    }
+    if (
+      path === `/api/jobs/${currentJob?.id}/cancel` &&
+      request.method() === "POST"
+    ) {
+      expect(request.postDataJSON()).toEqual({ reason: "Plans changed." });
+      const cancelled = { ...currentJob, status: "cancelled" };
+      currentJob = null;
+      return json(route, cancelled);
+    }
+    if (path === "/api/today") {
+      return json(route, assignmentBoard(currentJob ? [currentJob] : []));
+    }
+    return problem(route, 404);
+  });
+
+  await page.goto("/");
+  const card = page
+    .getByRole("heading", { name: "Feed the cat" })
+    .locator("..")
+    .locator("..");
+  await card.getByText("Edit job", { exact: true }).click();
+  await card.getByLabel("Edit job name").fill("Feed and water the cat");
+  await card.getByLabel("Edit description").fill("Fresh water and one scoop.");
+  await card.getByLabel("Edit points").fill("4");
+  await card.getByLabel("Edit part of day").selectOption("evening");
+  await card.getByLabel("Edit time (optional)").fill("18:15");
+  await card.getByRole("button", { name: "Save changes" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Feed and water the cat" }),
+  ).toBeVisible();
+  await expect(page.getByText("Evening · 18:15")).toBeVisible();
+
+  const updatedCard = page
+    .getByRole("heading", { name: "Feed and water the cat" })
+    .locator("..")
+    .locator("..");
+  await updatedCard.getByText("Cancel job", { exact: true }).click();
+  await updatedCard
+    .getByLabel("Cancellation reason (optional)")
+    .fill("Plans changed.");
+  await updatedCard.getByRole("button", { name: "Cancel this job" }).click();
+
+  await expect(
+    page.getByText("No jobs are scheduled for this day."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Feed and water the cat" }),
+  ).toHaveCount(0);
+});
+
 test("a grown-up assigns a recurring schedule to one child on a phone", async ({
   page,
 }) => {

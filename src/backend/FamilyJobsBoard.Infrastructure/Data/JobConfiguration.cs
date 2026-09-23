@@ -9,7 +9,10 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
 {
     public void Configure(EntityTypeBuilder<Job> builder)
     {
-        builder.ToTable("jobs");
+        builder.ToTable("jobs", table => table.HasCheckConstraint(
+            "ck_jobs_cancellation_details",
+            "(status = 'Cancelled' AND cancelled_by_member_id IS NOT NULL AND cancelled_at_utc IS NOT NULL) OR " +
+            "(status <> 'Cancelled' AND cancelled_by_member_id IS NULL AND cancelled_at_utc IS NULL AND cancellation_reason IS NULL)"));
         builder.HasKey(job => job.Id);
         builder.Property(job => job.Id).HasColumnName("id");
         builder.Property(job => job.ChildId).HasColumnName("child_id");
@@ -33,6 +36,11 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
             .HasMaxLength(32);
         builder.Property(job => job.CompletedAtUtc).HasColumnName("completed_at_utc");
         builder.Property(job => job.ApprovedAtUtc).HasColumnName("approved_at_utc");
+        builder.Property(job => job.CancelledByMemberId).HasColumnName("cancelled_by_member_id");
+        builder.Property(job => job.CancelledAtUtc).HasColumnName("cancelled_at_utc");
+        builder.Property(job => job.CancellationReason)
+            .HasColumnName("cancellation_reason")
+            .HasMaxLength(Job.MaximumCancellationReasonLength);
         builder.HasIndex(job => new { job.ChildId, job.ScheduledDate });
         builder.HasIndex(job => new { job.RecurringJobSeriesId, job.ScheduledDate })
             .IsUnique()
@@ -45,6 +53,10 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
         builder.HasOne<RecurringJobSeries>()
             .WithMany()
             .HasForeignKey(job => job.RecurringJobSeriesId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<HouseholdMember>()
+            .WithMany()
+            .HasForeignKey(job => job.CancelledByMemberId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

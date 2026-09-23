@@ -381,7 +381,9 @@ function JobCard({
   const error =
     (fetcher.data?.intent === "complete" ||
       fetcher.data?.intent === "approve" ||
-      fetcher.data?.intent === "reject") &&
+      fetcher.data?.intent === "reject" ||
+      fetcher.data?.intent === "editJob" ||
+      fetcher.data?.intent === "cancelJob") &&
     fetcher.data.jobId === job.id
       ? fetcher.data.error
       : undefined;
@@ -416,6 +418,116 @@ function JobCard({
         </p>
         <p>{job.description}</p>
       </div>
+
+      {isAdult && !isApproved ? (
+        <div className="job-management">
+          <details>
+            <summary>Edit job</summary>
+            <fetcher.Form method="post" className="job-management__form">
+              <input type="hidden" name="intent" value="editJob" />
+              <input type="hidden" name="jobId" value={job.id} />
+              <label htmlFor={`edit-name-${job.id}`}>Edit job name</label>
+              <input
+                id={`edit-name-${job.id}`}
+                name="name"
+                defaultValue={job.name}
+                maxLength={160}
+                required
+              />
+              <label htmlFor={`edit-description-${job.id}`}>
+                Edit description
+              </label>
+              <textarea
+                id={`edit-description-${job.id}`}
+                name="description"
+                defaultValue={job.description}
+                maxLength={1000}
+                rows={3}
+              />
+              <div className="job-management__row">
+                <label htmlFor={`edit-points-${job.id}`}>
+                  Edit points
+                  <input
+                    id={`edit-points-${job.id}`}
+                    name="points"
+                    type="number"
+                    min={0}
+                    step={1}
+                    defaultValue={job.points}
+                    required
+                  />
+                </label>
+                <label htmlFor={`edit-date-${job.id}`}>
+                  Edit scheduled date
+                  <input
+                    id={`edit-date-${job.id}`}
+                    name="scheduledDate"
+                    type="date"
+                    defaultValue={job.scheduledDate}
+                    required
+                  />
+                </label>
+              </div>
+              <div className="job-management__row">
+                <label htmlFor={`edit-period-${job.id}`}>
+                  Edit part of day
+                  <select
+                    id={`edit-period-${job.id}`}
+                    name="agendaPeriod"
+                    defaultValue={job.agendaPeriod}
+                  >
+                    {agendaPeriods.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label htmlFor={`edit-time-${job.id}`}>
+                  Edit time <span>(optional)</span>
+                  <input
+                    id={`edit-time-${job.id}`}
+                    name="scheduledTime"
+                    type="time"
+                    defaultValue={job.scheduledTime?.slice(0, 5) ?? ""}
+                  />
+                </label>
+              </div>
+              <button type="submit" disabled={isSubmitting}>
+                {isSubmitting && submittingIntent === "editJob"
+                  ? "Saving…"
+                  : "Save changes"}
+              </button>
+            </fetcher.Form>
+          </details>
+          <details>
+            <summary>Cancel job</summary>
+            <fetcher.Form method="post" className="job-management__form">
+              <input type="hidden" name="intent" value="cancelJob" />
+              <input type="hidden" name="jobId" value={job.id} />
+              <label htmlFor={`cancel-reason-${job.id}`}>
+                Cancellation reason <span>(optional)</span>
+              </label>
+              <textarea
+                id={`cancel-reason-${job.id}`}
+                name="reason"
+                maxLength={500}
+                rows={2}
+              />
+              <p>Cancelling is permanent and awards no points.</p>
+              <button
+                type="submit"
+                className="button--danger"
+                disabled={isSubmitting}
+              >
+                {isSubmitting && submittingIntent === "cancelJob"
+                  ? "Cancelling…"
+                  : "Cancel this job"}
+              </button>
+            </fetcher.Form>
+          </details>
+        </div>
+      ) : null}
 
       {isApproved ? (
         <div className="complete-state complete-state--approved" role="status">

@@ -181,6 +181,70 @@ public sealed class TodayBoardService
             .ToArray();
     }
 
+    public async Task<TodayJob> UpdateJobAsync(
+        Guid jobId,
+        UpdateTodayJob request,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdultAsync(request.ViewerId, cancellationToken);
+        var name = request.Name?.Trim() ?? string.Empty;
+        var description = request.Description?.Trim() ?? string.Empty;
+        var errors = ValidateNewJob(name, description, request.Points);
+        if (request.ScheduledDate is null)
+        {
+            errors[nameof(UpdateTodayJob.ScheduledDate)] = ["Choose a scheduled date."];
+        }
+
+        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        {
+            errors[nameof(UpdateTodayJob.AgendaPeriod)] =
+                ["Choose morning, arrivingHome, evening, or unscheduled."];
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new InvalidJobEditException(errors);
+        }
+
+        var job = await GetJobAsync(jobId, cancellationToken);
+        var child = await GetChildAsync(job.ChildId, cancellationToken);
+        job.Edit(
+            name,
+            description,
+            request.Points,
+            request.ScheduledDate!.Value,
+            agendaPeriod,
+            request.ScheduledTime);
+        await _repository.SaveChangesAsync(cancellationToken);
+
+        return MapJob(job, child, null);
+    }
+
+    public async Task<TodayJob> CancelJobAsync(
+        Guid jobId,
+        Guid viewerId,
+        string? reason,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdultAsync(viewerId, cancellationToken);
+        var trimmedReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        if (trimmedReason?.Length > Job.MaximumCancellationReasonLength)
+        {
+            throw new InvalidJobCancellationException(new Dictionary<string, string[]>
+            {
+                ["Reason"] =
+                    [$"A cancellation reason cannot exceed {Job.MaximumCancellationReasonLength} characters."],
+            });
+        }
+
+        var job = await GetJobAsync(jobId, cancellationToken);
+        var child = await GetChildAsync(job.ChildId, cancellationToken);
+        job.Cancel(viewerId, _clock.UtcNow, trimmedReason);
+        await _repository.SaveChangesAsync(cancellationToken);
+
+        return MapJob(job, child, null);
+    }
+
     public async Task<RecurringJobCreation> CreateDailyRecurringJobAsync(
         CreateDailyRecurringJob request,
         CancellationToken cancellationToken)
@@ -697,6 +761,15 @@ public sealed class TodayBoardService
             : throw new HouseholdMemberNotFoundException(childId);
     }
 
+    private async Task EnsureAdultAsync(Guid viewerId, CancellationToken cancellationToken)
+    {
+        var viewer = await _repository.GetMemberAsync(viewerId, cancellationToken);
+        if (viewer is not { IsAdult: true })
+        {
+            throw new JobManagementForbiddenException();
+        }
+    }
+
     private static Dictionary<string, string[]> ValidateNewJob(
         string name,
         string description,
@@ -788,6 +861,7 @@ public sealed class TodayBoardService
             JobStatus.Open => "open",
             JobStatus.PendingApproval => "pendingApproval",
             JobStatus.Approved => "approved",
+            JobStatus.Cancelled => "cancelled",
             _ => throw new InvalidOperationException($"Unknown job status '{job.Status}'."),
         };
 
