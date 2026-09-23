@@ -11,4 +11,5 @@ public sealed record CreateMonthlyRecurringJob(
     TimeOnly? ScheduledTime,
     DateOnly StartDate,
     DateOnly? EndDate,
-    int DayOfMonth);
+    int DayOfMonth,
+    string? AssignmentMode = null);

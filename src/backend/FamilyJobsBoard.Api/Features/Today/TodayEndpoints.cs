@@ -37,21 +37,21 @@ internal static class TodayEndpoints
             .WithName("CreateDailyRecurringJob")
             .WithSummary("Create a daily recurring job for one or more children.")
             .WithDescription(
-                "Creates an adult-owned child-specific daily series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.");
+                "Creates an adult-owned child-specific daily series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.");
 
         group.MapPost("/recurring-jobs/weekly", CreateWeeklyRecurringJobAsync)
             .RequireAuthorization("Adult")
             .WithName("CreateWeeklyRecurringJob")
             .WithSummary("Create a weekly recurring job for one or more children.")
             .WithDescription(
-                "Creates an adult-owned child-specific weekly series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.");
+                "Creates an adult-owned child-specific weekly series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.");
 
         group.MapPost("/recurring-jobs/monthly", CreateMonthlyRecurringJobAsync)
             .RequireAuthorization("Adult")
             .WithName("CreateMonthlyRecurringJob")
             .WithSummary("Create a monthly recurring job for one or more children.")
             .WithDescription(
-                "Creates an adult-owned child-specific monthly series for each assignee and uses the final valid day in shorter months.");
+                "Creates an adult-owned child-specific monthly series for each assignee and uses the final valid day in shorter months. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.");
 
         group.MapPost("/jobs/{id:guid}/approve", ApproveJobAsync)
             .RequireAuthorization("Adult")
@@ -213,7 +213,8 @@ internal static class TodayEndpoints
                     request.AgendaPeriod,
                     request.ScheduledTime,
                     request.StartDate,
-                    request.EndDate),
+                    request.EndDate,
+                    request.AssignmentMode),
                 cancellationToken);
             var response = MapRecurringCreation(creation);
             return creation.WasCreated
@@ -261,7 +262,8 @@ internal static class TodayEndpoints
                     request.ScheduledTime,
                     request.StartDate,
                     request.EndDate,
-                    request.DayOfMonth),
+                    request.DayOfMonth,
+                    request.AssignmentMode),
                 cancellationToken);
             var response = MapRecurringCreation(creation);
             return creation.WasCreated
@@ -309,7 +311,8 @@ internal static class TodayEndpoints
                     request.ScheduledTime,
                     request.StartDate,
                     request.EndDate,
-                    request.Weekdays),
+                    request.Weekdays,
+                    request.AssignmentMode),
                 cancellationToken);
             var response = MapRecurringCreation(creation);
             return creation.WasCreated
@@ -546,7 +549,8 @@ internal static class TodayEndpoints
                 assignment.SeriesId,
                 assignment.ChildId,
                 assignment.GeneratedThrough,
-                assignment.OccurrenceCount))
+                assignment.OccurrenceCount,
+                assignment.RotationChildIds))
                 .ToArray());
     }
 

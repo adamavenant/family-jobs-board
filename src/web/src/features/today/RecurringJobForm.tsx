@@ -18,6 +18,8 @@ const weekdays = [
 
 type RecurrenceFrequency = "daily" | "weekly" | "monthly";
 
+type AssignmentMode = "eachChild" | "takeTurns";
+
 function parseFrequency(value: string): RecurrenceFrequency {
   if (value === "weekly" || value === "monthly") {
     return value;
@@ -48,6 +50,8 @@ export function RecurringJobForm({
   const formRef = useRef<HTMLFormElement>(null);
   const { showSuccess } = useSuccessToast();
   const [frequency, setFrequency] = useState<RecurrenceFrequency>("daily");
+  const [assignmentMode, setAssignmentMode] =
+    useState<AssignmentMode>("eachChild");
   const result =
     fetcher.data?.intent === "addRecurring" ? fetcher.data : undefined;
   const isSubmitting = fetcher.state !== "idle";
@@ -56,8 +60,11 @@ export function RecurringJobForm({
   useEffect(() => {
     if (fetcher.state === "idle" && result?.success) {
       formRef.current?.reset();
+      const frequencyText = frequencyName(result.frequency ?? "daily");
       showSuccess(
-        `${frequencyName(result.frequency ?? "daily")} job created through ${result.generatedThrough}.`,
+        result.takesTurns
+          ? `Take-turns ${frequencyText.toLowerCase()} job created through ${result.generatedThrough}.`
+          : `${frequencyText} job created through ${result.generatedThrough}.`,
       );
     }
   }, [
@@ -65,6 +72,7 @@ export function RecurringJobForm({
     result?.frequency,
     result?.generatedThrough,
     result?.success,
+    result?.takesTurns,
     showSuccess,
   ]);
 
@@ -88,7 +96,10 @@ export function RecurringJobForm({
           method="post"
           className="add-job__form"
           ref={formRef}
-          onReset={() => setFrequency("daily")}
+          onReset={() => {
+            setFrequency("daily");
+            setAssignmentMode("eachChild");
+          }}
         >
           <input type="hidden" name="intent" value="addRecurring" />
           <div className="form-group">
@@ -110,6 +121,55 @@ export function RecurringJobForm({
             children={children}
             legend={`Assign ${frequencyLabel.toLowerCase()} job to`}
           />
+          {children.length >= 2 ? (
+            <fieldset className="assignee-picker assignment-mode-picker">
+              <legend>How do they share it?</legend>
+              <div className="assignee-picker__options">
+                <label className="assignee-option">
+                  <input
+                    type="radio"
+                    name="assignmentMode"
+                    value="eachChild"
+                    checked={assignmentMode === "eachChild"}
+                    onChange={() => setAssignmentMode("eachChild")}
+                  />
+                  <span>Each child does it</span>
+                </label>
+                <label className="assignee-option">
+                  <input
+                    type="radio"
+                    name="assignmentMode"
+                    value="takeTurns"
+                    checked={assignmentMode === "takeTurns"}
+                    onChange={() => setAssignmentMode("takeTurns")}
+                  />
+                  <span>Take turns</span>
+                </label>
+              </div>
+              {assignmentMode === "takeTurns" ? (
+                <div className="form-group assignment-mode-picker__first-turn">
+                  <label htmlFor="firstTurnChildId">First turn</label>
+                  <select
+                    id="firstTurnChildId"
+                    name="firstTurnChildId"
+                    defaultValue=""
+                    aria-describedby="firstTurnHint"
+                  >
+                    <option value="">First selected child</option>
+                    {children.map((child) => (
+                      <option key={child.id} value={child.id}>
+                        {child.displayName}
+                      </option>
+                    ))}
+                  </select>
+                  <small id="firstTurnHint">
+                    Selected children then take turns in order, one per
+                    occurrence.
+                  </small>
+                </div>
+              ) : null}
+            </fieldset>
+          ) : null}
           {frequency === "weekly" ? (
             <fieldset className="weekday-picker">
               <legend>Repeat on</legend>

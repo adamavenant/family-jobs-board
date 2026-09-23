@@ -316,6 +316,92 @@ public sealed class TodayBoardServiceTests
         Assert.All(repository.Series, series => Assert.Equal(requestId, series.AssignmentRequestId));
     }
 
+    [Fact]
+    public async Task Take_turns_creates_one_series_that_alternates_between_children()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild, SecondChild]);
+        var service = new TodayBoardService(repository, new FixedClock());
+        var request = TakeTurnsRequest(Guid.NewGuid(), [SecondChild.Id, FirstChild.Id]);
+
+        var created = await service.CreateDailyRecurringJobAsync(request, CancellationToken.None);
+        var retried = await service.CreateDailyRecurringJobAsync(request, CancellationToken.None);
+
+        var assignment = Assert.Single(created.Assignments);
+        Assert.Equal(SecondChild.Id, assignment.ChildId);
+        Assert.Equal([SecondChild.Id, FirstChild.Id], assignment.RotationChildIds);
+        Assert.Equal(4, assignment.OccurrenceCount);
+        Assert.Single(repository.Series);
+        Assert.Equal(
+            [SecondChild.Id, FirstChild.Id, SecondChild.Id, FirstChild.Id],
+            repository.Jobs.OrderBy(job => job.ScheduledDate).Select(job => job.ChildId));
+        Assert.False(retried.WasCreated);
+        Assert.Equal(assignment.SeriesId, Assert.Single(retried.Assignments).SeriesId);
+        Assert.Equal(1, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Take_turns_retry_with_a_different_rotation_conflicts()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild, SecondChild]);
+        var service = new TodayBoardService(repository, new FixedClock());
+        var requestId = Guid.NewGuid();
+        await service.CreateDailyRecurringJobAsync(
+            TakeTurnsRequest(requestId, [FirstChild.Id, SecondChild.Id]),
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<DailyRecurringJobRequestConflictException>(() =>
+            service.CreateDailyRecurringJobAsync(
+                TakeTurnsRequest(requestId, [SecondChild.Id, FirstChild.Id]),
+                CancellationToken.None));
+        await Assert.ThrowsAsync<DailyRecurringJobRequestConflictException>(() =>
+            service.CreateDailyRecurringJobAsync(
+                TakeTurnsRequest(requestId, [FirstChild.Id, SecondChild.Id]) with
+                {
+                    AssignmentMode = "eachChild",
+                },
+                CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Take_turns_needs_two_children_and_a_known_mode()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild, SecondChild]);
+        var service = new TodayBoardService(repository, new FixedClock());
+
+        var tooFew = await Assert.ThrowsAsync<InvalidDailyRecurringJobException>(() =>
+            service.CreateDailyRecurringJobAsync(
+                TakeTurnsRequest(Guid.NewGuid(), [FirstChild.Id]),
+                CancellationToken.None));
+        var unknownMode = await Assert.ThrowsAsync<InvalidDailyRecurringJobException>(() =>
+            service.CreateDailyRecurringJobAsync(
+                TakeTurnsRequest(Guid.NewGuid(), [FirstChild.Id, SecondChild.Id]) with
+                {
+                    AssignmentMode = "sometimes",
+                },
+                CancellationToken.None));
+
+        Assert.Contains(nameof(CreateDailyRecurringJob.ChildIds), tooFew.Errors.Keys);
+        Assert.Contains(nameof(CreateDailyRecurringJob.AssignmentMode), unknownMode.Errors.Keys);
+        Assert.Empty(repository.Series);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    private static CreateDailyRecurringJob TakeTurnsRequest(Guid requestId, IReadOnlyList<Guid> childIds)
+    {
+        return new CreateDailyRecurringJob(
+            requestId,
+            Adult.Id,
+            childIds,
+            "Tidy the table",
+            "After dinner.",
+            1,
+            "evening",
+            null,
+            Today,
+            Today.AddDays(3),
+            "takeTurns");
+    }
+
     private sealed class FixedClock : IHouseholdClock
     {
         public DateOnly Today => TodayBoardServiceTests.Today;

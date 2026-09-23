@@ -659,6 +659,59 @@ describe("Today page", () => {
     },
   );
 
+  it("creates a take-turns daily job with the chosen first turn", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(board))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            assignments: [
+              {
+                seriesId: "0d1e7e0e-5f7b-4f4c-9d0f-7a3d3c8a6b21",
+                childId: harrie.id,
+                generatedThrough: "2026-10-23",
+                occurrenceCount: 56,
+                rotationChildIds: [harrie.id, fredster.id],
+              },
+            ],
+          },
+          { status: 201 },
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse(board));
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    const recurringTools = screen.getByText("Routines").closest("details");
+    expect(recurringTools).not.toBeNull();
+    await user.click(screen.getByText("Routines"));
+    const tools = within(recurringTools as HTMLElement);
+    await user.click(tools.getByRole("checkbox", { name: "Harrie" }));
+    expect(tools.queryByLabelText("First turn")).not.toBeInTheDocument();
+    await user.click(tools.getByRole("radio", { name: "Take turns" }));
+    await user.selectOptions(tools.getByLabelText("First turn"), harrie.id);
+    await user.type(screen.getByLabelText("Daily job name"), "Tidy the table");
+    await user.click(screen.getByRole("button", { name: "Create daily job" }));
+
+    expect(
+      await screen.findByText(
+        "Take-turns daily job created through 2026-10-23.",
+      ),
+    ).toHaveAttribute("role", "status");
+    const createRequest = fetch.mock.calls.find(
+      ([input]) => requestPath(input) === "/api/recurring-jobs/daily",
+    )?.[0];
+    expect(createRequest).toBeInstanceOf(Request);
+    expect(await (createRequest as Request).clone().json()).toMatchObject({
+      childIds: [harrie.id, fredster.id],
+      assignmentMode: "takeTurns",
+      name: "Tidy the table",
+    });
+  });
+
   it.each(["native", "fallback"])(
     "creates a weekly recurring job for selected weekdays (%s UUID)",
     async (mode) => {

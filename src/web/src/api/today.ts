@@ -68,8 +68,11 @@ export interface RecurringJobCreation {
     childId: string;
     generatedThrough: string;
     occurrenceCount: number;
+    rotationChildIds: string[];
   }[];
 }
+
+export type RecurringAssignmentMode = "eachChild" | "takeTurns";
 
 export class ApiError extends Error {
   public constructor(message: string) {
@@ -236,6 +239,7 @@ export async function createDailyRecurringJob(request: {
   scheduledTime: string | null;
   startDate: string;
   endDate: string | null;
+  assignmentMode: RecurringAssignmentMode;
 }): Promise<RecurringJobCreation> {
   const client = apiClient();
   const { data, error } = await client.POST("/api/recurring-jobs/daily", {
@@ -261,6 +265,7 @@ export async function createWeeklyRecurringJob(request: {
   startDate: string;
   endDate: string | null;
   weekdays: string[];
+  assignmentMode: RecurringAssignmentMode;
 }): Promise<RecurringJobCreation> {
   const client = apiClient();
   const { data, error } = await client.POST("/api/recurring-jobs/weekly", {
@@ -286,6 +291,7 @@ export async function createMonthlyRecurringJob(request: {
   startDate: string;
   endDate: string | null;
   dayOfMonth: number;
+  assignmentMode: RecurringAssignmentMode;
 }): Promise<RecurringJobCreation> {
   const client = apiClient();
   const { data, error } = await client.POST("/api/recurring-jobs/monthly", {
@@ -306,12 +312,14 @@ function mapRecurringCreation(data: {
     childId: string;
     generatedThrough: string;
     occurrenceCount: number | string;
+    rotationChildIds?: string[];
   }[];
 }): RecurringJobCreation {
   return {
     assignments: data.assignments.map((assignment) => ({
       ...assignment,
       occurrenceCount: Number(assignment.occurrenceCount),
+      rotationChildIds: assignment.rotationChildIds ?? [],
     })),
   };
 }

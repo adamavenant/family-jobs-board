@@ -11,4 +11,5 @@ public sealed record CreateWeeklyRecurringJob(
     TimeOnly? ScheduledTime,
     DateOnly StartDate,
     DateOnly? EndDate,
-    IReadOnlyCollection<string>? Weekdays);
+    IReadOnlyCollection<string>? Weekdays,
+    string? AssignmentMode = null);
