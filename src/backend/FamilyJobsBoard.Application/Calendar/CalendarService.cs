@@ -51,12 +51,18 @@ public sealed class CalendarService
             errors["ChildId"] = ["Choose an active child in this household."];
         }
 
+        var anchorDate = date ?? _clock.Today;
+        if (!BoardDateRange.IsWithinBrowsingHorizon(anchorDate, _clock.Today))
+        {
+            errors["Date"] =
+                [$"Choose a date within {BoardDateRange.MaxYearsFromToday} years of today."];
+        }
+
         if (errors.Count > 0)
         {
             throw new InvalidCalendarRequestException(errors);
         }
 
-        var anchorDate = date ?? _clock.Today;
         var (rangeStart, rangeEnd) = ComputeRange(calendarView, anchorDate);
 
         await RecurringOccurrenceGenerator.EnsureGeneratedThroughAsync(

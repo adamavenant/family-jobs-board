@@ -208,6 +208,34 @@ public sealed class TodayBoardServiceTests
         Assert.Equal("Requested", job.Name);
     }
 
+    [Theory]
+    [InlineData(3)] // three years in the future
+    [InlineData(-3)] // three years in the past
+    public async Task A_date_far_outside_the_browsing_horizon_is_rejected(int years)
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var service = new TodayBoardService(repository, new FixedClock());
+
+        var exception = await Assert.ThrowsAsync<InvalidTodayBoardFilterException>(() =>
+            service.GetAsync(Adult.Id, Today.AddYears(years), CancellationToken.None));
+
+        Assert.Contains("Date", exception.Errors.Keys);
+        Assert.Null(repository.LastGenerationHorizon);
+    }
+
+    [Fact]
+    public async Task A_date_at_the_edge_of_the_browsing_horizon_is_accepted()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var service = new TodayBoardService(repository, new FixedClock());
+
+        var future = await service.GetAsync(Adult.Id, Today.AddYears(2), CancellationToken.None);
+        var past = await service.GetAsync(Adult.Id, Today.AddYears(-2), CancellationToken.None);
+
+        Assert.Equal(Today.AddYears(2), future.Date);
+        Assert.Equal(Today.AddYears(-2), past.Date);
+    }
+
     [Fact]
     public async Task Adult_filter_returns_one_child_but_keeps_household_pending_count()
     {

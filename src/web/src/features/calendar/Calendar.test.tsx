@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
@@ -52,7 +52,9 @@ describe("Calendar", () => {
 
     await user.click(screen.getByRole("link", { name: "Month" }));
     await screen.findByRole("link", { name: "Month", current: "page" });
-    expect(screen.getAllByRole("gridcell")).toHaveLength(42);
+    // Plain semantic list markup, not a fake ARIA grid the page doesn't implement keyboard
+    // navigation for.
+    expect(screen.getAllByRole("listitem")).toHaveLength(42);
   });
 
   it("marks days outside the focused month and highlights today", async () => {
@@ -60,15 +62,35 @@ describe("Calendar", () => {
     renderCalendar("/calendar?view=month&date=2026-09-22");
 
     await screen.findByRole("heading", { name: "Calendar" });
-    const cells = screen.getAllByRole("gridcell");
-    const outside = cells.filter((cell) =>
-      cell.className.includes("calendar-month__day--outside"),
+    const dayLinks = screen
+      .getAllByRole("listitem")
+      .map((item) => within(item).getByRole("link"));
+    const outside = dayLinks.filter((link) =>
+      link.className.includes("calendar-month__day--outside"),
     );
-    const today = cells.filter((cell) =>
-      cell.className.includes("calendar-month__day--today"),
+    const today = dayLinks.filter((link) =>
+      link.className.includes("calendar-month__day--today"),
     );
     expect(outside.length).toBeGreaterThan(0);
     expect(today).toHaveLength(1);
+  });
+
+  it("shows each month-view job's status and overdue state as readable text, not just color", async () => {
+    stubFetch({
+      month: monthBoard([
+        rawJob({
+          id: "job-overdue",
+          name: "Overdue chore",
+          scheduledDate: "2026-09-10",
+          childId: harrie.id,
+          childDisplayName: harrie.displayName,
+        }),
+      ]),
+    });
+    renderCalendar("/calendar?view=month&date=2026-09-10");
+
+    await screen.findByText("Overdue chore");
+    expect(screen.getByText("Ready to do · Overdue")).toBeInTheDocument();
   });
 
   it("shows a past incomplete job marked as overdue and links back to its date", async () => {
@@ -275,7 +297,7 @@ function weekBoard(
   };
 }
 
-function monthBoard() {
+function monthBoard(jobs: ReturnType<typeof rawJob>[] = []) {
   const start = "2026-08-31"; // Monday grid start for September 2026
   const days = Array.from({ length: 42 }, (_, index) => {
     const date = addDays(start, index);
@@ -283,7 +305,7 @@ function monthBoard() {
     return {
       date,
       isInFocusedPeriod: month === "09",
-      jobs: [],
+      jobs: jobs.filter((job) => job.scheduledDate === date),
     };
   });
   return {

@@ -97,11 +97,60 @@ public sealed class CalendarEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task February_of_a_leap_year_still_produces_a_full_grid_covering_the_whole_month()
     {
-        var board = await GetCalendarAsync(view: "month", date: new DateOnly(2028, 2, 14));
+        // Any five consecutive years contain a leap year, so this always finds one within the
+        // ±2-year browsing horizon, however far in the future this suite is run.
+        var leapYear = NearbyLeapYear(CurrentDate.Year);
+
+        var board = await GetCalendarAsync(view: "month", date: new DateOnly(leapYear, 2, 14));
 
         Assert.Equal(42, board.Days.Count);
-        Assert.True(board.RangeStart <= new DateOnly(2028, 2, 1));
-        Assert.True(board.RangeEnd >= new DateOnly(2028, 2, 29));
+        Assert.True(board.RangeStart <= new DateOnly(leapYear, 2, 1));
+        Assert.True(board.RangeEnd >= new DateOnly(leapYear, 2, 29));
+    }
+
+    [Fact]
+    public async Task A_date_far_outside_the_browsing_horizon_is_rejected_without_generating_anything()
+    {
+        var before = await CountJobsAsync();
+
+        using var future = await SendAsync(
+            HttpMethod.Get, $"/api/calendar?view=day&date={CurrentDate.AddYears(3):yyyy-MM-dd}", DemoDataIds.Addie);
+        using var past = await SendAsync(
+            HttpMethod.Get, $"/api/calendar?view=day&date={CurrentDate.AddYears(-3):yyyy-MM-dd}", DemoDataIds.Addie);
+        using var agendaFuture = await SendAsync(
+            HttpMethod.Get, $"/api/today?date={CurrentDate.AddYears(3):yyyy-MM-dd}", DemoDataIds.Addie);
+
+        Assert.Equal(HttpStatusCode.BadRequest, future.StatusCode);
+        Assert.Contains("Date", await ErrorFieldsAsync(future));
+        Assert.Equal(HttpStatusCode.BadRequest, past.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, agendaFuture.StatusCode);
+        Assert.Contains("Date", await ErrorFieldsAsync(agendaFuture));
+        Assert.Equal(before, await CountJobsAsync());
+    }
+
+    private static int NearbyLeapYear(int aroundYear)
+    {
+        for (var offset = 0; offset <= 4; offset++)
+        {
+            if (DateTime.IsLeapYear(aroundYear + offset))
+            {
+                return aroundYear + offset;
+            }
+
+            if (DateTime.IsLeapYear(aroundYear - offset))
+            {
+                return aroundYear - offset;
+            }
+        }
+
+        throw new InvalidOperationException("No leap year found near the given year.");
+    }
+
+    private async Task<int> CountJobsAsync()
+    {
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await database.Jobs.CountAsync();
     }
 
     [Fact]

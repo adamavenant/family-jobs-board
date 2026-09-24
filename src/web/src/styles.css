@@ -1021,6 +1021,12 @@ h1 {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.calendar-month > li {
+  display: contents;
 }
 .calendar-month__day {
   display: grid;
@@ -1049,8 +1055,17 @@ h1 {
   font-weight: 700;
 }
 .calendar-month__chip {
+  display: grid;
+  gap: 1px;
   padding: 3px 8px;
   font-size: 0.68rem;
+}
+.calendar-month__chip-name {
+  font-weight: 700;
+}
+.calendar-month__chip-status {
+  font-size: 0.64rem;
+  opacity: 0.85;
 }
 .calendar-month__more {
   color: var(--muted);

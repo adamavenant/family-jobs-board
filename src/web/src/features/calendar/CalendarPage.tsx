@@ -213,37 +213,56 @@ function WeekView({ board }: { board: CalendarBoard }) {
 
 function MonthView({ board }: { board: CalendarBoard }) {
   return (
-    <div className="calendar-month" role="grid" aria-label="Month">
+    <ul className="calendar-month" aria-label="Month">
       {board.days.map((day) => (
-        <Link
-          key={day.date}
-          to={calendarHref("day", day.date, board.selectedChildId)}
-          role="gridcell"
-          className={
-            day.date === board.currentDate
-              ? "calendar-month__day calendar-month__day--today"
-              : day.isInFocusedPeriod
-                ? "calendar-month__day"
-                : "calendar-month__day calendar-month__day--outside"
-          }
-        >
-          <span className="calendar-month__date">{dayNumber(day.date)}</span>
-          {day.jobs.slice(0, 3).map((job) => (
-            <span
-              key={job.id}
-              className={`calendar-month__chip ${jobStatusClassName(job.status)}`}
-            >
-              {job.name}
-            </span>
-          ))}
-          {day.jobs.length > 3 ? (
-            <span className="calendar-month__more">
-              +{day.jobs.length - 3} more
-            </span>
-          ) : null}
-        </Link>
+        <li key={day.date}>
+          <Link
+            to={calendarHref("day", day.date, board.selectedChildId)}
+            className={
+              day.date === board.currentDate
+                ? "calendar-month__day calendar-month__day--today"
+                : day.isInFocusedPeriod
+                  ? "calendar-month__day"
+                  : "calendar-month__day calendar-month__day--outside"
+            }
+          >
+            <span className="calendar-month__date">{dayNumber(day.date)}</span>
+            {day.jobs.slice(0, 3).map((job) => (
+              <MonthChip
+                key={job.id}
+                job={job}
+                currentDate={board.currentDate}
+              />
+            ))}
+            {day.jobs.length > 3 ? (
+              <span className="calendar-month__more">
+                +{day.jobs.length - 3} more
+              </span>
+            ) : null}
+          </Link>
+        </li>
       ))}
-    </div>
+    </ul>
+  );
+}
+
+function MonthChip({
+  job,
+  currentDate,
+}: {
+  job: TodayJob;
+  currentDate: string;
+}) {
+  const isOverdue = job.status === "open" && job.scheduledDate < currentDate;
+
+  return (
+    <span className={`calendar-month__chip ${jobStatusClassName(job.status)}`}>
+      <span className="calendar-month__chip-name">{job.name}</span>
+      <span className="calendar-month__chip-status">
+        {jobStatusLabel(job.status)}
+        {isOverdue ? " · Overdue" : ""}
+      </span>
+    </span>
   );
 }
 

@@ -62,6 +62,14 @@ public sealed class TodayBoardService
             });
         }
 
+        if (!BoardDateRange.IsWithinBrowsingHorizon(date, _clock.Today))
+        {
+            throw new InvalidTodayBoardFilterException(new Dictionary<string, string[]>
+            {
+                ["Date"] = [$"Choose a date within {BoardDateRange.MaxYearsFromToday} years of today."],
+            });
+        }
+
         await EnsureRecurringJobsAsync(date, cancellationToken);
         var householdVisibleChildren = viewer.IsAdult
             ? children

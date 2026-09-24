@@ -188,6 +188,49 @@ public sealed class CalendarServiceTests
         Assert.Contains("View", exception.Errors.Keys);
     }
 
+    [Theory]
+    [InlineData(3, 0)] // three years in the future
+    [InlineData(-3, 0)] // three years in the past
+    public async Task A_date_far_outside_the_browsing_horizon_is_rejected(int years, int days)
+    {
+        var repository = new FakeRepository([Adult, FirstChild]);
+        var service = new CalendarService(repository, new FixedClock());
+        var farDate = Today.AddYears(years).AddDays(days);
+
+        var exception = await Assert.ThrowsAsync<InvalidCalendarRequestException>(() =>
+            service.GetAsync(Adult.Id, "day", farDate, null, CancellationToken.None));
+
+        Assert.Contains("Date", exception.Errors.Keys);
+        Assert.Null(repository.LastGenerationHorizon);
+    }
+
+    [Fact]
+    public async Task A_date_at_the_edge_of_the_browsing_horizon_is_accepted()
+    {
+        var repository = new FakeRepository([Adult, FirstChild]);
+        var service = new CalendarService(repository, new FixedClock());
+
+        var future = await service.GetAsync(
+            Adult.Id, "day", Today.AddYears(2), null, CancellationToken.None);
+        var past = await service.GetAsync(
+            Adult.Id, "day", Today.AddYears(-2), null, CancellationToken.None);
+
+        Assert.Equal(Today.AddYears(2), future.AnchorDate);
+        Assert.Equal(Today.AddYears(-2), past.AnchorDate);
+    }
+
+    [Fact]
+    public async Task An_out_of_range_date_near_DateOnly_MaxValue_does_not_overflow()
+    {
+        var repository = new FakeRepository([Adult, FirstChild]);
+        var service = new CalendarService(repository, new FixedClock());
+
+        var exception = await Assert.ThrowsAsync<InvalidCalendarRequestException>(() =>
+            service.GetAsync(Adult.Id, "month", DateOnly.MaxValue, null, CancellationToken.None));
+
+        Assert.Contains("Date", exception.Errors.Keys);
+    }
+
     [Fact]
     public async Task Generation_horizon_never_shrinks_below_the_standard_rolling_window()
     {
