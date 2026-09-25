@@ -54,6 +54,8 @@ import {
   goodBehavioursLoader,
 } from "../features/goodBehaviours/goodBehavioursRoute";
 import { pointAdjustmentsAction } from "../features/pointAdjustments/pointAdjustmentsRoute";
+import { calendarLoader } from "../features/calendar/calendarRoute";
+import { CalendarPage } from "../features/calendar/CalendarPage";
 
 export interface CompleteActionResult {
   intent: "complete";
@@ -990,6 +992,11 @@ export const routes: RouteObject[] = [
   {
     path: "/point-adjustments",
     action: pointAdjustmentsAction,
+  },
+  {
+    path: "/calendar",
+    loader: calendarLoader,
+    Component: CalendarPage,
   },
 ];
 

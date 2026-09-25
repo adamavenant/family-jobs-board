@@ -1868,7 +1868,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         _client = _factory.CreateClient();
     }
 
-    private sealed record TodayResponse(
+    internal sealed record TodayResponse(
         MemberResponse Viewer,
         IReadOnlyList<MemberResponse> Members,
         DateOnly Date,
@@ -1879,14 +1879,14 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         IReadOnlyList<PointEarningResponse> PointEarnings,
         int PendingApprovalCount);
 
-    private sealed record MemberResponse(
+    internal sealed record MemberResponse(
         Guid Id,
         string FirstName,
         string? Nickname,
         string DisplayName,
         bool IsAdult);
 
-    private sealed record JobResponse(
+    internal sealed record JobResponse(
         Guid Id,
         Guid ChildId,
         string ChildDisplayName,
@@ -1903,7 +1903,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         DateTimeOffset? ApprovedAtUtc,
         JobRejectionResponse? LatestRejection);
 
-    private sealed record JobRejectionResponse(
+    internal sealed record JobRejectionResponse(
         Guid DecisionId,
         string? Reason,
         DateTimeOffset RejectedAtUtc);
@@ -1921,7 +1921,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         DateOnly GeneratedThrough,
         int OccurrenceCount);
 
-    private sealed record PointEarningResponse(
+    internal sealed record PointEarningResponse(
         Guid Id,
         string Source,
         string Name,

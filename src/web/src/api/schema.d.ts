@@ -501,6 +501,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the adult day/week/month calendar.
+         * @description Adult-only. Reads the same job occurrences and workflow state as the daily agenda for the requested household-local date range, so the two views never disagree. Defaults to the week containing today when view/date are omitted.
+         */
+        get: operations["GetCalendar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -544,6 +564,28 @@ export interface components {
             firstName: null | string;
             surname: null | string;
             pin: null | string;
+        };
+        CalendarDayResponse: {
+            /** Format: date */
+            date: string;
+            isInFocusedPeriod: boolean;
+            jobs: components["schemas"]["JobResponse"][];
+        };
+        CalendarResponse: {
+            viewer: components["schemas"]["MemberResponse"];
+            members: components["schemas"]["MemberResponse"][];
+            view: string;
+            /** Format: date */
+            anchorDate: string;
+            /** Format: date */
+            currentDate: string;
+            /** Format: date */
+            rangeStart: string;
+            /** Format: date */
+            rangeEnd: string;
+            /** Format: uuid */
+            selectedChildId: null | string;
+            days: components["schemas"]["CalendarDayResponse"][];
         };
         CancelJobRequest: {
             reason: null | string;
@@ -2045,6 +2087,48 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    GetCalendar: {
+        parameters: {
+            query?: {
+                view?: string;
+                date?: string;
+                childId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
