@@ -9,7 +9,13 @@ public sealed record TodayResponse(
     IReadOnlyList<JobResponse> Jobs,
     int? PointsBalance,
     IReadOnlyList<PointEarningResponse> PointEarnings,
-    int PendingApprovalCount);
+    int PendingApprovalCount,
+    WhoseTurnResponse? WhoseTurn);
+
+public sealed record WhoseTurnResponse(
+    string Question,
+    Guid ChildId,
+    string ChildDisplayName);
 
 public sealed record MemberResponse(
     Guid Id,

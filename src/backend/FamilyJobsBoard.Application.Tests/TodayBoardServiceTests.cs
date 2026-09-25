@@ -1,8 +1,10 @@
 using FamilyJobsBoard.Application.Clock;
 using FamilyJobsBoard.Application.Today;
+using FamilyJobsBoard.Application.TurnRotations;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Domain.Points;
+using FamilyJobsBoard.Domain.TurnRotations;
 using Xunit;
 
 namespace FamilyJobsBoard.Application.Tests;
@@ -30,7 +32,7 @@ public sealed class TodayBoardServiceTests
     public async Task One_off_job_creates_an_independent_copy_for_each_child()
     {
         var repository = new RecordingRepository([Adult, FirstChild, SecondChild]);
-        var service = new TodayBoardService(repository, new FixedClock());
+        var service = CreateService(repository);
 
         var created = await service.AddJobAsync(
             new AddTodayJob(
@@ -70,7 +72,7 @@ public sealed class TodayBoardServiceTests
             HouseholdRole.Child,
             isActive: false);
         var repository = new RecordingRepository([Adult, FirstChild, inactiveChild]);
-        var service = new TodayBoardService(repository, new FixedClock());
+        var service = CreateService(repository);
 
         var exception = await Assert.ThrowsAsync<InvalidTodayJobException>(() =>
             service.AddJobAsync(
@@ -93,7 +95,7 @@ public sealed class TodayBoardServiceTests
     public async Task Past_date_and_invalid_agenda_period_are_rejected_before_any_write()
     {
         var repository = new RecordingRepository([Adult, FirstChild]);
-        var service = new TodayBoardService(repository, new FixedClock());
+        var service = CreateService(repository);
 
         var exception = await Assert.ThrowsAsync<InvalidTodayJobException>(() =>
             service.AddJobAsync(
@@ -120,7 +122,7 @@ public sealed class TodayBoardServiceTests
         var job = new Job(Guid.NewGuid(), FirstChild.Id, "Original", "", 2, Today);
         job.MarkComplete(new FixedClock().UtcNow);
         repository.Jobs.Add(job);
-        var service = new TodayBoardService(repository, new FixedClock());
+        var service = CreateService(repository);
 
         var updated = await service.UpdateJobAsync(
             job.Id,
@@ -152,7 +154,7 @@ public sealed class TodayBoardServiceTests
             Guid.NewGuid(), FirstChild.Id, "Daily", "", 1, Today,
             AgendaPeriod.Morning, null, series.Id, RecurrenceFrequency.Daily);
         repository.Jobs.Add(job);
-        var service = new TodayBoardService(repository, new FixedClock());
+        var service = CreateService(repository);
 
         var cancelled = await service.CancelJobAsync(
             job.Id, Adult.Id, "Not today.", CancellationToken.None);
@@ -169,7 +171,7 @@ public sealed class TodayBoardServiceTests
         var repository = new RecordingRepository([Adult, FirstChild]);
         var job = new Job(Guid.NewGuid(), FirstChild.Id, "Original", "", 2, Today);
         repository.Jobs.Add(job);
-        var service = new TodayBoardService(repository, new FixedClock());
+        var service = CreateService(repository);
 
         await Assert.ThrowsAsync<JobManagementForbiddenException>(() =>
             service.UpdateJobAsync(
@@ -195,7 +197,7 @@ public sealed class TodayBoardServiceTests
             new Job(Guid.NewGuid(), SecondChild.Id, "Other child", "", 1, requestedDate),
             new Job(Guid.NewGuid(), FirstChild.Id, "Today", "", 1, Today),
         ]);
-        var service = new TodayBoardService(repository, new FixedClock());
+        var service = CreateService(repository);
 
         var board = await service.GetAsync(
             FirstChild.Id,
@@ -219,7 +221,7 @@ public sealed class TodayBoardServiceTests
             pendingJob,
             new Job(Guid.NewGuid(), SecondChild.Id, "Selected", "", 2, Today),
         ]);
-        var service = new TodayBoardService(repository, new FixedClock());
+        var service = CreateService(repository);
 
         var board = await service.GetAsync(
             Adult.Id,
@@ -238,7 +240,7 @@ public sealed class TodayBoardServiceTests
     public async Task Adult_filter_rejects_a_member_who_is_not_an_active_child()
     {
         var repository = new RecordingRepository([Adult, FirstChild, SecondChild]);
-        var service = new TodayBoardService(repository, new FixedClock());
+        var service = CreateService(repository);
 
         var exception = await Assert.ThrowsAsync<InvalidTodayBoardFilterException>(() =>
             service.GetAsync(
@@ -255,7 +257,7 @@ public sealed class TodayBoardServiceTests
     public async Task Child_cannot_use_the_adult_daily_board_filter()
     {
         var repository = new RecordingRepository([Adult, FirstChild, SecondChild]);
-        var service = new TodayBoardService(repository, new FixedClock());
+        var service = CreateService(repository);
 
         await Assert.ThrowsAsync<TodayBoardFilterForbiddenException>(() =>
             service.GetAsync(
@@ -272,7 +274,7 @@ public sealed class TodayBoardServiceTests
     {
         var requestedDate = Today.AddDays(70);
         var repository = new RecordingRepository([Adult, FirstChild]);
-        var service = new TodayBoardService(repository, new FixedClock());
+        var service = CreateService(repository);
 
         await service.GetAsync(FirstChild.Id, requestedDate, CancellationToken.None);
 
@@ -283,7 +285,7 @@ public sealed class TodayBoardServiceTests
     public async Task Recurring_assignment_for_two_children_is_idempotent()
     {
         var repository = new RecordingRepository([Adult, FirstChild, SecondChild]);
-        var service = new TodayBoardService(repository, new FixedClock());
+        var service = CreateService(repository);
         var requestId = Guid.NewGuid();
         var request = new CreateDailyRecurringJob(
             requestId,
@@ -316,11 +318,44 @@ public sealed class TodayBoardServiceTests
         Assert.All(repository.Series, series => Assert.Equal(requestId, series.AssignmentRequestId));
     }
 
+    private static TodayBoardService CreateService(
+        ITodayBoardRepository repository,
+        IHouseholdClock? clock = null)
+    {
+        var householdClock = clock ?? new FixedClock();
+        return new TodayBoardService(
+            repository,
+            householdClock,
+            new TurnRotationService(new EmptyTurnRotationRepository(), householdClock));
+    }
+
     private sealed class FixedClock : IHouseholdClock
     {
         public DateOnly Today => TodayBoardServiceTests.Today;
 
         public DateTimeOffset UtcNow => new(2026, 9, 7, 8, 0, 0, TimeSpan.Zero);
+    }
+
+    private sealed class EmptyTurnRotationRepository : ITurnRotationRepository
+    {
+        public Task<IReadOnlyList<TurnRotationRevision>> GetRevisionsAsync(
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<TurnRotationRevision>>([]);
+
+        public Task<HouseholdMember?> GetMemberAsync(Guid memberId, CancellationToken cancellationToken) =>
+            Task.FromResult<HouseholdMember?>(null);
+
+        public Task<IReadOnlyList<HouseholdMember>> GetActiveChildrenAsync(
+            IReadOnlyCollection<Guid> childIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<HouseholdMember>>([]);
+
+        public Task AddRevisionAsync(
+            TurnRotationRevision revision,
+            CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class RecordingRepository : ITodayBoardRepository

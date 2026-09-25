@@ -1637,6 +1637,78 @@
           }
         ]
       }
+    },
+    "/api/turn-rotation": {
+      "get": {
+        "tags": [
+          "Whose turn"
+        ],
+        "summary": "Get the household's whose-turn rotation configuration.",
+        "description": "Adult-only. Returns the revision effective today, if any, and a short preview of upcoming turns.",
+        "operationId": "GetTurnRotation",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnRotationOverviewResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Whose turn"
+        ],
+        "summary": "Create a new effective-dated whose-turn rotation revision.",
+        "description": "Adult-only. Existing revisions are immutable; this always creates a new one, effective today for the first-ever configuration or no earlier than tomorrow otherwise.",
+        "operationId": "SaveTurnRotation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveTurnRotationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnRotationOverviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2915,6 +2987,47 @@
           }
         }
       },
+      "SaveTurnRotationRequest": {
+        "required": [
+          "participantChildIds",
+          "firstChildId",
+          "effectiveFrom",
+          "question"
+        ],
+        "type": "object",
+        "properties": {
+          "participantChildIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "firstChildId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "effectiveFrom": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "question": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "SetupPinRequest": {
         "required": [
           "setupToken",
@@ -3003,7 +3116,8 @@
           "jobs",
           "pointsBalance",
           "pointEarnings",
-          "pendingApprovalCount"
+          "pendingApprovalCount",
+          "whoseTurn"
         ],
         "type": "object",
         "properties": {
@@ -3059,6 +3173,106 @@
               "string"
             ],
             "format": "int32"
+          },
+          "whoseTurn": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WhoseTurnResponse"
+              }
+            ]
+          }
+        }
+      },
+      "TurnRotationConfigurationResponse": {
+        "required": [
+          "id",
+          "effectiveFrom",
+          "question",
+          "participantChildIds",
+          "firstChildId",
+          "createdByMemberId",
+          "createdAtUtc"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "effectiveFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "question": {
+            "type": "string"
+          },
+          "participantChildIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "firstChildId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdByMemberId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TurnRotationOverviewResponse": {
+        "required": [
+          "current",
+          "upcomingTurns"
+        ],
+        "type": "object",
+        "properties": {
+          "current": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TurnRotationConfigurationResponse"
+              }
+            ]
+          },
+          "upcomingTurns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TurnRotationTurnResponse"
+            }
+          }
+        }
+      },
+      "TurnRotationTurnResponse": {
+        "required": [
+          "date",
+          "question",
+          "childId"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "question": {
+            "type": "string"
+          },
+          "childId": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },
@@ -3142,6 +3356,26 @@
             "format": "time"
           }
         }
+      },
+      "WhoseTurnResponse": {
+        "required": [
+          "question",
+          "childId",
+          "childDisplayName"
+        ],
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string"
+          },
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childDisplayName": {
+            "type": "string"
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -3171,6 +3405,9 @@
     },
     {
       "name": "Point adjustments"
+    },
+    {
+      "name": "Whose turn"
     }
   ]
 }

@@ -501,6 +501,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/turn-rotation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the household's whose-turn rotation configuration.
+         * @description Adult-only. Returns the revision effective today, if any, and a short preview of upcoming turns.
+         */
+        get: operations["GetTurnRotation"];
+        /**
+         * Create a new effective-dated whose-turn rotation revision.
+         * @description Adult-only. Existing revisions are immutable; this always creates a new one, effective today for the first-ever configuration or no earlier than tomorrow otherwise.
+         */
+        put: operations["SaveTurnRotation"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -811,6 +835,14 @@ export interface components {
             /** Format: int32 */
             points: number | string;
         };
+        SaveTurnRotationRequest: {
+            participantChildIds: null | string[];
+            /** Format: uuid */
+            firstChildId: null | string;
+            /** Format: date */
+            effectiveFrom: null | string;
+            question: null | string;
+        };
         SetupPinRequest: {
             setupToken: null | string;
             pin: null | string;
@@ -845,6 +877,32 @@ export interface components {
             pointEarnings: components["schemas"]["PointEarningResponse"][];
             /** Format: int32 */
             pendingApprovalCount: number | string;
+            whoseTurn: null | components["schemas"]["WhoseTurnResponse"];
+        };
+        TurnRotationConfigurationResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date */
+            effectiveFrom: string;
+            question: string;
+            participantChildIds: string[];
+            /** Format: uuid */
+            firstChildId: string;
+            /** Format: uuid */
+            createdByMemberId: string;
+            /** Format: date-time */
+            createdAtUtc: string;
+        };
+        TurnRotationOverviewResponse: {
+            current: null | components["schemas"]["TurnRotationConfigurationResponse"];
+            upcomingTurns: components["schemas"]["TurnRotationTurnResponse"][];
+        };
+        TurnRotationTurnResponse: {
+            /** Format: date */
+            date: string;
+            question: string;
+            /** Format: uuid */
+            childId: string;
         };
         UpdateFamilyMemberRequest: {
             firstName: null | string;
@@ -861,6 +919,12 @@ export interface components {
             agendaPeriod: null | string;
             /** Format: time */
             scheduledTime: null | string;
+        };
+        WhoseTurnResponse: {
+            question: string;
+            /** Format: uuid */
+            childId: string;
+            childDisplayName: string;
         };
     };
     responses: never;
@@ -2050,6 +2114,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    GetTurnRotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRotationOverviewResponse"];
+                };
+            };
+        };
+    };
+    SaveTurnRotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveTurnRotationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRotationOverviewResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
             };
         };

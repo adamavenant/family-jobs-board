@@ -1,4 +1,5 @@
 using FamilyJobsBoard.Application.Clock;
+using FamilyJobsBoard.Application.TurnRotations;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Domain.Points;
@@ -9,11 +10,16 @@ public sealed class TodayBoardService
 {
     private readonly ITodayBoardRepository _repository;
     private readonly IHouseholdClock _clock;
+    private readonly TurnRotationService _turnRotationService;
 
-    public TodayBoardService(ITodayBoardRepository repository, IHouseholdClock clock)
+    public TodayBoardService(
+        ITodayBoardRepository repository,
+        IHouseholdClock clock,
+        TurnRotationService turnRotationService)
     {
         _repository = repository;
         _clock = clock;
+        _turnRotationService = turnRotationService;
     }
 
     public DateOnly CurrentDate => _clock.Today;
@@ -92,6 +98,11 @@ public sealed class TodayBoardService
             points = await _repository.GetPointsSummaryAsync(viewer.Id, cancellationToken);
         }
 
+        var turn = await _turnRotationService.GetTurnAsync(date, cancellationToken);
+        var whoseTurn = turn is null || !childById.TryGetValue(turn.ChildId, out var turnChild)
+            ? null
+            : new TodayWhoseTurn(turn.Question, turnChild.Id, turnChild.DisplayName);
+
         return new TodayBoard(
             MapMember(viewer),
             members.Select(MapMember).ToArray(),
@@ -104,7 +115,8 @@ public sealed class TodayBoardService
                 rejectionByJobId.GetValueOrDefault(job.Id))).ToArray(),
             points?.Balance,
             points?.Earnings ?? [],
-            householdVisibleJobs.Count(job => job.Status == JobStatus.PendingApproval));
+            householdVisibleJobs.Count(job => job.Status == JobStatus.PendingApproval),
+            whoseTurn);
     }
 
     public async Task<TodayJob> CompleteAsync(

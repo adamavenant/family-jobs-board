@@ -54,6 +54,10 @@ import {
   goodBehavioursLoader,
 } from "../features/goodBehaviours/goodBehavioursRoute";
 import { pointAdjustmentsAction } from "../features/pointAdjustments/pointAdjustmentsRoute";
+import {
+  whoseTurnAction,
+  whoseTurnLoader,
+} from "../features/whoseTurn/whoseTurnRoute";
 
 export interface CompleteActionResult {
   intent: "complete";
@@ -986,6 +990,11 @@ export const routes: RouteObject[] = [
     path: "/good-behaviours",
     loader: goodBehavioursLoader,
     action: goodBehavioursAction,
+  },
+  {
+    path: "/whose-turn",
+    loader: whoseTurnLoader,
+    action: whoseTurnAction,
   },
   {
     path: "/point-adjustments",

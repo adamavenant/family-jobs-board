@@ -5,6 +5,7 @@ using FamilyJobsBoard.Api.Features.Identity;
 using FamilyJobsBoard.Api.Features.PointAdjustments;
 using FamilyJobsBoard.Api.Features.GoodBehaviours;
 using FamilyJobsBoard.Api.Features.Today;
+using FamilyJobsBoard.Api.Features.TurnRotations;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,6 +38,7 @@ app.MapIdentityEndpoints();
 app.MapTodayEndpoints();
 app.MapGoodBehaviourEndpoints();
 app.MapPointAdjustmentEndpoints();
+app.MapTurnRotationEndpoints();
 
 app.Run();
 

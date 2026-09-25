@@ -9,7 +9,10 @@ public sealed record TodayBoard(
     IReadOnlyList<TodayJob> Jobs,
     int? PointsBalance,
     IReadOnlyList<TodayPointEarning> PointEarnings,
-    int PendingApprovalCount);
+    int PendingApprovalCount,
+    TodayWhoseTurn? WhoseTurn);
+
+public sealed record TodayWhoseTurn(string Question, Guid ChildId, string ChildDisplayName);
 
 public sealed record TodayMember(
     Guid Id,

@@ -9,6 +9,7 @@ using FamilyJobsBoard.Application.Identity;
 using FamilyJobsBoard.Application.GoodBehaviours;
 using FamilyJobsBoard.Application.PointAdjustments;
 using FamilyJobsBoard.Application.Today;
+using FamilyJobsBoard.Application.TurnRotations;
 using FamilyJobsBoard.Infrastructure.Data;
 using FamilyJobsBoard.Infrastructure.Administration;
 using FamilyJobsBoard.Infrastructure.Identity;
@@ -16,6 +17,7 @@ using FamilyJobsBoard.Infrastructure.Time;
 using FamilyJobsBoard.Infrastructure.GoodBehaviours;
 using FamilyJobsBoard.Infrastructure.PointAdjustments;
 using FamilyJobsBoard.Infrastructure.Today;
+using FamilyJobsBoard.Infrastructure.TurnRotations;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
@@ -33,6 +35,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<GoodBehaviourService>();
         services.AddScoped<PointAdjustmentService>();
         services.AddScoped<IdentityService>();
+        services.AddScoped<TurnRotationService>();
         return services;
     }
 
@@ -50,6 +53,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IGoodBehaviourRepository, EfGoodBehaviourRepository>();
         services.AddScoped<IPointAdjustmentRepository, EfPointAdjustmentRepository>();
         services.AddScoped<IIdentityRepository, EfIdentityRepository>();
+        services.AddScoped<ITurnRotationRepository, EfTurnRotationRepository>();
         services.AddSingleton<IHouseholdClock>(new SystemHouseholdClock(timeZoneId));
 
         return services;

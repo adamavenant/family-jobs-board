@@ -98,6 +98,27 @@ redemption is planned and not yet implemented.
 - Adult redemption is planned, not yet implemented
 - Do not expire
 
+### Turn Rotation ("Whose Turn Is It?")
+An informational daily household rota, independent of jobs, completions,
+approvals, and points, and distinct from take-turns recurring-job
+assignments. It answers a standing household question (default "Who is Pink
+today?") by cycling through an ordered list of children, one per calendar
+day, with no interaction or completion step.
+
+#### Characteristics
+- One rotation exists per household, held as an ordered, append-only history
+  of effective-dated revisions; existing revisions are never edited.
+- Each revision has an effective date, a question, an ordered list of
+  distinct active-child participants, which participant is assigned on the
+  effective date, and the creating Adult and UTC creation time.
+- For any date, the assignee is the number of days since the revision's
+  effective date, modulo the participant count, starting from the configured
+  first child; every calendar day counts and the calculation needs no
+  background job.
+- The first-ever revision may take effect today; every later revision takes
+  effect no earlier than the next household-local day, so reconfiguring
+  never changes an answer that already happened.
+
 ### Administration
 Functions available to Adult users for managing the system.
 
@@ -115,6 +136,8 @@ Functions available to Adult users for managing the system.
 3. Adult → Job Approval (approver relationship)
 4. Adult → Good Behaviour (planned creator relationship; not yet implemented)
 5. Child → Good Behaviour Type (planned relationship; not yet implemented)
+6. Adult → Turn Rotation revision (creator relationship)
+7. Child → Turn Rotation participant (ordered membership relationship)
 
 ## Constraints
 

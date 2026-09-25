@@ -15,6 +15,8 @@ import { AdminDataResetPanel } from "../administration/AdminDataResetPanel";
 import { GoodBehavioursPanel } from "../goodBehaviours/GoodBehavioursPanel";
 import { GoodBehaviourTypesList } from "../goodBehaviours/GoodBehaviourTypesList";
 import { PointAdjustmentsPanel } from "../pointAdjustments/PointAdjustmentsPanel";
+import { WhoseTurnCard } from "../whoseTurn/WhoseTurnCard";
+import { WhoseTurnPanel } from "../whoseTurn/WhoseTurnPanel";
 
 export function TodayPage({ board }: { board: TodayBoard }) {
   const children = board.members.filter((member) => !member.isAdult);
@@ -88,6 +90,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
           <RecurringJobForm children={children} today={currentDate} />
           <GoodBehavioursPanel children={children} />
           <PointAdjustmentsPanel children={children} />
+          <WhoseTurnPanel children={children} currentDate={currentDate} />
           <AdminDataResetPanel />
         </div>
       ) : null}
@@ -171,6 +174,18 @@ export function TodayPage({ board }: { board: TodayBoard }) {
               : "Finish a job to send it for a grown-up to approve."}
           </p>
         </div>
+
+        {board.whoseTurn ? (
+          <WhoseTurnCard
+            whoseTurn={board.whoseTurn}
+            date={board.date}
+            isToday={isToday}
+          />
+        ) : board.viewer.isAdult ? (
+          <p className="whose-turn-card whose-turn-card--unset">
+            Whose Turn Is It? isn’t set up yet. Configure it in the tools above.
+          </p>
+        ) : null}
 
         {board.jobs.length === 0 ? (
           <p className="board__empty">
