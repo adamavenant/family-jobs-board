@@ -1449,7 +1449,7 @@ describe("Today page", () => {
     await screen.findByRole("heading", { name: "Good day, Addie!" });
     await user.click(screen.getByText("Manage family"));
     await screen.findByRole("heading", { name: "Family members" });
-    const addButton = screen.getByRole("button", {
+    const addButton = await screen.findByRole("button", {
       name: "Add family member",
     });
     const createForm = addButton.closest("form");
