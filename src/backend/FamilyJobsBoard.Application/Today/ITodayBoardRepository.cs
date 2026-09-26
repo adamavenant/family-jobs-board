@@ -22,6 +22,22 @@ public interface ITodayBoardRepository
         DateOnly scheduledDate,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Jobs scheduled anywhere in [startDate, endDate], ordered the same way as the daily
+    /// agenda within each date, for the calendar's day/week/month views.
+    /// </summary>
+    Task<IReadOnlyList<Job>> GetJobsInRangeAsync(
+        IReadOnlyCollection<Guid> childIds,
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsInRangeAsync(
+        IReadOnlyCollection<Guid> childIds,
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken cancellationToken);
+
     Task AddJobsAsync(IReadOnlyCollection<Job> jobs, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesByRequestAsync(

@@ -7,6 +7,7 @@ using FamilyJobsBoard.Application.Administration;
 using FamilyJobsBoard.Application.Clock;
 using FamilyJobsBoard.Application.Identity;
 using FamilyJobsBoard.Application.GoodBehaviours;
+using FamilyJobsBoard.Application.Calendar;
 using FamilyJobsBoard.Application.PointAdjustments;
 using FamilyJobsBoard.Application.Today;
 using FamilyJobsBoard.Application.TurnRotations;
@@ -34,6 +35,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<TodayBoardService>();
         services.AddScoped<GoodBehaviourService>();
         services.AddScoped<PointAdjustmentService>();
+        services.AddScoped<CalendarService>();
         services.AddScoped<IdentityService>();
         services.AddScoped<TurnRotationService>();
         return services;

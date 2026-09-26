@@ -18,10 +18,10 @@ public sealed class TurnRotationRevisionTests
         var revision = new TurnRotationRevision(
             Guid.NewGuid(), monday, null, [ChildA, ChildB, ChildC], ChildA, Adult, Now);
 
-        Assert.Equal(ChildA, revision.GetAssignedChildId(monday));
-        Assert.Equal(ChildB, revision.GetAssignedChildId(monday.AddDays(1)));
-        Assert.Equal(ChildC, revision.GetAssignedChildId(monday.AddDays(2)));
-        Assert.Equal(ChildA, revision.GetAssignedChildId(monday.AddDays(3)));
+        Assert.Equal((Guid?)ChildA, revision.GetAssignedChildId(monday));
+        Assert.Equal((Guid?)ChildB, revision.GetAssignedChildId(monday.AddDays(1)));
+        Assert.Equal((Guid?)ChildC, revision.GetAssignedChildId(monday.AddDays(2)));
+        Assert.Equal((Guid?)ChildA, revision.GetAssignedChildId(monday.AddDays(3)));
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public sealed class TurnRotationRevisionTests
 
         for (var offset = 0; offset < 30; offset++)
         {
-            Assert.Equal(ChildA, revision.GetAssignedChildId(effectiveFrom.AddDays(offset)));
+            Assert.Equal((Guid?)ChildA, revision.GetAssignedChildId(effectiveFrom.AddDays(offset)));
         }
     }
 
@@ -44,10 +44,10 @@ public sealed class TurnRotationRevisionTests
         var revision = new TurnRotationRevision(
             Guid.NewGuid(), effectiveFrom, null, [ChildA, ChildB, ChildC], ChildB, Adult, Now);
 
-        Assert.Equal(ChildB, revision.GetAssignedChildId(effectiveFrom));
-        Assert.Equal(ChildC, revision.GetAssignedChildId(effectiveFrom.AddDays(1)));
-        Assert.Equal(ChildA, revision.GetAssignedChildId(effectiveFrom.AddDays(2)));
-        Assert.Equal(ChildB, revision.GetAssignedChildId(effectiveFrom.AddDays(3)));
+        Assert.Equal((Guid?)ChildB, revision.GetAssignedChildId(effectiveFrom));
+        Assert.Equal((Guid?)ChildC, revision.GetAssignedChildId(effectiveFrom.AddDays(1)));
+        Assert.Equal((Guid?)ChildA, revision.GetAssignedChildId(effectiveFrom.AddDays(2)));
+        Assert.Equal((Guid?)ChildB, revision.GetAssignedChildId(effectiveFrom.AddDays(3)));
     }
 
     [Fact]
@@ -57,10 +57,10 @@ public sealed class TurnRotationRevisionTests
         var revision = new TurnRotationRevision(
             Guid.NewGuid(), effectiveFrom, null, [ChildA, ChildB], ChildA, Adult, Now);
 
-        Assert.Equal(ChildA, revision.GetAssignedChildId(new DateOnly(2028, 2, 27)));
-        Assert.Equal(ChildB, revision.GetAssignedChildId(new DateOnly(2028, 2, 28)));
-        Assert.Equal(ChildA, revision.GetAssignedChildId(new DateOnly(2028, 2, 29)));
-        Assert.Equal(ChildB, revision.GetAssignedChildId(new DateOnly(2028, 3, 1)));
+        Assert.Equal((Guid?)ChildA, revision.GetAssignedChildId(new DateOnly(2028, 2, 27)));
+        Assert.Equal((Guid?)ChildB, revision.GetAssignedChildId(new DateOnly(2028, 2, 28)));
+        Assert.Equal((Guid?)ChildA, revision.GetAssignedChildId(new DateOnly(2028, 2, 29)));
+        Assert.Equal((Guid?)ChildB, revision.GetAssignedChildId(new DateOnly(2028, 3, 1)));
     }
 
     [Fact]
@@ -75,10 +75,10 @@ public sealed class TurnRotationRevisionTests
         var revision = new TurnRotationRevision(
             Guid.NewGuid(), effectiveFrom, null, [ChildA, ChildB, ChildC], ChildA, Adult, Now);
 
-        Assert.Equal(ChildA, revision.GetAssignedChildId(new DateOnly(2026, 3, 6)));
-        Assert.Equal(ChildB, revision.GetAssignedChildId(new DateOnly(2026, 3, 7)));
-        Assert.Equal(ChildC, revision.GetAssignedChildId(new DateOnly(2026, 3, 8)));
-        Assert.Equal(ChildA, revision.GetAssignedChildId(new DateOnly(2026, 3, 9)));
+        Assert.Equal((Guid?)ChildA, revision.GetAssignedChildId(new DateOnly(2026, 3, 6)));
+        Assert.Equal((Guid?)ChildB, revision.GetAssignedChildId(new DateOnly(2026, 3, 7)));
+        Assert.Equal((Guid?)ChildC, revision.GetAssignedChildId(new DateOnly(2026, 3, 8)));
+        Assert.Equal((Guid?)ChildA, revision.GetAssignedChildId(new DateOnly(2026, 3, 9)));
     }
 
     [Fact]

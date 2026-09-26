@@ -145,6 +145,47 @@ describe("Whose Turn Is It?", () => {
     expect(preview).toBeInTheDocument();
   });
 
+  it("drops a deactivated participant from the form so a repair can be saved", async () => {
+    const gone = "99999999-9999-4999-8999-999999999999";
+    const api = fakeApi(
+      addie,
+      { whoseTurn: null },
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        effectiveFrom: "2026-09-01",
+        question: "Who is Pink today?",
+        participantChildIds: [gone, harrie.id],
+        firstChildId: gone,
+        createdByMemberId: addie.id,
+        createdAtUtc: "2026-09-01T08:00:00Z",
+      },
+    );
+    const user = userEvent.setup();
+    renderApp(addie);
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Set it up"));
+    const form = await screen.findByRole("form", {
+      name: "Configure whose turn is it",
+    });
+
+    expect(
+      within(within(form).getByRole("list"))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual([expect.stringContaining("Harrie")]);
+    expect(within(form).getByLabelText("First turn")).toHaveValue(harrie.id);
+    await user.click(
+      within(form).getByRole("button", { name: "Save changes" }),
+    );
+
+    await screen.findByText("Whose Turn Is It? rotation saved.");
+    expect(api.saveRequests[0]).toMatchObject({
+      participantChildIds: [harrie.id],
+      firstChildId: harrie.id,
+    });
+  });
+
   it("disables submit until at least one participant is selected", async () => {
     fakeApi(addie, { whoseTurn: null });
     const user = userEvent.setup();
@@ -165,11 +206,12 @@ describe("Whose Turn Is It?", () => {
 function fakeApi(
   viewer: ReturnType<typeof member>,
   boardExtras: { whoseTurn: unknown },
+  initialCurrent: Record<string, unknown> | null = null,
 ) {
   const board = { viewer, ...baseBoard, ...boardExtras };
   const state = {
     saveRequests: [] as unknown[],
-    current: null as Record<string, unknown> | null,
+    current: initialCurrent,
   };
   vi.stubGlobal(
     "fetch",
@@ -180,10 +222,12 @@ function fakeApi(
       if (path === "/api/turn-rotation" && method === "GET") {
         return jsonResponse({
           current: state.current,
+          hasRevisions: state.current !== null,
           upcomingTurns: state.current
             ? [
                 {
                   date: "2026-09-21",
+                  childDisplayName: "Fredster",
                   question: (state.current.question as string) ?? "",
                   childId: (state.current.participantChildIds as string[])[0],
                 },
@@ -205,8 +249,10 @@ function fakeApi(
         };
         return jsonResponse({
           current: state.current,
+          hasRevisions: true,
           upcomingTurns: [
             {
+              childDisplayName: "Fredster",
               date: body.effectiveFrom,
               question: state.current.question,
               childId: body.firstChildId,

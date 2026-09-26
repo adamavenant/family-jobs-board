@@ -78,13 +78,42 @@ public sealed class TurnRotationRevision
         }
     }
 
+    /// <summary>
+    /// A revision with no participants, recording that the rota is unavailable from
+    /// <paramref name="effectiveFrom"/> until an adult configures it again.
+    /// </summary>
+    public static TurnRotationRevision Cleared(
+        Guid id,
+        DateOnly effectiveFrom,
+        string question,
+        Guid createdByMemberId,
+        DateTimeOffset createdAtUtc)
+    {
+        if (id == Guid.Empty || createdByMemberId == Guid.Empty)
+        {
+            throw new ArgumentException("A cleared turn rotation revision needs an ID and creator ID.");
+        }
+
+        return new TurnRotationRevision
+        {
+            Id = id,
+            EffectiveFrom = effectiveFrom,
+            Question = NormalizeQuestion(question),
+            FirstChildId = null,
+            CreatedByMemberId = createdByMemberId,
+            CreatedAtUtc = createdAtUtc.ToUniversalTime(),
+        };
+    }
+
     public Guid Id { get; private set; }
 
     public DateOnly EffectiveFrom { get; private set; }
 
     public string Question { get; private set; } = DefaultQuestion;
 
-    public Guid FirstChildId { get; private set; }
+    public Guid? FirstChildId { get; private set; }
+
+    public bool IsCleared => _participants.Count == 0;
 
     public Guid CreatedByMemberId { get; private set; }
 
@@ -102,7 +131,7 @@ public sealed class TurnRotationRevision
     /// calendar days since <see cref="EffectiveFrom"/>, starting from <see cref="FirstChildId"/>
     /// and cycling through the ordered participants.
     /// </summary>
-    public Guid GetAssignedChildId(DateOnly date)
+    public Guid? GetAssignedChildId(DateOnly date)
     {
         if (date < EffectiveFrom)
         {
@@ -112,7 +141,12 @@ public sealed class TurnRotationRevision
         }
 
         var order = OrderedParticipantChildIds;
-        var startIndex = Array.IndexOf((Guid[])order, FirstChildId);
+        if (order.Count == 0)
+        {
+            return null;
+        }
+
+        var startIndex = Array.IndexOf((Guid[])order, FirstChildId!.Value);
         var daysSinceEffective = date.DayNumber - EffectiveFrom.DayNumber;
         var index = (startIndex + daysSinceEffective) % order.Count;
         return order[index];

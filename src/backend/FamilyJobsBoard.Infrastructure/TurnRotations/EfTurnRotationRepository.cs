@@ -32,6 +32,16 @@ public sealed class EfTurnRotationRepository : ITurnRotationRepository
             cancellationToken);
     }
 
+    public async Task<IReadOnlyList<HouseholdMember>> GetMembersAsync(
+        IReadOnlyCollection<Guid> memberIds,
+        CancellationToken cancellationToken)
+    {
+        return await _database.HouseholdMembers
+            .AsNoTracking()
+            .Where(member => memberIds.Contains(member.Id))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<HouseholdMember>> GetActiveChildrenAsync(
         IReadOnlyCollection<Guid> childIds,
         CancellationToken cancellationToken)

@@ -608,9 +608,18 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(160)")
                         .HasColumnName("name");
 
+                    b.Property<int>("NextTurnIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("next_turn_index");
+
                     b.Property<int>("Points")
                         .HasColumnType("integer")
                         .HasColumnName("points");
+
+                    b.PrimitiveCollection<Guid[]>("RotationChildIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("rotation_child_ids");
 
                     b.Property<TimeOnly?>("ScheduledTime")
                         .HasColumnType("time without time zone")
@@ -636,6 +645,8 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 
                     b.ToTable("recurring_job_series", null, t =>
                         {
+                            t.HasCheckConstraint("ck_recurring_job_series_rotation", "(cardinality(rotation_child_ids) = 0 AND next_turn_index = 0) OR (cardinality(rotation_child_ids) >= 2 AND rotation_child_ids[1] = child_id AND next_turn_index >= 0 AND next_turn_index < cardinality(rotation_child_ids))");
+
                             t.HasCheckConstraint("ck_recurring_job_series_schedule", "(frequency = 'Daily' AND weekday_mask = 0 AND monthly_day IS NULL) OR (frequency = 'Weekly' AND weekday_mask BETWEEN 1 AND 127 AND monthly_day IS NULL) OR (frequency = 'Monthly' AND weekday_mask = 0 AND monthly_day BETWEEN 1 AND 31)");
                         });
                 });
@@ -765,7 +776,7 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasColumnType("date")
                         .HasColumnName("effective_from");
 
-                    b.Property<Guid>("FirstChildId")
+                    b.Property<Guid?>("FirstChildId")
                         .HasColumnType("uuid")
                         .HasColumnName("first_child_id");
 

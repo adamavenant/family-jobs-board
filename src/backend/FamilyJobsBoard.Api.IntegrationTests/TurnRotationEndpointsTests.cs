@@ -132,6 +132,31 @@ public sealed class TurnRotationEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Deactivating_a_participant_excludes_them_from_tomorrow_and_restoring_does_not_re_add_them()
+    {
+        await SaveAsync([DemoDataIds.Fredster, DemoDataIds.Harrie], DemoDataIds.Fredster, _today, null);
+
+        using var deactivate = await SendAsync(
+            HttpMethod.Delete, $"/api/users/{DemoDataIds.Fredster}", DemoDataIds.Addie);
+        Assert.True(deactivate.IsSuccessStatusCode, await deactivate.Content.ReadAsStringAsync());
+
+        var todayBoard = await GetTodayAsync(DemoDataIds.Harrie, _today);
+        Assert.Equal(DemoDataIds.Fredster, todayBoard.WhoseTurn!.ChildId);
+        Assert.Equal("Fredster", todayBoard.WhoseTurn.ChildDisplayName);
+        foreach (var offset in new[] { 1, 2, 3 })
+        {
+            var board = await GetTodayAsync(DemoDataIds.Harrie, _today.AddDays(offset));
+            Assert.Equal(DemoDataIds.Harrie, board.WhoseTurn!.ChildId);
+        }
+
+        using var restore = await SendAsync(
+            HttpMethod.Post, $"/api/users/{DemoDataIds.Fredster}/restore", DemoDataIds.Addie);
+        Assert.True(restore.IsSuccessStatusCode, await restore.Content.ReadAsStringAsync());
+        var afterRestore = await GetTodayAsync(DemoDataIds.Harrie, _today.AddDays(2));
+        Assert.Equal(DemoDataIds.Harrie, afterRestore.WhoseTurn!.ChildId);
+    }
+
+    [Fact]
     public async Task Children_cannot_read_or_configure_the_rotation()
     {
         using var read = await SendAsync(HttpMethod.Get, "/api/turn-rotation", DemoDataIds.Fredster);

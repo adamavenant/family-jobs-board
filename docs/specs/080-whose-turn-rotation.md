@@ -57,10 +57,14 @@ configuration screen, and the API rejects a non-adult on every
   must be effective no earlier than tomorrow (household-local), so today's
   answer, and every date before the new revision's effective date, is
   unaffected. A participant who is dropped from a later revision keeps
-  appearing on the dates the earlier revision already governs. There is no
-  live link to a child's account being deactivated or restored elsewhere in
-  the system: removing or re-adding someone from the rotation is always an
-  explicit adult action that goes through this same revision mechanism.
+  appearing on the dates the earlier revision already governs. When a child is
+  deactivated elsewhere in the system, the API automatically creates a
+  replacement revision effective tomorrow that leaves them out (the next
+  assignee is preserved where possible); if nobody remains, a participant-less
+  "cleared" revision makes the rota unavailable from tomorrow until an adult
+  configures it again. Today and earlier dates still resolve, including the
+  deactivated child's display name. Restoring a child never re-adds them: an
+  adult must include them in a new revision.
 - A revision must have at least one participant, all distinct, all currently
   active children (validated at save time). `FirstChildId` must be one of the
   selected participants. The question defaults to "Who is Pink today?" when
@@ -74,7 +78,7 @@ configuration screen, and the API rejects a non-adult on every
 `AddTurnRotations` adds two tables:
 
 - `turn_rotation_revisions` — `id`, `effective_from` (date), `question`,
-  `first_child_id`, `created_by_member_id`, `created_at_utc`. Indexed on
+  `first_child_id` (null for a cleared revision), `created_by_member_id`, `created_at_utc`. Indexed on
   `effective_from` for resolving the applicable revision.
 - `turn_rotation_participants` — an owned collection keyed by
   `(turn_rotation_revision_id, order_index)`, with `child_id` and a unique
@@ -92,10 +96,9 @@ drops both tables.
 - `GET /api/today?date=YYYY-MM-DD` — any signed-in member. The existing daily
   board response gains a `whoseTurn` field: `{ question, childId,
   childDisplayName } | null`. `null` means no revision applies to that date,
-  or the assigned child could no longer be resolved to an active household
-  member. This reuses the existing board endpoint rather than adding a
+  or the rota was cleared because every participant was deactivated. This reuses the existing board endpoint rather than adding a
   parallel read path, so the browsed date and the answer always agree.
-- `GET /api/turn-rotation` — adult-only. Returns `{ current, upcomingTurns
+- `GET /api/turn-rotation` — adult-only. Returns `{ current, upcomingTurns, hasRevisions
   }`: `current` is the revision applicable today (or `null` if unconfigured),
   and `upcomingTurns` is a 14-day preview of `{ date, question, childId }`
   starting today, each day resolved independently so an already-scheduled

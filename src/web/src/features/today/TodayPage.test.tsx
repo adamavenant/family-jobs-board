@@ -659,6 +659,69 @@ describe("Today page", () => {
     },
   );
 
+  it("creates a take-turns daily job with the chosen first turn", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(board))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            assignments: [
+              {
+                seriesId: "0d1e7e0e-5f7b-4f4c-9d0f-7a3d3c8a6b21",
+                childId: harrie.id,
+                generatedThrough: "2026-10-23",
+                occurrenceCount: 56,
+                rotationChildIds: [harrie.id, fredster.id],
+              },
+            ],
+          },
+          { status: 201 },
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse(board));
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    const recurringTools = screen.getByText("Routines").closest("details");
+    expect(recurringTools).not.toBeNull();
+    await user.click(screen.getByText("Routines"));
+    const tools = within(recurringTools as HTMLElement);
+    expect(tools.queryByLabelText("First turn")).not.toBeInTheDocument();
+    await user.click(tools.getByRole("radio", { name: "Take turns" }));
+    const firstTurn = tools.getByLabelText("First turn");
+    expect(
+      within(firstTurn).getByRole("option", { name: "Fredster" }),
+    ).toBeInTheDocument();
+    expect(
+      within(firstTurn).queryByRole("option", { name: "Harrie" }),
+    ).not.toBeInTheDocument();
+    await user.click(tools.getByRole("checkbox", { name: "Harrie" }));
+    expect(
+      within(firstTurn).getByRole("option", { name: "Harrie" }),
+    ).toBeInTheDocument();
+    await user.selectOptions(firstTurn, harrie.id);
+    await user.type(screen.getByLabelText("Daily job name"), "Tidy the table");
+    await user.click(screen.getByRole("button", { name: "Create daily job" }));
+
+    expect(
+      await screen.findByText(
+        "Take-turns daily job created through 2026-10-23.",
+      ),
+    ).toHaveAttribute("role", "status");
+    const createRequest = fetch.mock.calls.find(
+      ([input]) => requestPath(input) === "/api/recurring-jobs/daily",
+    )?.[0];
+    expect(createRequest).toBeInstanceOf(Request);
+    expect(await (createRequest as Request).clone().json()).toMatchObject({
+      childIds: [harrie.id, fredster.id],
+      assignmentMode: "takeTurns",
+      name: "Tidy the table",
+    });
+  });
+
   it.each(["native", "fallback"])(
     "creates a weekly recurring job for selected weekdays (%s UUID)",
     async (mode) => {
@@ -1396,7 +1459,7 @@ describe("Today page", () => {
     await screen.findByRole("heading", { name: "Good day, Addie!" });
     await user.click(screen.getByText("Manage family"));
     await screen.findByRole("heading", { name: "Family members" });
-    const addButton = screen.getByRole("button", {
+    const addButton = await screen.findByRole("button", {
       name: "Add family member",
     });
     const createForm = addButton.closest("form");

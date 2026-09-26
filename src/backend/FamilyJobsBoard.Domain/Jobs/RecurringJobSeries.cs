@@ -20,7 +20,8 @@ public sealed class RecurringJobSeries
         DateOnly? endDate,
         RecurrenceFrequency frequency,
         int weekdayMask,
-        int? monthlyDay)
+        int? monthlyDay,
+        IReadOnlyList<Guid>? rotationChildIds)
     {
         if (id == Guid.Empty)
         {
@@ -100,6 +101,32 @@ public sealed class RecurringJobSeries
             throw new ArgumentException("Only monthly job series can select a day of month.", nameof(monthlyDay));
         }
 
+        var rotation = rotationChildIds?.ToArray() ?? [];
+        if (rotation.Length > 0)
+        {
+            if (rotation.Length < 2)
+            {
+                throw new ArgumentException(
+                    "Taking turns needs at least two children.",
+                    nameof(rotationChildIds));
+            }
+
+            if (rotation.Any(rotationChildId => rotationChildId == Guid.Empty)
+                || rotation.Distinct().Count() != rotation.Length)
+            {
+                throw new ArgumentException(
+                    "Taking turns needs distinct children.",
+                    nameof(rotationChildIds));
+            }
+
+            if (rotation[0] != childId)
+            {
+                throw new ArgumentException(
+                    "The assigned child must take the first turn.",
+                    nameof(rotationChildIds));
+            }
+        }
+
         Id = id;
         AssignmentRequestId = assignmentRequestId;
         ChildId = childId;
@@ -114,6 +141,7 @@ public sealed class RecurringJobSeries
         Frequency = frequency;
         WeekdayMask = weekdayMask;
         MonthlyDay = monthlyDay;
+        RotationChildIds = rotation;
         GeneratedThrough = startDate.AddDays(-1);
     }
 
@@ -147,6 +175,12 @@ public sealed class RecurringJobSeries
 
     public DateOnly GeneratedThrough { get; private set; }
 
+    public IReadOnlyList<Guid> RotationChildIds { get; private set; } = [];
+
+    public int NextTurnIndex { get; private set; }
+
+    public bool TakesTurns => RotationChildIds.Count > 0;
+
     public static RecurringJobSeries Daily(
         Guid id,
         Guid childId,
@@ -158,7 +192,8 @@ public sealed class RecurringJobSeries
         TimeOnly? scheduledTime,
         DateOnly startDate,
         DateOnly? endDate,
-        Guid? assignmentRequestId = null)
+        Guid? assignmentRequestId = null,
+        IReadOnlyList<Guid>? rotationChildIds = null)
     {
         return new RecurringJobSeries(
             id,
@@ -174,7 +209,8 @@ public sealed class RecurringJobSeries
             endDate,
             RecurrenceFrequency.Daily,
             0,
-            null);
+            null,
+            rotationChildIds);
     }
 
     public static RecurringJobSeries Weekly(
@@ -189,7 +225,8 @@ public sealed class RecurringJobSeries
         DateOnly startDate,
         DateOnly? endDate,
         IReadOnlyCollection<DayOfWeek> weekdays,
-        Guid? assignmentRequestId = null)
+        Guid? assignmentRequestId = null,
+        IReadOnlyList<Guid>? rotationChildIds = null)
     {
         ArgumentNullException.ThrowIfNull(weekdays);
         if (weekdays.Count == 0)
@@ -227,7 +264,8 @@ public sealed class RecurringJobSeries
             endDate,
             RecurrenceFrequency.Weekly,
             weekdayMask,
-            null);
+            null,
+            rotationChildIds);
     }
 
     public static RecurringJobSeries Monthly(
@@ -242,7 +280,8 @@ public sealed class RecurringJobSeries
         DateOnly startDate,
         DateOnly? endDate,
         int dayOfMonth,
-        Guid? assignmentRequestId = null)
+        Guid? assignmentRequestId = null,
+        IReadOnlyList<Guid>? rotationChildIds = null)
     {
         return new RecurringJobSeries(
             id,
@@ -258,7 +297,8 @@ public sealed class RecurringJobSeries
             endDate,
             RecurrenceFrequency.Monthly,
             0,
-            dayOfMonth);
+            dayOfMonth,
+            rotationChildIds);
     }
 
     public IReadOnlyList<DayOfWeek> SelectedWeekdays()
@@ -275,7 +315,7 @@ public sealed class RecurringJobSeries
             : horizonInclusive;
     }
 
-    public IReadOnlyList<DateOnly> GenerateThrough(DateOnly horizonInclusive)
+    public IReadOnlyList<RecurringJobOccurrence> GenerateOccurrencesThrough(DateOnly horizonInclusive)
     {
         var lastDate = LastOccurrenceDate(horizonInclusive);
         if (lastDate <= GeneratedThrough)
@@ -289,17 +329,17 @@ public sealed class RecurringJobSeries
             firstDate = StartDate;
         }
 
-        var dates = new List<DateOnly>();
+        var occurrences = new List<RecurringJobOccurrence>();
         for (var date = firstDate; date <= lastDate; date = date.AddDays(1))
         {
             if (OccursOn(date))
             {
-                dates.Add(date);
+                occurrences.Add(new RecurringJobOccurrence(date, TakeNextTurn()));
             }
         }
 
         GeneratedThrough = lastDate;
-        return dates;
+        return occurrences;
     }
 
     public bool MatchesDaily(
@@ -311,7 +351,8 @@ public sealed class RecurringJobSeries
         AgendaPeriod agendaPeriod,
         TimeOnly? scheduledTime,
         DateOnly startDate,
-        DateOnly? endDate)
+        DateOnly? endDate,
+        IReadOnlyList<Guid>? rotationChildIds = null)
     {
         return Frequency == RecurrenceFrequency.Daily
             && MatchesCommon(
@@ -323,7 +364,8 @@ public sealed class RecurringJobSeries
                 agendaPeriod,
                 scheduledTime,
                 startDate,
-                endDate);
+                endDate,
+                rotationChildIds);
     }
 
     public bool MatchesWeekly(
@@ -336,7 +378,8 @@ public sealed class RecurringJobSeries
         TimeOnly? scheduledTime,
         DateOnly startDate,
         DateOnly? endDate,
-        IReadOnlyCollection<DayOfWeek> weekdays)
+        IReadOnlyCollection<DayOfWeek> weekdays,
+        IReadOnlyList<Guid>? rotationChildIds = null)
     {
         return Frequency == RecurrenceFrequency.Weekly
             && MatchesCommon(
@@ -348,7 +391,8 @@ public sealed class RecurringJobSeries
                 agendaPeriod,
                 scheduledTime,
                 startDate,
-                endDate)
+                endDate,
+                rotationChildIds)
             && SelectedWeekdays().Order().SequenceEqual(weekdays.Order());
     }
 
@@ -362,7 +406,8 @@ public sealed class RecurringJobSeries
         TimeOnly? scheduledTime,
         DateOnly startDate,
         DateOnly? endDate,
-        int dayOfMonth)
+        int dayOfMonth,
+        IReadOnlyList<Guid>? rotationChildIds = null)
     {
         return Frequency == RecurrenceFrequency.Monthly
             && MatchesCommon(
@@ -374,8 +419,21 @@ public sealed class RecurringJobSeries
                 agendaPeriod,
                 scheduledTime,
                 startDate,
-                endDate)
+                endDate,
+                rotationChildIds)
             && MonthlyDay == dayOfMonth;
+    }
+
+    private Guid TakeNextTurn()
+    {
+        if (!TakesTurns)
+        {
+            return ChildId;
+        }
+
+        var childId = RotationChildIds[NextTurnIndex];
+        NextTurnIndex = (NextTurnIndex + 1) % RotationChildIds.Count;
+        return childId;
     }
 
     private bool OccursOn(DateOnly date)
@@ -404,7 +462,8 @@ public sealed class RecurringJobSeries
         AgendaPeriod agendaPeriod,
         TimeOnly? scheduledTime,
         DateOnly startDate,
-        DateOnly? endDate)
+        DateOnly? endDate,
+        IReadOnlyList<Guid>? rotationChildIds)
     {
         return ChildId == childId
             && CreatedByAdultId == createdByAdultId
@@ -414,6 +473,7 @@ public sealed class RecurringJobSeries
             && AgendaPeriod == agendaPeriod
             && ScheduledTime == scheduledTime
             && StartDate == startDate
-            && EndDate == endDate;
+            && EndDate == endDate
+            && RotationChildIds.SequenceEqual(rotationChildIds ?? []);
     }
 }

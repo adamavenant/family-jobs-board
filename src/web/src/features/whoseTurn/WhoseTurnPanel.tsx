@@ -82,6 +82,7 @@ export function WhoseTurnPanel({
             currentDate={currentDate}
             current={overview.current}
             upcomingTurns={overview.upcomingTurns}
+            hasRevisions={overview.hasRevisions}
           />
         )}
       </div>
@@ -95,19 +96,27 @@ function WhoseTurnForm({
   currentDate,
   current,
   upcomingTurns,
+  hasRevisions,
 }: {
   fetcher: WhoseTurnFetcher;
   children: HouseholdMember[];
   currentDate: string;
   current: TurnRotationConfiguration | null;
   upcomingTurns: TurnRotationTurn[];
+  hasRevisions: boolean;
 }) {
-  const [order, setOrder] = useState<string[]>(
-    current?.participantChildIds ?? [],
+  const activeIds = new Set(children.map((child) => child.id));
+  const initialOrder = (current?.participantChildIds ?? []).filter((id) =>
+    activeIds.has(id),
   );
-  const [firstChildId, setFirstChildId] = useState(current?.firstChildId ?? "");
+  const [order, setOrder] = useState<string[]>(initialOrder);
+  const [firstChildId, setFirstChildId] = useState(
+    current && initialOrder.includes(current.firstChildId)
+      ? current.firstChildId
+      : (initialOrder[0] ?? ""),
+  );
   const [question, setQuestion] = useState(current?.question ?? "");
-  const minimumEffectiveFrom = current
+  const minimumEffectiveFrom = hasRevisions
     ? addDaysIso(currentDate, 1)
     : currentDate;
   const [effectiveFrom, setEffectiveFrom] = useState(minimumEffectiveFrom);
@@ -241,7 +250,7 @@ function WhoseTurnForm({
             required
           />
           <small>
-            {current
+            {hasRevisions
               ? "A change starts tomorrow at the earliest, so today's answer stays put."
               : "The first setup can start today."}
           </small>
@@ -268,7 +277,7 @@ function WhoseTurnForm({
           type="submit"
           disabled={submitting || order.length === 0 || !firstChildId}
         >
-          {current ? "Save changes" : "Set up rotation"}
+          {hasRevisions ? "Save changes" : "Set up rotation"}
         </button>
       </fetcher.Form>
 
@@ -277,11 +286,10 @@ function WhoseTurnForm({
           <h3 id="whose-turn-preview-heading">Upcoming turns</h3>
           <ul className="whose-turn-preview">
             {upcomingTurns.map((turn) => {
-              const child = children.find((item) => item.id === turn.childId);
               return (
                 <li key={turn.date}>
                   <span>{formatShortDate(turn.date)}</span>
-                  <span>{child?.displayName ?? "Unknown"}</span>
+                  <span>{turn.childDisplayName}</span>
                 </li>
               );
             })}

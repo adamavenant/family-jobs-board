@@ -284,7 +284,7 @@ export interface paths {
         put?: never;
         /**
          * Create a daily recurring job for one or more children.
-         * @description Creates an adult-owned child-specific daily series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.
+         * @description Creates an adult-owned child-specific daily series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.
          */
         post: operations["CreateDailyRecurringJob"];
         delete?: never;
@@ -304,7 +304,7 @@ export interface paths {
         put?: never;
         /**
          * Create a weekly recurring job for one or more children.
-         * @description Creates an adult-owned child-specific weekly series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.
+         * @description Creates an adult-owned child-specific weekly series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.
          */
         post: operations["CreateWeeklyRecurringJob"];
         delete?: never;
@@ -324,7 +324,7 @@ export interface paths {
         put?: never;
         /**
          * Create a monthly recurring job for one or more children.
-         * @description Creates an adult-owned child-specific monthly series for each assignee and uses the final valid day in shorter months.
+         * @description Creates an adult-owned child-specific monthly series for each assignee and uses the final valid day in shorter months. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.
          */
         post: operations["CreateMonthlyRecurringJob"];
         delete?: never;
@@ -501,6 +501,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the adult day/week/month calendar.
+         * @description Adult-only. Reads the same job occurrences and workflow state as the daily agenda for the requested household-local date range, so the two views never disagree. Defaults to the week containing today when view/date are omitted.
+         */
+        get: operations["GetCalendar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/turn-rotation": {
         parameters: {
             query?: never;
@@ -569,6 +589,28 @@ export interface components {
             surname: null | string;
             pin: null | string;
         };
+        CalendarDayResponse: {
+            /** Format: date */
+            date: string;
+            isInFocusedPeriod: boolean;
+            jobs: components["schemas"]["JobResponse"][];
+        };
+        CalendarResponse: {
+            viewer: components["schemas"]["MemberResponse"];
+            members: components["schemas"]["MemberResponse"][];
+            view: string;
+            /** Format: date */
+            anchorDate: string;
+            /** Format: date */
+            currentDate: string;
+            /** Format: date */
+            rangeStart: string;
+            /** Format: date */
+            rangeEnd: string;
+            /** Format: uuid */
+            selectedChildId: null | string;
+            days: components["schemas"]["CalendarDayResponse"][];
+        };
         CancelJobRequest: {
             reason: null | string;
         };
@@ -587,6 +629,7 @@ export interface components {
             startDate: string;
             /** Format: date */
             endDate: null | string;
+            assignmentMode?: null | string;
         };
         CreateFamilyMemberRequest: {
             firstName: null | string;
@@ -611,6 +654,7 @@ export interface components {
             endDate: null | string;
             /** Format: int32 */
             dayOfMonth: number | string;
+            assignmentMode?: null | string;
         };
         CreateWeeklyRecurringJobRequest: {
             /** Format: uuid */
@@ -628,6 +672,7 @@ export interface components {
             /** Format: date */
             endDate: null | string;
             weekdays: null | string[];
+            assignmentMode?: null | string;
         };
         FamilyMemberResponse: {
             /** Format: uuid */
@@ -805,6 +850,7 @@ export interface components {
             generatedThrough: string;
             /** Format: int32 */
             occurrenceCount: number | string;
+            rotationChildIds: string[];
         };
         RecurringJobResponse: {
             assignments: components["schemas"]["RecurringJobAssignmentResponse"][];
@@ -896,6 +942,7 @@ export interface components {
         TurnRotationOverviewResponse: {
             current: null | components["schemas"]["TurnRotationConfigurationResponse"];
             upcomingTurns: components["schemas"]["TurnRotationTurnResponse"][];
+            hasRevisions: boolean;
         };
         TurnRotationTurnResponse: {
             /** Format: date */
@@ -903,6 +950,7 @@ export interface components {
             question: string;
             /** Format: uuid */
             childId: string;
+            childDisplayName: string;
         };
         UpdateFamilyMemberRequest: {
             firstName: null | string;
@@ -2109,6 +2157,48 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    GetCalendar: {
+        parameters: {
+            query?: {
+                view?: string;
+                date?: string;
+                childId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

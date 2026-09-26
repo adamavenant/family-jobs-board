@@ -58,6 +58,8 @@ import {
   whoseTurnAction,
   whoseTurnLoader,
 } from "../features/whoseTurn/whoseTurnRoute";
+import { calendarLoader } from "../features/calendar/calendarRoute";
+import { CalendarPage } from "../features/calendar/CalendarPage";
 
 export interface CompleteActionResult {
   intent: "complete";
@@ -81,6 +83,7 @@ export interface ApproveActionResult {
 export interface AddRecurringJobActionResult {
   intent: "addRecurring";
   frequency?: "daily" | "weekly" | "monthly";
+  takesTurns?: boolean;
   success?: boolean;
   generatedThrough?: string;
   error?: string;
@@ -558,9 +561,21 @@ async function addRecurringJobAction(
 ): Promise<AddRecurringJobActionResult> {
   const submittedRequestId = form.get("requestId");
   const recurrenceFrequency = form.get("recurrenceFrequency");
-  const childIds = form
+  const selectedChildIds = form
     .getAll("childIds")
     .filter((value): value is string => typeof value === "string");
+  const takesTurns = form.get("assignmentMode") === "takeTurns";
+  const firstTurnChildId = form.get("firstTurnChildId");
+  const firstTurnIndex =
+    typeof firstTurnChildId === "string" && firstTurnChildId.length > 0
+      ? selectedChildIds.indexOf(firstTurnChildId)
+      : 0;
+  const childIds = takesTurns
+    ? [
+        ...selectedChildIds.slice(firstTurnIndex),
+        ...selectedChildIds.slice(0, firstTurnIndex),
+      ]
+    : selectedChildIds;
   const name = form.get("name");
   const description = form.get("description");
   const pointsValue = form.get("points");
@@ -580,6 +595,16 @@ async function addRecurringJobAction(
     "evening",
     "unscheduled",
   ] as const;
+
+  if (takesTurns && (selectedChildIds.length < 2 || firstTurnIndex < 0)) {
+    return {
+      intent: "addRecurring",
+      error:
+        selectedChildIds.length < 2
+          ? "Choose at least two children to take turns."
+          : "Choose a first turn from the selected children.",
+    };
+  }
 
   if (
     (recurrenceFrequency !== "daily" &&
@@ -643,6 +668,9 @@ async function addRecurringJobAction(
       startDate,
       endDate:
         typeof endDate === "string" && endDate.length > 0 ? endDate : null,
+      assignmentMode: takesTurns
+        ? ("takeTurns" as const)
+        : ("eachChild" as const),
     };
     let result;
     if (recurrenceFrequency === "monthly") {
@@ -665,6 +693,7 @@ async function addRecurringJobAction(
     return {
       intent: "addRecurring",
       frequency: recurrenceFrequency,
+      takesTurns,
       success: true,
       generatedThrough,
     };
@@ -999,6 +1028,11 @@ export const routes: RouteObject[] = [
   {
     path: "/point-adjustments",
     action: pointAdjustmentsAction,
+  },
+  {
+    path: "/calendar",
+    loader: calendarLoader,
+    Component: CalendarPage,
   },
 ];
 

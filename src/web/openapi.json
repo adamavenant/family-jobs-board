@@ -828,7 +828,7 @@
           "Today"
         ],
         "summary": "Create a daily recurring job for one or more children.",
-        "description": "Creates an adult-owned child-specific daily series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.",
+        "description": "Creates an adult-owned child-specific daily series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.",
         "operationId": "CreateDailyRecurringJob",
         "requestBody": {
           "content": {
@@ -895,7 +895,7 @@
           "Today"
         ],
         "summary": "Create a weekly recurring job for one or more children.",
-        "description": "Creates an adult-owned child-specific weekly series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.",
+        "description": "Creates an adult-owned child-specific weekly series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.",
         "operationId": "CreateWeeklyRecurringJob",
         "requestBody": {
           "content": {
@@ -962,7 +962,7 @@
           "Today"
         ],
         "summary": "Create a monthly recurring job for one or more children.",
-        "description": "Creates an adult-owned child-specific monthly series for each assignee and uses the final valid day in shorter months.",
+        "description": "Creates an adult-owned child-specific monthly series for each assignee and uses the final valid day in shorter months. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.",
         "operationId": "CreateMonthlyRecurringJob",
         "requestBody": {
           "content": {
@@ -1638,6 +1638,78 @@
         ]
       }
     },
+    "/api/calendar": {
+      "get": {
+        "tags": [
+          "Calendar"
+        ],
+        "summary": "Get the adult day/week/month calendar.",
+        "description": "Adult-only. Reads the same job occurrences and workflow state as the daily agenda for the requested household-local date range, so the two views never disagree. Defaults to the week containing today when view/date are omitted.",
+        "operationId": "GetCalendar",
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "childId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
     "/api/turn-rotation": {
       "get": {
         "tags": [
@@ -1900,6 +1972,86 @@
           }
         }
       },
+      "CalendarDayResponse": {
+        "required": [
+          "date",
+          "isInFocusedPeriod",
+          "jobs"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "isInFocusedPeriod": {
+            "type": "boolean"
+          },
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobResponse"
+            }
+          }
+        }
+      },
+      "CalendarResponse": {
+        "required": [
+          "viewer",
+          "members",
+          "view",
+          "anchorDate",
+          "currentDate",
+          "rangeStart",
+          "rangeEnd",
+          "selectedChildId",
+          "days"
+        ],
+        "type": "object",
+        "properties": {
+          "viewer": {
+            "$ref": "#/components/schemas/MemberResponse"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberResponse"
+            }
+          },
+          "view": {
+            "type": "string"
+          },
+          "anchorDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "currentDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "rangeStart": {
+            "type": "string",
+            "format": "date"
+          },
+          "rangeEnd": {
+            "type": "string",
+            "format": "date"
+          },
+          "selectedChildId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarDayResponse"
+            }
+          }
+        }
+      },
       "CancelJobRequest": {
         "required": [
           "reason"
@@ -1985,6 +2137,12 @@
               "string"
             ],
             "format": "date"
+          },
+          "assignmentMode": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2103,6 +2261,12 @@
               "string"
             ],
             "format": "int32"
+          },
+          "assignmentMode": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2187,6 +2351,12 @@
             "items": {
               "type": "string"
             }
+          },
+          "assignmentMode": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2836,7 +3006,8 @@
           "seriesId",
           "childId",
           "generatedThrough",
-          "occurrenceCount"
+          "occurrenceCount",
+          "rotationChildIds"
         ],
         "type": "object",
         "properties": {
@@ -2859,6 +3030,13 @@
               "string"
             ],
             "format": "int32"
+          },
+          "rotationChildIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
@@ -3233,7 +3411,8 @@
       "TurnRotationOverviewResponse": {
         "required": [
           "current",
-          "upcomingTurns"
+          "upcomingTurns",
+          "hasRevisions"
         ],
         "type": "object",
         "properties": {
@@ -3252,6 +3431,9 @@
             "items": {
               "$ref": "#/components/schemas/TurnRotationTurnResponse"
             }
+          },
+          "hasRevisions": {
+            "type": "boolean"
           }
         }
       },
@@ -3259,7 +3441,8 @@
         "required": [
           "date",
           "question",
-          "childId"
+          "childId",
+          "childDisplayName"
         ],
         "type": "object",
         "properties": {
@@ -3273,6 +3456,9 @@
           "childId": {
             "type": "string",
             "format": "uuid"
+          },
+          "childDisplayName": {
+            "type": "string"
           }
         }
       },
@@ -3405,6 +3591,9 @@
     },
     {
       "name": "Point adjustments"
+    },
+    {
+      "name": "Calendar"
     },
     {
       "name": "Whose turn"

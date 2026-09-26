@@ -9,6 +9,10 @@ public interface ITurnRotationRepository
 
     Task<HouseholdMember?> GetMemberAsync(Guid memberId, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<HouseholdMember>> GetMembersAsync(
+        IReadOnlyCollection<Guid> memberIds,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<HouseholdMember>> GetActiveChildrenAsync(
         IReadOnlyCollection<Guid> childIds,
         CancellationToken cancellationToken);

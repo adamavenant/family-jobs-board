@@ -18,7 +18,7 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     effective_from = table.Column<DateOnly>(type: "date", nullable: false),
                     question = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    first_child_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    first_child_id = table.Column<Guid>(type: "uuid", nullable: true),
                     created_by_member_id = table.Column<Guid>(type: "uuid", nullable: false),
                     created_at_utc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },

@@ -12,7 +12,7 @@ public sealed class RecurringJobSeriesTests
             startDate: new DateOnly(2026, 9, 1),
             endDate: new DateOnly(2026, 9, 3));
 
-        var dates = series.GenerateThrough(new DateOnly(2026, 10, 26));
+        var dates = GenerateDates(series, new DateOnly(2026, 10, 26));
 
         Assert.Equal(
             [
@@ -23,7 +23,7 @@ public sealed class RecurringJobSeriesTests
             dates);
         Assert.Equal(new DateOnly(2026, 9, 3), series.LastOccurrenceDate(new DateOnly(2026, 10, 26)));
         Assert.Equal(new DateOnly(2026, 9, 3), series.GeneratedThrough);
-        Assert.Empty(series.GenerateThrough(new DateOnly(2026, 10, 26)));
+        Assert.Empty(GenerateDates(series, new DateOnly(2026, 10, 26)));
     }
 
     [Fact]
@@ -34,7 +34,7 @@ public sealed class RecurringJobSeriesTests
             endDate: new DateOnly(2027, 1, 7),
             weekdays: [DayOfWeek.Monday, DayOfWeek.Thursday]);
 
-        var dates = series.GenerateThrough(new DateOnly(2027, 2, 1));
+        var dates = GenerateDates(series, new DateOnly(2027, 2, 1));
 
         Assert.Equal(
             [
@@ -45,7 +45,7 @@ public sealed class RecurringJobSeriesTests
             ],
             dates);
         Assert.Equal([DayOfWeek.Monday, DayOfWeek.Thursday], series.SelectedWeekdays());
-        Assert.Empty(series.GenerateThrough(new DateOnly(2027, 2, 1)));
+        Assert.Empty(GenerateDates(series, new DateOnly(2027, 2, 1)));
     }
 
     [Fact]
@@ -60,10 +60,10 @@ public sealed class RecurringJobSeriesTests
             endDate: new DateOnly(2026, 11, 2),
             weekdays: [DayOfWeek.Sunday]);
 
-        Assert.Equal([new DateOnly(2028, 2, 29)], leapDay.GenerateThrough(new DateOnly(2028, 3, 1)));
+        Assert.Equal([new DateOnly(2028, 2, 29)], GenerateDates(leapDay, new DateOnly(2028, 3, 1)));
         Assert.Equal(
             [new DateOnly(2026, 10, 25), new DateOnly(2026, 11, 1)],
-            daylightSaving.GenerateThrough(new DateOnly(2026, 11, 2)));
+            GenerateDates(daylightSaving, new DateOnly(2026, 11, 2)));
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public sealed class RecurringJobSeriesTests
             endDate: new DateOnly(2028, 4, 30),
             dayOfMonth: 31);
 
-        var dates = series.GenerateThrough(new DateOnly(2028, 4, 30));
+        var dates = GenerateDates(series, new DateOnly(2028, 4, 30));
 
         Assert.Equal(
             [
@@ -86,7 +86,7 @@ public sealed class RecurringJobSeriesTests
             ],
             dates);
         Assert.Equal(31, series.MonthlyDay);
-        Assert.Empty(series.GenerateThrough(new DateOnly(2028, 4, 30)));
+        Assert.Empty(GenerateDates(series, new DateOnly(2028, 4, 30)));
     }
 
     [Fact]
@@ -107,14 +107,14 @@ public sealed class RecurringJobSeriesTests
                 new DateOnly(2027, 2, 28),
                 new DateOnly(2027, 3, 31),
             ],
-            commonFebruary.GenerateThrough(new DateOnly(2027, 3, 31)));
+            GenerateDates(commonFebruary, new DateOnly(2027, 3, 31)));
         Assert.Equal(
             [
                 new DateOnly(2026, 9, 25),
                 new DateOnly(2026, 10, 25),
                 new DateOnly(2026, 11, 25),
             ],
-            daylightSaving.GenerateThrough(new DateOnly(2026, 11, 25)));
+            GenerateDates(daylightSaving, new DateOnly(2026, 11, 25)));
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public sealed class RecurringJobSeriesTests
 
         Assert.Equal(
             [new DateOnly(2026, 2, 15), new DateOnly(2026, 3, 15)],
-            series.GenerateThrough(new DateOnly(2026, 5, 31)));
+            GenerateDates(series, new DateOnly(2026, 5, 31)));
     }
 
     [Theory]
@@ -151,7 +151,7 @@ public sealed class RecurringJobSeriesTests
 
         Assert.Equal(
             [new DateOnly(2026, 9, 2), new DateOnly(2026, 9, 7)],
-            series.GenerateThrough(new DateOnly(2026, 10, 1)));
+            GenerateDates(series, new DateOnly(2026, 10, 1)));
     }
 
     [Fact]
@@ -215,6 +215,15 @@ public sealed class RecurringJobSeriesTests
         Assert.Throws<ArgumentOutOfRangeException>(() => CreateDailySeries(
             startDate: new DateOnly(2026, 9, 2),
             endDate: new DateOnly(2026, 9, 1)));
+    }
+
+    private static IReadOnlyList<DateOnly> GenerateDates(
+        RecurringJobSeries series,
+        DateOnly horizonInclusive)
+    {
+        return series.GenerateOccurrencesThrough(horizonInclusive)
+            .Select(occurrence => occurrence.Date)
+            .ToArray();
     }
 
     private static RecurringJobSeries CreateDailySeries(DateOnly startDate, DateOnly? endDate)

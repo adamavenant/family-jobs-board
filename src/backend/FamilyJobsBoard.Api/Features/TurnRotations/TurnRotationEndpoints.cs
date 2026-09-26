@@ -74,8 +74,10 @@ internal static class TurnRotationEndpoints
         return new TurnRotationOverviewResponse(
             overview.Current is null ? null : MapConfiguration(overview.Current),
             overview.UpcomingTurns
-                .Select(turn => new TurnRotationTurnResponse(turn.Date, turn.Question, turn.ChildId))
-                .ToArray());
+                .Select(turn => new TurnRotationTurnResponse(
+                    turn.Date, turn.Question, turn.ChildId, turn.ChildDisplayName))
+                .ToArray(),
+            overview.HasRevisions);
     }
 
     private static TurnRotationConfigurationResponse MapConfiguration(TurnRotationConfiguration configuration)

@@ -12,11 +12,13 @@ public sealed record TurnRotationConfigurationResponse(
 public sealed record TurnRotationTurnResponse(
     DateOnly Date,
     string Question,
-    Guid ChildId);
+    Guid ChildId,
+    string ChildDisplayName);
 
 public sealed record TurnRotationOverviewResponse(
     TurnRotationConfigurationResponse? Current,
-    IReadOnlyList<TurnRotationTurnResponse> UpcomingTurns);
+    IReadOnlyList<TurnRotationTurnResponse> UpcomingTurns,
+    bool HasRevisions);
 
 public sealed record SaveTurnRotationRequest(
     IReadOnlyList<Guid>? ParticipantChildIds,

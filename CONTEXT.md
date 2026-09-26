@@ -46,6 +46,14 @@ independent Job per child so completion, review, and points remain separate.
 - Completed (bool)
 - Completed date and time (captured on completion)
 
+### Take-turns Schedule
+A recurring job shared by two or more children who take turns, such as tidying
+the table. It is one recurring series with an ordered rotation of children;
+each occurrence is an ordinary Job assigned to the next child in the rotation
+(alternating for two children, round robin for more). The adult picks who goes
+first. The rotation advances on every occurrence, even one that is later
+cancelled or rejected, so upcoming turns are predictable.
+
 ### Job Approval
 The process by which an Adult verifies that a Child has completed a Job before points are awarded.
 
@@ -145,6 +153,8 @@ Functions available to Adult users for managing the system.
 - Audit trails maintained for all user actions
 - A job or recurring schedule assignment targets one or more distinct, active
   children and persists all child-specific copies atomically.
+- A take-turns schedule needs at least two distinct, active children and
+  creates a single series rather than one copy per child.
 - Children have 4-digit PINs; adults have 6-digit PINs.
 - PINs are strings so leading zeroes are retained. Only a slow, salted,
   peppered hash is stored; plaintext PINs are never persisted or logged.

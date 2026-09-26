@@ -64,7 +64,7 @@ public sealed class TurnRotationServiceTests
         var todayTurn = await service.GetTurnAsync(Today, CancellationToken.None);
         var tomorrowTurn = await service.GetTurnAsync(Today.AddDays(1), CancellationToken.None);
 
-        Assert.Equal(original.GetAssignedChildId(Today), todayTurn!.ChildId);
+        Assert.Equal(original.GetAssignedChildId(Today)!.Value, todayTurn!.ChildId);
         Assert.Equal(ChildC.Id, tomorrowTurn!.ChildId);
         Assert.Equal("Who's up?", tomorrowTurn.Question);
         Assert.NotNull(saved.Current);
@@ -80,7 +80,7 @@ public sealed class TurnRotationServiceTests
         repository.Revisions.Add(original);
         var service = CreateService(repository);
         var yesterday = Today.AddDays(-1);
-        var originalYesterdayAnswer = original.GetAssignedChildId(yesterday);
+        var originalYesterdayAnswer = original.GetAssignedChildId(yesterday)!.Value;
 
         await service.SaveAsync(
             Adult.Id,
@@ -181,6 +181,63 @@ public sealed class TurnRotationServiceTests
         Assert.Equal(ChildA.Id, overview.UpcomingTurns[0].ChildId);
     }
 
+    [Fact]
+    public async Task Removing_a_participant_replaces_the_rotation_from_tomorrow_and_keeps_history()
+    {
+        var repository = new FakeRepository();
+        var original = new TurnRotationRevision(
+            Guid.NewGuid(), Today.AddDays(-10), null, [ChildA.Id, ChildB.Id, ChildC.Id], ChildA.Id, Adult.Id,
+            Today.ToDateTime(TimeOnly.MinValue));
+        repository.Revisions.Add(original);
+        var service = CreateService(repository);
+        var todayBefore = await service.GetTurnAsync(Today, CancellationToken.None);
+        var tomorrowChild = original.GetAssignedChildId(Today.AddDays(1))!.Value;
+
+        await service.RemoveParticipantAsync(tomorrowChild, Adult.Id, CancellationToken.None);
+
+        var todayAfter = await service.GetTurnAsync(Today, CancellationToken.None);
+        Assert.Equal(todayBefore!.ChildId, todayAfter!.ChildId);
+        for (var offset = 1; offset < 10; offset++)
+        {
+            var turn = await service.GetTurnAsync(Today.AddDays(offset), CancellationToken.None);
+            Assert.NotEqual(tomorrowChild, turn!.ChildId);
+        }
+
+        var next = await service.GetTurnAsync(Today.AddDays(1), CancellationToken.None);
+        Assert.Equal(original.GetAssignedChildId(Today.AddDays(2))!.Value, next!.ChildId);
+    }
+
+    [Fact]
+    public async Task Removing_the_last_participant_makes_the_rota_unavailable_from_tomorrow()
+    {
+        var repository = new FakeRepository();
+        repository.Revisions.Add(new TurnRotationRevision(
+            Guid.NewGuid(), Today.AddDays(-1), null, [ChildA.Id], ChildA.Id, Adult.Id,
+            Today.ToDateTime(TimeOnly.MinValue)));
+        var service = CreateService(repository);
+
+        await service.RemoveParticipantAsync(ChildA.Id, Adult.Id, CancellationToken.None);
+
+        Assert.NotNull(await service.GetTurnAsync(Today, CancellationToken.None));
+        Assert.Null(await service.GetTurnAsync(Today.AddDays(1), CancellationToken.None));
+        var overview = await service.GetOverviewAsync(CancellationToken.None);
+        Assert.True(overview.HasRevisions);
+    }
+
+    [Fact]
+    public async Task Answers_still_name_a_child_who_has_since_been_deactivated()
+    {
+        var repository = new FakeRepository();
+        repository.Revisions.Add(new TurnRotationRevision(
+            Guid.NewGuid(), Today, null, [InactiveChild.Id], InactiveChild.Id, Adult.Id,
+            Today.ToDateTime(TimeOnly.MinValue)));
+        var service = CreateService(repository);
+
+        var turn = await service.GetTurnAsync(Today, CancellationToken.None);
+
+        Assert.Equal("Gone", turn!.ChildDisplayName);
+    }
+
     private static TurnRotationService CreateService(FakeRepository repository) =>
         new(repository, new FixedClock());
 
@@ -204,6 +261,12 @@ public sealed class TurnRotationServiceTests
 
         public Task<HouseholdMember?> GetMemberAsync(Guid memberId, CancellationToken cancellationToken) =>
             Task.FromResult(Members.SingleOrDefault(member => member.Id == memberId));
+
+        public Task<IReadOnlyList<HouseholdMember>> GetMembersAsync(
+            IReadOnlyCollection<Guid> memberIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<HouseholdMember>>(
+                Members.Where(member => memberIds.Contains(member.Id)).ToArray());
 
         public Task<IReadOnlyList<HouseholdMember>> GetActiveChildrenAsync(
             IReadOnlyCollection<Guid> childIds,

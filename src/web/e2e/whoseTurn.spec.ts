@@ -149,10 +149,11 @@ test("an adult sets up the whose-turn rotation and it updates across days", asyn
 
   function overview() {
     if (!configured) {
-      return { current: null, upcomingTurns: [] };
+      return { current: null, upcomingTurns: [], hasRevisions: false };
     }
 
     return {
+      hasRevisions: true,
       current: {
         id: "11111111-1111-1111-1111-111111111111",
         effectiveFrom: "2026-09-21",
@@ -163,8 +164,18 @@ test("an adult sets up the whose-turn rotation and it updates across days", asyn
         createdAtUtc: "2026-09-21T08:00:00Z",
       },
       upcomingTurns: [
-        { date: "2026-09-21", question: savedQuestion, childId: albaId },
-        { date: "2026-09-22", question: savedQuestion, childId: benId },
+        {
+          date: "2026-09-21",
+          question: savedQuestion,
+          childId: albaId,
+          childDisplayName: "Alba",
+        },
+        {
+          date: "2026-09-22",
+          question: savedQuestion,
+          childId: benId,
+          childDisplayName: "Ben",
+        },
       ],
     };
   }

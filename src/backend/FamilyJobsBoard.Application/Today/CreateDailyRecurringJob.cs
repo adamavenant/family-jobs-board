@@ -10,13 +10,15 @@ public sealed record CreateDailyRecurringJob(
     string? AgendaPeriod,
     TimeOnly? ScheduledTime,
     DateOnly StartDate,
-    DateOnly? EndDate);
+    DateOnly? EndDate,
+    string? AssignmentMode = null);
 
 public sealed record RecurringJobAssignment(
     Guid SeriesId,
     Guid ChildId,
     DateOnly GeneratedThrough,
-    int OccurrenceCount);
+    int OccurrenceCount,
+    IReadOnlyList<Guid> RotationChildIds);
 
 public sealed record RecurringJobCreation(
     IReadOnlyList<RecurringJobAssignment> Assignments,

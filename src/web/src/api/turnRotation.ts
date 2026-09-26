@@ -17,11 +17,13 @@ export interface TurnRotationTurn {
   date: string;
   question: string;
   childId: string;
+  childDisplayName: string;
 }
 
 export interface TurnRotationOverview {
   current: TurnRotationConfiguration | null;
   upcomingTurns: TurnRotationTurn[];
+  hasRevisions: boolean;
 }
 
 export interface SaveTurnRotationInput {

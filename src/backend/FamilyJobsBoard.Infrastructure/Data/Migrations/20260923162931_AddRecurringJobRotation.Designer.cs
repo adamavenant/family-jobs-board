@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260925070616_AddTurnRotations")]
-    partial class AddTurnRotations
+    [Migration("20260923162931_AddRecurringJobRotation")]
+    partial class AddRecurringJobRotation
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -611,9 +611,18 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(160)")
                         .HasColumnName("name");
 
+                    b.Property<int>("NextTurnIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("next_turn_index");
+
                     b.Property<int>("Points")
                         .HasColumnType("integer")
                         .HasColumnName("points");
+
+                    b.PrimitiveCollection<Guid[]>("RotationChildIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("rotation_child_ids");
 
                     b.Property<TimeOnly?>("ScheduledTime")
                         .HasColumnType("time without time zone")
@@ -639,6 +648,8 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 
                     b.ToTable("recurring_job_series", null, t =>
                         {
+                            t.HasCheckConstraint("ck_recurring_job_series_rotation", "(cardinality(rotation_child_ids) = 0 AND next_turn_index = 0) OR (cardinality(rotation_child_ids) >= 2 AND rotation_child_ids[1] = child_id AND next_turn_index >= 0 AND next_turn_index < cardinality(rotation_child_ids))");
+
                             t.HasCheckConstraint("ck_recurring_job_series_schedule", "(frequency = 'Daily' AND weekday_mask = 0 AND monthly_day IS NULL) OR (frequency = 'Weekly' AND weekday_mask BETWEEN 1 AND 127 AND monthly_day IS NULL) OR (frequency = 'Monthly' AND weekday_mask = 0 AND monthly_day BETWEEN 1 AND 31)");
                         });
                 });
@@ -747,45 +758,6 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 
                             t.HasCheckConstraint("ck_points_ledger_entries_single_source", "num_nonnulls(job_id, good_behaviour_id, point_adjustment_id) = 1");
                         });
-                });
-
-            modelBuilder.Entity("FamilyJobsBoard.Domain.TurnRotations.TurnRotationRevision", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<Guid>("CreatedByMemberId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("created_by_member_id");
-
-                    b.Property<DateOnly>("EffectiveFrom")
-                        .HasColumnType("date")
-                        .HasColumnName("effective_from");
-
-                    b.Property<Guid>("FirstChildId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("first_child_id");
-
-                    b.Property<string>("Question")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("question");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedByMemberId");
-
-                    b.HasIndex("EffectiveFrom")
-                        .HasDatabaseName("ix_turn_rotation_revisions_effective_from");
-
-                    b.ToTable("turn_rotation_revisions", (string)null);
                 });
 
             modelBuilder.Entity("FamilyJobsBoard.Domain.Administration.HouseholdDataReset", b =>
@@ -976,51 +948,6 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .WithMany()
                         .HasForeignKey("PointAdjustmentId")
                         .OnDelete(DeleteBehavior.Restrict);
-                });
-
-            modelBuilder.Entity("FamilyJobsBoard.Domain.TurnRotations.TurnRotationRevision", b =>
-                {
-                    b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
-                        .WithMany()
-                        .HasForeignKey("CreatedByMemberId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.OwnsMany("FamilyJobsBoard.Domain.TurnRotations.TurnRotationParticipant", "Participants", b1 =>
-                        {
-                            b1.Property<Guid>("turn_rotation_revision_id")
-                                .HasColumnType("uuid")
-                                .HasColumnName("turn_rotation_revision_id");
-
-                            b1.Property<int>("OrderIndex")
-                                .HasColumnType("integer")
-                                .HasColumnName("order_index");
-
-                            b1.Property<Guid>("ChildId")
-                                .HasColumnType("uuid")
-                                .HasColumnName("child_id");
-
-                            b1.HasKey("turn_rotation_revision_id", "OrderIndex");
-
-                            b1.HasIndex("ChildId");
-
-                            b1.HasIndex("turn_rotation_revision_id", "ChildId")
-                                .IsUnique()
-                                .HasDatabaseName("ux_turn_rotation_participants_revision_child");
-
-                            b1.ToTable("turn_rotation_participants", (string)null);
-
-                            b1.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
-                                .WithMany()
-                                .HasForeignKey("ChildId")
-                                .OnDelete(DeleteBehavior.Restrict)
-                                .IsRequired();
-
-                            b1.WithOwner()
-                                .HasForeignKey("turn_rotation_revision_id");
-                        });
-
-                    b.Navigation("Participants");
                 });
 #pragma warning restore 612, 618
         }
