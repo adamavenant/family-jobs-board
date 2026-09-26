@@ -52,6 +52,10 @@ export function RecurringJobForm({
   const [frequency, setFrequency] = useState<RecurrenceFrequency>("daily");
   const [assignmentMode, setAssignmentMode] =
     useState<AssignmentMode>("eachChild");
+  const [selectedChildIds, setSelectedChildIds] = useState<string[]>(() =>
+    children[0] ? [children[0].id] : [],
+  );
+  const [firstTurnChildId, setFirstTurnChildId] = useState("");
   const result =
     fetcher.data?.intent === "addRecurring" ? fetcher.data : undefined;
   const isSubmitting = fetcher.state !== "idle";
@@ -99,6 +103,8 @@ export function RecurringJobForm({
           onReset={() => {
             setFrequency("daily");
             setAssignmentMode("eachChild");
+            setSelectedChildIds(children[0] ? [children[0].id] : []);
+            setFirstTurnChildId("");
           }}
         >
           <input type="hidden" name="intent" value="addRecurring" />
@@ -120,6 +126,16 @@ export function RecurringJobForm({
           <ChildAssignmentPicker
             children={children}
             legend={`Assign ${frequencyLabel.toLowerCase()} job to`}
+            selectedChildIds={selectedChildIds}
+            onSelectionChange={(childIds) => {
+              setSelectedChildIds(childIds);
+              if (
+                firstTurnChildId.length > 0 &&
+                !childIds.includes(firstTurnChildId)
+              ) {
+                setFirstTurnChildId("");
+              }
+            }}
           />
           {children.length >= 2 ? (
             <fieldset className="assignee-picker assignment-mode-picker">
@@ -152,15 +168,20 @@ export function RecurringJobForm({
                   <select
                     id="firstTurnChildId"
                     name="firstTurnChildId"
-                    defaultValue=""
+                    value={firstTurnChildId}
+                    onChange={(event) =>
+                      setFirstTurnChildId(event.target.value)
+                    }
                     aria-describedby="firstTurnHint"
                   >
                     <option value="">First selected child</option>
-                    {children.map((child) => (
-                      <option key={child.id} value={child.id}>
-                        {child.displayName}
-                      </option>
-                    ))}
+                    {children
+                      .filter((child) => selectedChildIds.includes(child.id))
+                      .map((child) => (
+                        <option key={child.id} value={child.id}>
+                          {child.displayName}
+                        </option>
+                      ))}
                   </select>
                   <small id="firstTurnHint">
                     Selected children then take turns in order, one per

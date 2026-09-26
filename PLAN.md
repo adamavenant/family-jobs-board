@@ -22,7 +22,7 @@ The first increment is a database-backed walking skeleton, not a throwaway mock.
 
 The current `main` branch contains a runnable PostgreSQL-backed .NET API and React UI. Docker Compose builds the application, applies checked-in migrations, and exposes health-checked API and web services. Integration tests use disposable PostgreSQL containers; CI verifies the backend, web application, and Compose configuration and publishes deployable images.
 
-The delivered pilot includes household bootstrap, PIN authentication and revocable sessions, adult family-member administration, dated once-off jobs, daily/weekly/monthly recurrence creation, a navigable daily agenda, child completion submission, adult approval/rejection, adult-defined good behaviours logged with immediate points, signed manual point adjustments, and an append-only points ledger with child balance/history. Later phase deliverables remain tracked in section 9; in particular, the adult calendar, job and series lifecycle operations, redemptions and the complete audit/production-readiness scope are not yet delivered.
+The delivered pilot includes household bootstrap, PIN authentication and revocable sessions, adult family-member administration, dated once-off jobs, daily/weekly/monthly recurrence creation, a navigable daily agenda, child completion submission, adult approval/rejection, adult-defined good behaviours logged with immediate points, signed manual point adjustments, adult day/week/month calendar views, and an append-only points ledger with child balance/history. Later phase deliverables remain tracked in section 9; in particular, job and recurring-series lifecycle operations, redemptions, and the complete audit/production-readiness scope are not yet delivered.
 
 Further implementation continues through GitHub issues with acceptance criteria, issue branches, and the Compose/test gates in this plan. Product decisions in section 12 remain open until their owning phase reaches them.
 
@@ -287,7 +287,7 @@ Delivery status on `main` as of 2026-09-13:
 - [x] Phase 1: household bootstrap, PIN sign-in/session security, and the implemented family-member administration lifecycle.
 - [x] Phase 2: once-off creation, editing, terminal cancellation, daily navigation, adult child filtering, multi-child assignment, and completion submission are delivered.
 - [ ] Phase 3: the submit/approve-or-reject/ledger loop and child balance/history are delivered; approval-time point override remains.
-- [ ] Phase 4: daily, weekly, and monthly recurrence creation is delivered; series lifecycle and adult calendar views remain.
+- [x] Phase 4: daily, weekly, and monthly recurrence creation and adult day/week/month calendar views are delivered; series lifecycle (pause/end/edit) remains (issues #107, #108).
 - [x] Phase 5: adult-defined good-behaviour types, logging with an editable point value, atomic idempotent ledger awards, and child history/read-only listing are delivered.
 - [ ] Phase 6: signed manual point adjustments with a required reason are delivered; redemptions, searchable audit, and administration completeness remain.
 - [ ] Phase 7: image publication and home-server deployment automation are delivered; the full production-readiness exit gate remains.
@@ -408,7 +408,7 @@ Deliver from `docs/specs/040-recurring-jobs-and-calendar.md`:
 Exit gate:
 
 - Re-running generation or restarting containers creates no duplicates.
-- Agenda and calendar read the same occurrences and workflow state.
+- Agenda and calendar read the same occurrences and workflow state (delivered by issue #85; series pause/end/edit remain).
 - Editing a series never rewrites already approved history.
 - Dates remain correct in the configured household time zone.
 - Compose and all tests remain green.

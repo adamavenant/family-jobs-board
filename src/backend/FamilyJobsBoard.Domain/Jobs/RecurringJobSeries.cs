@@ -315,13 +315,6 @@ public sealed class RecurringJobSeries
             : horizonInclusive;
     }
 
-    public IReadOnlyList<DateOnly> GenerateThrough(DateOnly horizonInclusive)
-    {
-        return GenerateOccurrencesThrough(horizonInclusive)
-            .Select(occurrence => occurrence.Date)
-            .ToArray();
-    }
-
     public IReadOnlyList<RecurringJobOccurrence> GenerateOccurrencesThrough(DateOnly horizonInclusive)
     {
         var lastDate = LastOccurrenceDate(horizonInclusive);

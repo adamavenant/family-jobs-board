@@ -1637,6 +1637,78 @@
           }
         ]
       }
+    },
+    "/api/calendar": {
+      "get": {
+        "tags": [
+          "Calendar"
+        ],
+        "summary": "Get the adult day/week/month calendar.",
+        "description": "Adult-only. Reads the same job occurrences and workflow state as the daily agenda for the requested household-local date range, so the two views never disagree. Defaults to the week containing today when view/date are omitted.",
+        "operationId": "GetCalendar",
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "childId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1825,6 +1897,86 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "CalendarDayResponse": {
+        "required": [
+          "date",
+          "isInFocusedPeriod",
+          "jobs"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "isInFocusedPeriod": {
+            "type": "boolean"
+          },
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobResponse"
+            }
+          }
+        }
+      },
+      "CalendarResponse": {
+        "required": [
+          "viewer",
+          "members",
+          "view",
+          "anchorDate",
+          "currentDate",
+          "rangeStart",
+          "rangeEnd",
+          "selectedChildId",
+          "days"
+        ],
+        "type": "object",
+        "properties": {
+          "viewer": {
+            "$ref": "#/components/schemas/MemberResponse"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberResponse"
+            }
+          },
+          "view": {
+            "type": "string"
+          },
+          "anchorDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "currentDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "rangeStart": {
+            "type": "string",
+            "format": "date"
+          },
+          "rangeEnd": {
+            "type": "string",
+            "format": "date"
+          },
+          "selectedChildId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarDayResponse"
+            }
           }
         }
       },
@@ -3197,6 +3349,9 @@
     },
     {
       "name": "Point adjustments"
+    },
+    {
+      "name": "Calendar"
     }
   ]
 }

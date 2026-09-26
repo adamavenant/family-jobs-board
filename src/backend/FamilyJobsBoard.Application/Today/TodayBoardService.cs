@@ -62,6 +62,14 @@ public sealed class TodayBoardService
             });
         }
 
+        if (!BoardDateRange.IsWithinBrowsingHorizon(date, _clock.Today))
+        {
+            throw new InvalidTodayBoardFilterException(new Dictionary<string, string[]>
+            {
+                ["Date"] = [$"Choose a date within {BoardDateRange.MaxYearsFromToday} years of today."],
+            });
+        }
+
         await EnsureRecurringJobsAsync(date, cancellationToken);
         var householdVisibleChildren = viewer.IsAdult
             ? children
@@ -269,7 +277,7 @@ public sealed class TodayBoardService
             errors,
             nameof(CreateDailyRecurringJob.ChildIds),
             cancellationToken);
-        var takesTurns = ValidateAssignmentMode(
+        var assignment = ResolveRecurringAssignment(
             request.AssignmentMode,
             children,
             errors,
@@ -300,13 +308,11 @@ public sealed class TodayBoardService
         }
 
         var horizon = _clock.Today.AddDays(55);
-        var rotation = takesTurns ? children.Select(child => child.Id).ToArray() : null;
-        var assignedChildren = takesTurns ? children.Take(1).ToArray() : children;
         var existing = await GetExistingRecurringCreationAsync(
             request.RequestId,
-            assignedChildren,
-            series => series.MatchesDaily(
-                series.ChildId,
+            assignment.AssignedChildren,
+            (series, requestedChildId) => series.MatchesDaily(
+                requestedChildId,
                 viewer!.Id,
                 name,
                 description,
@@ -315,7 +321,7 @@ public sealed class TodayBoardService
                 request.ScheduledTime,
                 request.StartDate,
                 request.EndDate,
-                rotation),
+                assignment.RotationChildIds),
             id => new DailyRecurringJobRequestConflictException(id),
             cancellationToken);
         if (existing is not null)
@@ -323,7 +329,7 @@ public sealed class TodayBoardService
             return existing;
         }
 
-        var series = assignedChildren
+        var series = assignment.AssignedChildren
             .Select(child => RecurringJobSeries.Daily(
                 Guid.NewGuid(),
                 child.Id,
@@ -336,12 +342,13 @@ public sealed class TodayBoardService
                 request.StartDate,
                 request.EndDate,
                 request.RequestId,
-                rotation))
+                assignment.RotationChildIds))
             .ToArray();
         var occurrences = series
             .SelectMany(item => item
                 .GenerateOccurrencesThrough(horizon)
-                .Select(occurrence => CreateOccurrence(item, occurrence)))
+                .Select(occurrence =>
+                    RecurringOccurrenceGenerator.CreateOccurrence(item, occurrence)))
             .ToArray();
 
         await _repository.AddRecurringJobSeriesAsync(series, cancellationToken);
@@ -383,7 +390,7 @@ public sealed class TodayBoardService
             errors,
             nameof(CreateWeeklyRecurringJob.ChildIds),
             cancellationToken);
-        var takesTurns = ValidateAssignmentMode(
+        var assignment = ResolveRecurringAssignment(
             request.AssignmentMode,
             children,
             errors,
@@ -420,13 +427,11 @@ public sealed class TodayBoardService
         }
 
         var horizon = _clock.Today.AddDays(55);
-        var rotation = takesTurns ? children.Select(child => child.Id).ToArray() : null;
-        var assignedChildren = takesTurns ? children.Take(1).ToArray() : children;
         var existing = await GetExistingRecurringCreationAsync(
             request.RequestId,
-            assignedChildren,
-            series => series.MatchesWeekly(
-                series.ChildId,
+            assignment.AssignedChildren,
+            (series, requestedChildId) => series.MatchesWeekly(
+                requestedChildId,
                 viewer!.Id,
                 name,
                 description,
@@ -436,7 +441,7 @@ public sealed class TodayBoardService
                 request.StartDate,
                 request.EndDate,
                 weekdays,
-                rotation),
+                assignment.RotationChildIds),
             id => new WeeklyRecurringJobRequestConflictException(id),
             cancellationToken);
         if (existing is not null)
@@ -444,7 +449,7 @@ public sealed class TodayBoardService
             return existing;
         }
 
-        var series = assignedChildren
+        var series = assignment.AssignedChildren
             .Select(child => RecurringJobSeries.Weekly(
                 Guid.NewGuid(),
                 child.Id,
@@ -458,12 +463,13 @@ public sealed class TodayBoardService
                 request.EndDate,
                 weekdays,
                 request.RequestId,
-                rotation))
+                assignment.RotationChildIds))
             .ToArray();
         var occurrences = series
             .SelectMany(item => item
                 .GenerateOccurrencesThrough(horizon)
-                .Select(occurrence => CreateOccurrence(item, occurrence)))
+                .Select(occurrence =>
+                    RecurringOccurrenceGenerator.CreateOccurrence(item, occurrence)))
             .ToArray();
 
         await _repository.AddRecurringJobSeriesAsync(series, cancellationToken);
@@ -505,7 +511,7 @@ public sealed class TodayBoardService
             errors,
             nameof(CreateMonthlyRecurringJob.ChildIds),
             cancellationToken);
-        var takesTurns = ValidateAssignmentMode(
+        var assignment = ResolveRecurringAssignment(
             request.AssignmentMode,
             children,
             errors,
@@ -542,13 +548,11 @@ public sealed class TodayBoardService
         }
 
         var horizon = _clock.Today.AddDays(55);
-        var rotation = takesTurns ? children.Select(child => child.Id).ToArray() : null;
-        var assignedChildren = takesTurns ? children.Take(1).ToArray() : children;
         var existing = await GetExistingRecurringCreationAsync(
             request.RequestId,
-            assignedChildren,
-            series => series.MatchesMonthly(
-                series.ChildId,
+            assignment.AssignedChildren,
+            (series, requestedChildId) => series.MatchesMonthly(
+                requestedChildId,
                 viewer!.Id,
                 name,
                 description,
@@ -558,7 +562,7 @@ public sealed class TodayBoardService
                 request.StartDate,
                 request.EndDate,
                 request.DayOfMonth,
-                rotation),
+                assignment.RotationChildIds),
             id => new MonthlyRecurringJobRequestConflictException(id),
             cancellationToken);
         if (existing is not null)
@@ -566,7 +570,7 @@ public sealed class TodayBoardService
             return existing;
         }
 
-        var series = assignedChildren
+        var series = assignment.AssignedChildren
             .Select(child => RecurringJobSeries.Monthly(
                 Guid.NewGuid(),
                 child.Id,
@@ -580,12 +584,13 @@ public sealed class TodayBoardService
                 request.EndDate,
                 request.DayOfMonth,
                 request.RequestId,
-                rotation))
+                assignment.RotationChildIds))
             .ToArray();
         var occurrences = series
             .SelectMany(item => item
                 .GenerateOccurrencesThrough(horizon)
-                .Select(occurrence => CreateOccurrence(item, occurrence)))
+                .Select(occurrence =>
+                    RecurringOccurrenceGenerator.CreateOccurrence(item, occurrence)))
             .ToArray();
 
         await _repository.AddRecurringJobSeriesAsync(series, cancellationToken);
@@ -631,9 +636,9 @@ public sealed class TodayBoardService
         return submittedIds.Select(id => childById[id]).ToArray();
     }
 
-    private static bool ValidateAssignmentMode(
+    private static RecurringAssignment ResolveRecurringAssignment(
         string? assignmentMode,
-        IReadOnlyCollection<HouseholdMember> children,
+        IReadOnlyList<HouseholdMember> children,
         IDictionary<string, string[]> errors,
         string assignmentModeKey,
         string childIdsKey)
@@ -641,27 +646,30 @@ public sealed class TodayBoardService
         if (assignmentMode is null
             || string.Equals(assignmentMode, "eachChild", StringComparison.OrdinalIgnoreCase))
         {
-            return false;
+            return new RecurringAssignment(children, null);
         }
 
         if (!string.Equals(assignmentMode, "takeTurns", StringComparison.OrdinalIgnoreCase))
         {
             errors[assignmentModeKey] = ["Choose eachChild or takeTurns."];
-            return false;
+            return new RecurringAssignment(children, null);
         }
 
-        if (children.Count is > 0 and < 2)
+        if (children.Count < 2)
         {
             errors[childIdsKey] = ["Choose at least two children to take turns."];
+            return new RecurringAssignment(children, null);
         }
 
-        return true;
+        return new RecurringAssignment(
+            [children[0]],
+            children.Select(child => child.Id).ToArray());
     }
 
     private async Task<RecurringJobCreation?> GetExistingRecurringCreationAsync(
         Guid requestId,
         IReadOnlyCollection<HouseholdMember> children,
-        Func<RecurringJobSeries, bool> matches,
+        Func<RecurringJobSeries, Guid, bool> matches,
         Func<Guid, Exception> conflict,
         CancellationToken cancellationToken)
     {
@@ -673,15 +681,15 @@ public sealed class TodayBoardService
             return null;
         }
 
-        var requestedChildIds = children.Select(child => child.Id).ToHashSet();
-        if (existing.Count != requestedChildIds.Count
-            || existing.Any(series =>
-                !requestedChildIds.Contains(series.ChildId) || !matches(series)))
+        var existingByChildId = existing.ToDictionary(series => series.ChildId);
+        if (existing.Count != children.Count
+            || children.Any(child =>
+                !existingByChildId.TryGetValue(child.Id, out var series)
+                || !matches(series, child.Id)))
         {
             throw conflict(requestId);
         }
 
-        var existingByChildId = existing.ToDictionary(series => series.ChildId);
         var assignments = new List<RecurringJobAssignment>(children.Count);
         foreach (var child in children)
         {
@@ -700,45 +708,20 @@ public sealed class TodayBoardService
         return new RecurringJobCreation(assignments, false);
     }
 
-    private async Task EnsureRecurringJobsAsync(
+    private Task EnsureRecurringJobsAsync(
         DateOnly requestedDate,
         CancellationToken cancellationToken)
     {
-        var rollingHorizon = _clock.Today.AddDays(55);
-        var horizon = requestedDate > rollingHorizon ? requestedDate : rollingHorizon;
-        var seriesToAdvance = await _repository.GetRecurringJobSeriesNeedingGenerationAsync(
-            horizon,
+        return RecurringOccurrenceGenerator.EnsureGeneratedThroughAsync(
+            _repository,
+            _clock,
+            requestedDate,
             cancellationToken);
-        var occurrences = seriesToAdvance
-            .SelectMany(series => series
-                .GenerateOccurrencesThrough(horizon)
-                .Select(occurrence => CreateOccurrence(series, occurrence)))
-            .ToArray();
-        if (seriesToAdvance.Count == 0)
-        {
-            return;
-        }
-
-        await _repository.AddJobsAsync(occurrences, cancellationToken);
-        await _repository.SaveChangesAsync(cancellationToken);
     }
 
-    private static Job CreateOccurrence(
-        RecurringJobSeries series,
-        RecurringJobOccurrence occurrence)
-    {
-        return new Job(
-            Guid.NewGuid(),
-            occurrence.ChildId,
-            series.Name,
-            series.Description,
-            series.Points,
-            occurrence.Date,
-            series.AgendaPeriod,
-            series.ScheduledTime,
-            series.Id,
-            series.Frequency);
-    }
+    private sealed record RecurringAssignment(
+        IReadOnlyList<HouseholdMember> AssignedChildren,
+        IReadOnlyList<Guid>? RotationChildIds);
 
     public async Task<TodayJobApproval> ApproveAsync(
         Guid jobId,
@@ -904,70 +887,17 @@ public sealed class TodayBoardService
         return parsed.Count == parsed.Distinct().Count();
     }
 
-    private static TodayMember MapMember(HouseholdMember member)
-    {
-        return new TodayMember(
-            member.Id,
-            member.FirstName,
-            member.Nickname,
-            member.DisplayName,
-            member.IsAdult);
-    }
+    private static TodayMember MapMember(HouseholdMember member) => TodayJobMapping.MapMember(member);
 
     private static TodayJob MapJob(
         Job job,
         HouseholdMember child,
-        TodayJobRejection? latestRejection)
-    {
-        var status = job.Status switch
-        {
-            JobStatus.Open => "open",
-            JobStatus.PendingApproval => "pendingApproval",
-            JobStatus.Approved => "approved",
-            JobStatus.Cancelled => "cancelled",
-            _ => throw new InvalidOperationException($"Unknown job status '{job.Status}'."),
-        };
+        TodayJobRejection? latestRejection) =>
+        TodayJobMapping.MapJob(job, child, latestRejection);
 
-        return new TodayJob(
-            job.Id,
-            child.Id,
-            child.DisplayName,
-            job.Name,
-            job.Description,
-            job.Points,
-            job.ScheduledDate,
-            MapAgendaPeriod(job.AgendaPeriod),
-            job.ScheduledTime,
-            job.RecurringJobSeriesId,
-            job.RecurrenceFrequency is null
-                ? null
-                : MapRecurrenceFrequency(job.RecurrenceFrequency.Value),
-            status,
-            job.CompletedAtUtc,
-            job.ApprovedAtUtc,
-            job.Status == JobStatus.Open ? latestRejection : null);
-    }
+    private static string MapAgendaPeriod(AgendaPeriod agendaPeriod) =>
+        TodayJobMapping.MapAgendaPeriod(agendaPeriod);
 
-    private static string MapAgendaPeriod(AgendaPeriod agendaPeriod)
-    {
-        return agendaPeriod switch
-        {
-            AgendaPeriod.Morning => "morning",
-            AgendaPeriod.ArrivingHome => "arrivingHome",
-            AgendaPeriod.Evening => "evening",
-            AgendaPeriod.Unscheduled => "unscheduled",
-            _ => throw new InvalidOperationException($"Unknown agenda period '{agendaPeriod}'."),
-        };
-    }
-
-    private static string MapRecurrenceFrequency(RecurrenceFrequency frequency)
-    {
-        return frequency switch
-        {
-            RecurrenceFrequency.Daily => "daily",
-            RecurrenceFrequency.Weekly => "weekly",
-            RecurrenceFrequency.Monthly => "monthly",
-            _ => throw new InvalidOperationException($"Unknown recurrence frequency '{frequency}'."),
-        };
-    }
+    private static string MapRecurrenceFrequency(RecurrenceFrequency frequency) =>
+        TodayJobMapping.MapRecurrenceFrequency(frequency);
 }

@@ -689,10 +689,20 @@ describe("Today page", () => {
     expect(recurringTools).not.toBeNull();
     await user.click(screen.getByText("Routines"));
     const tools = within(recurringTools as HTMLElement);
-    await user.click(tools.getByRole("checkbox", { name: "Harrie" }));
     expect(tools.queryByLabelText("First turn")).not.toBeInTheDocument();
     await user.click(tools.getByRole("radio", { name: "Take turns" }));
-    await user.selectOptions(tools.getByLabelText("First turn"), harrie.id);
+    const firstTurn = tools.getByLabelText("First turn");
+    expect(
+      within(firstTurn).getByRole("option", { name: "Fredster" }),
+    ).toBeInTheDocument();
+    expect(
+      within(firstTurn).queryByRole("option", { name: "Harrie" }),
+    ).not.toBeInTheDocument();
+    await user.click(tools.getByRole("checkbox", { name: "Harrie" }));
+    expect(
+      within(firstTurn).getByRole("option", { name: "Harrie" }),
+    ).toBeInTheDocument();
+    await user.selectOptions(firstTurn, harrie.id);
     await user.type(screen.getByLabelText("Daily job name"), "Tidy the table");
     await user.click(screen.getByRole("button", { name: "Create daily job" }));
 
