@@ -828,7 +828,7 @@
           "Today"
         ],
         "summary": "Create a daily recurring job for one or more children.",
-        "description": "Creates an adult-owned child-specific daily series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.",
+        "description": "Creates an adult-owned child-specific daily series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.",
         "operationId": "CreateDailyRecurringJob",
         "requestBody": {
           "content": {
@@ -895,7 +895,7 @@
           "Today"
         ],
         "summary": "Create a weekly recurring job for one or more children.",
-        "description": "Creates an adult-owned child-specific weekly series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.",
+        "description": "Creates an adult-owned child-specific weekly series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.",
         "operationId": "CreateWeeklyRecurringJob",
         "requestBody": {
           "content": {
@@ -962,7 +962,7 @@
           "Today"
         ],
         "summary": "Create a monthly recurring job for one or more children.",
-        "description": "Creates an adult-owned child-specific monthly series for each assignee and uses the final valid day in shorter months.",
+        "description": "Creates an adult-owned child-specific monthly series for each assignee and uses the final valid day in shorter months. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.",
         "operationId": "CreateMonthlyRecurringJob",
         "requestBody": {
           "content": {
@@ -2065,6 +2065,12 @@
               "string"
             ],
             "format": "date"
+          },
+          "assignmentMode": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2183,6 +2189,12 @@
               "string"
             ],
             "format": "int32"
+          },
+          "assignmentMode": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2267,6 +2279,12 @@
             "items": {
               "type": "string"
             }
+          },
+          "assignmentMode": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2916,7 +2934,8 @@
           "seriesId",
           "childId",
           "generatedThrough",
-          "occurrenceCount"
+          "occurrenceCount",
+          "rotationChildIds"
         ],
         "type": "object",
         "properties": {
@@ -2939,6 +2958,13 @@
               "string"
             ],
             "format": "int32"
+          },
+          "rotationChildIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },

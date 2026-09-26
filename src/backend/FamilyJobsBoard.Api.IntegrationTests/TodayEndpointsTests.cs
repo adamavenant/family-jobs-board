@@ -1030,6 +1030,65 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Take_turns_schedule_alternates_children_and_continues_after_restart()
+    {
+        var requestId = Guid.NewGuid();
+        var request = new
+        {
+            requestId,
+            childIds = new[] { DemoDataIds.Harrie, DemoDataIds.Fredster },
+            name = "Tidy the table",
+            description = "Take turns after dinner.",
+            points = 2,
+            agendaPeriod = "evening",
+            scheduledTime = (string?)null,
+            startDate = CurrentDate,
+            endDate = (DateOnly?)null,
+            assignmentMode = "takeTurns",
+        };
+
+        using var createResponse = await Client.PostAsJsonAsync("/api/recurring-jobs/daily", request);
+        var created = await createResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
+        using var retryResponse = await Client.PostAsJsonAsync("/api/recurring-jobs/daily", request);
+        using var conflictResponse = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/daily",
+            request with { childIds = new[] { DemoDataIds.Fredster, DemoDataIds.Harrie } });
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var assignment = Assert.Single(created!.Assignments);
+        Assert.Equal(DemoDataIds.Harrie, assignment.ChildId);
+        Assert.Equal([DemoDataIds.Harrie, DemoDataIds.Fredster], assignment.RotationChildIds);
+        Assert.Equal(56, assignment.OccurrenceCount);
+        Assert.Equal(HttpStatusCode.OK, retryResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, conflictResponse.StatusCode);
+
+        await RestartApplicationAsync();
+        var beyondHorizon = CurrentDate.AddDays(57);
+        using var browseResponse = await Client.GetAsync(
+            $"/api/today?memberId={DemoDataIds.Addie}&date={beyondHorizon:yyyy-MM-dd}");
+        browseResponse.EnsureSuccessStatusCode();
+
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var assignees = await database.Jobs
+            .Where(job => job.RecurringJobSeriesId == assignment.SeriesId)
+            .OrderBy(job => job.ScheduledDate)
+            .Select(job => job.ChildId)
+            .ToListAsync();
+        Assert.Equal(58, assignees.Count);
+        Assert.All(
+            assignees.Select((childId, index) => (childId, index)),
+            item => Assert.Equal(
+                item.index % 2 == 0 ? DemoDataIds.Harrie : DemoDataIds.Fredster,
+                item.childId));
+        var series = await database.RecurringJobSeries.SingleAsync(item => item.Id == assignment.SeriesId);
+        Assert.Equal(0, series.NextTurnIndex);
+        Assert.Equal([DemoDataIds.Harrie, DemoDataIds.Fredster], series.RotationChildIds);
+    }
+
+    [Fact]
     public async Task Invalid_recurring_assignee_set_persists_no_series_or_occurrences()
     {
         var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
@@ -1919,7 +1978,8 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Guid SeriesId,
         Guid ChildId,
         DateOnly GeneratedThrough,
-        int OccurrenceCount);
+        int OccurrenceCount,
+        IReadOnlyList<Guid> RotationChildIds);
 
     internal sealed record PointEarningResponse(
         Guid Id,

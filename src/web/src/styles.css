@@ -750,6 +750,9 @@ h1 {
   margin-top: 7px;
   color: var(--muted);
 }
+.assignment-mode-picker__first-turn {
+  margin-top: 12px;
+}
 .weekday-picker {
   grid-column: 1 / -1;
   margin: 0;

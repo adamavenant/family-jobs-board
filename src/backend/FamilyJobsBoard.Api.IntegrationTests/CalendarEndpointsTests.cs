@@ -243,6 +243,38 @@ public sealed class CalendarEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Calendar_browsing_beyond_the_horizon_continues_a_take_turns_rotation()
+    {
+        using var create = await SendAsync(
+            HttpMethod.Post,
+            "/api/recurring-jobs/daily",
+            DemoDataIds.Addie,
+            new
+            {
+                requestId = Guid.NewGuid(),
+                childIds = new[] { DemoDataIds.Harrie, DemoDataIds.Fredster },
+                name = "Tidy the table",
+                description = "",
+                points = 2,
+                agendaPeriod = "evening",
+                scheduledTime = (string?)null,
+                startDate = CurrentDate,
+                endDate = (DateOnly?)null,
+                assignmentMode = "takeTurns",
+            });
+        create.EnsureSuccessStatusCode();
+
+        var firstBeyondHorizon = CurrentDate.AddDays(56);
+        var firstBoard = await GetCalendarAsync(view: "day", date: firstBeyondHorizon);
+        var secondBoard = await GetCalendarAsync(view: "day", date: firstBeyondHorizon.AddDays(1));
+
+        var firstJob = Assert.Single(firstBoard.Days[0].Jobs, job => job.Name == "Tidy the table");
+        var secondJob = Assert.Single(secondBoard.Days[0].Jobs, job => job.Name == "Tidy the table");
+        Assert.Equal(DemoDataIds.Harrie, firstJob.ChildId);
+        Assert.Equal(DemoDataIds.Fredster, secondJob.ChildId);
+    }
+
+    [Fact]
     public async Task Child_filter_limits_the_calendar_to_that_child()
     {
         var board = await GetCalendarAsync(view: "day", date: CurrentDate, childId: DemoDataIds.Harrie);

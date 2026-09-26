@@ -36,7 +36,8 @@ public sealed record CreateDailyRecurringJobRequest(
     string? AgendaPeriod,
     TimeOnly? ScheduledTime,
     DateOnly StartDate,
-    DateOnly? EndDate);
+    DateOnly? EndDate,
+    string? AssignmentMode = null);
 
 public sealed record CreateWeeklyRecurringJobRequest(
     Guid RequestId,
@@ -48,7 +49,8 @@ public sealed record CreateWeeklyRecurringJobRequest(
     TimeOnly? ScheduledTime,
     DateOnly StartDate,
     DateOnly? EndDate,
-    IReadOnlyList<string>? Weekdays);
+    IReadOnlyList<string>? Weekdays,
+    string? AssignmentMode = null);
 
 public sealed record CreateMonthlyRecurringJobRequest(
     Guid RequestId,
@@ -60,13 +62,15 @@ public sealed record CreateMonthlyRecurringJobRequest(
     TimeOnly? ScheduledTime,
     DateOnly StartDate,
     DateOnly? EndDate,
-    int DayOfMonth);
+    int DayOfMonth,
+    string? AssignmentMode = null);
 
 public sealed record RecurringJobAssignmentResponse(
     Guid SeriesId,
     Guid ChildId,
     DateOnly GeneratedThrough,
-    int OccurrenceCount);
+    int OccurrenceCount,
+    IReadOnlyList<Guid> RotationChildIds);
 
 public sealed record RecurringJobResponse(
     IReadOnlyList<RecurringJobAssignmentResponse> Assignments);

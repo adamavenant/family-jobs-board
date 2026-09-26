@@ -27,23 +27,25 @@ internal static class RecurringOccurrenceGenerator
 
         var occurrences = seriesToAdvance
             .SelectMany(series => series
-                .GenerateThrough(horizon)
-                .Select(date => CreateOccurrence(series, date)))
+                .GenerateOccurrencesThrough(horizon)
+                .Select(occurrence => CreateOccurrence(series, occurrence)))
             .ToArray();
 
         await repository.AddJobsAsync(occurrences, cancellationToken);
         await repository.SaveChangesAsync(cancellationToken);
     }
 
-    public static Job CreateOccurrence(RecurringJobSeries series, DateOnly date)
+    public static Job CreateOccurrence(
+        RecurringJobSeries series,
+        RecurringJobOccurrence occurrence)
     {
         return new Job(
             Guid.NewGuid(),
-            series.ChildId,
+            occurrence.ChildId,
             series.Name,
             series.Description,
             series.Points,
-            date,
+            occurrence.Date,
             series.AgendaPeriod,
             series.ScheduledTime,
             series.Id,

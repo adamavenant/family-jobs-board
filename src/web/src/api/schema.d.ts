@@ -284,7 +284,7 @@ export interface paths {
         put?: never;
         /**
          * Create a daily recurring job for one or more children.
-         * @description Creates an adult-owned child-specific daily series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.
+         * @description Creates an adult-owned child-specific daily series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.
          */
         post: operations["CreateDailyRecurringJob"];
         delete?: never;
@@ -304,7 +304,7 @@ export interface paths {
         put?: never;
         /**
          * Create a weekly recurring job for one or more children.
-         * @description Creates an adult-owned child-specific weekly series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon.
+         * @description Creates an adult-owned child-specific weekly series for each assignee and materializes duplicate-safe occurrences through an eight-week horizon. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.
          */
         post: operations["CreateWeeklyRecurringJob"];
         delete?: never;
@@ -324,7 +324,7 @@ export interface paths {
         put?: never;
         /**
          * Create a monthly recurring job for one or more children.
-         * @description Creates an adult-owned child-specific monthly series for each assignee and uses the final valid day in shorter months.
+         * @description Creates an adult-owned child-specific monthly series for each assignee and uses the final valid day in shorter months. With assignmentMode takeTurns, one series rotates occurrences round robin through childIds in the order given.
          */
         post: operations["CreateMonthlyRecurringJob"];
         delete?: never;
@@ -605,6 +605,7 @@ export interface components {
             startDate: string;
             /** Format: date */
             endDate: null | string;
+            assignmentMode?: null | string;
         };
         CreateFamilyMemberRequest: {
             firstName: null | string;
@@ -629,6 +630,7 @@ export interface components {
             endDate: null | string;
             /** Format: int32 */
             dayOfMonth: number | string;
+            assignmentMode?: null | string;
         };
         CreateWeeklyRecurringJobRequest: {
             /** Format: uuid */
@@ -646,6 +648,7 @@ export interface components {
             /** Format: date */
             endDate: null | string;
             weekdays: null | string[];
+            assignmentMode?: null | string;
         };
         FamilyMemberResponse: {
             /** Format: uuid */
@@ -823,6 +826,7 @@ export interface components {
             generatedThrough: string;
             /** Format: int32 */
             occurrenceCount: number | string;
+            rotationChildIds: string[];
         };
         RecurringJobResponse: {
             assignments: components["schemas"]["RecurringJobAssignmentResponse"][];
