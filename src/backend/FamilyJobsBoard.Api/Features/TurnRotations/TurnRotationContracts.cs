@@ -15,10 +15,13 @@ public sealed record TurnRotationTurnResponse(
     Guid ChildId,
     string ChildDisplayName);
 
-public sealed record TurnRotationOverviewResponse(
+public sealed record TurnRotationSummaryResponse(
+    Guid RotationId,
     TurnRotationConfigurationResponse? Current,
-    IReadOnlyList<TurnRotationTurnResponse> UpcomingTurns,
-    bool HasRevisions);
+    IReadOnlyList<TurnRotationTurnResponse> UpcomingTurns);
+
+public sealed record TurnRotationOverviewResponse(
+    IReadOnlyList<TurnRotationSummaryResponse> Rotations);
 
 public sealed record SaveTurnRotationRequest(
     IReadOnlyList<Guid>? ParticipantChildIds,

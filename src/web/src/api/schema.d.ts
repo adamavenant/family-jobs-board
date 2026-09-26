@@ -521,7 +521,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/turn-rotation": {
+    "/api/turn-rotations": {
         parameters: {
             query?: never;
             header?: never;
@@ -529,17 +529,41 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get the household's whose-turn rotation configuration.
-         * @description Adult-only. Returns the revision effective today, if any, and a short preview of upcoming turns.
+         * List the household's whose-turn rotations.
+         * @description Adult-only. Returns every active rotation with the revision effective today, if any, and a short preview of upcoming turns.
          */
-        get: operations["GetTurnRotation"];
+        get: operations["ListTurnRotations"];
+        put?: never;
         /**
-         * Create a new effective-dated whose-turn rotation revision.
-         * @description Adult-only. Existing revisions are immutable; this always creates a new one, effective today for the first-ever configuration or no earlier than tomorrow otherwise.
+         * Start a new whose-turn rotation.
+         * @description Adult-only. Creates the rotation's first revision, which may be effective today or later.
          */
-        put: operations["SaveTurnRotation"];
-        post?: never;
+        post: operations["CreateTurnRotation"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/turn-rotations/{rotationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Create a new effective-dated revision of a rotation.
+         * @description Adult-only. Existing revisions are immutable; this always adds one, effective no earlier than tomorrow.
+         */
+        put: operations["UpdateTurnRotation"];
+        post?: never;
+        /**
+         * End a rotation from tomorrow.
+         * @description Adult-only. The rotation stops appearing on the board from tomorrow; earlier dates keep their answers.
+         */
+        delete: operations["EndTurnRotation"];
         options?: never;
         head?: never;
         patch?: never;
@@ -923,7 +947,7 @@ export interface components {
             pointEarnings: components["schemas"]["PointEarningResponse"][];
             /** Format: int32 */
             pendingApprovalCount: number | string;
-            whoseTurn: null | components["schemas"]["WhoseTurnResponse"];
+            whoseTurns: components["schemas"]["WhoseTurnResponse"][];
         };
         TurnRotationConfigurationResponse: {
             /** Format: uuid */
@@ -940,9 +964,13 @@ export interface components {
             createdAtUtc: string;
         };
         TurnRotationOverviewResponse: {
+            rotations: components["schemas"]["TurnRotationSummaryResponse"][];
+        };
+        TurnRotationSummaryResponse: {
+            /** Format: uuid */
+            rotationId: string;
             current: null | components["schemas"]["TurnRotationConfigurationResponse"];
             upcomingTurns: components["schemas"]["TurnRotationTurnResponse"][];
-            hasRevisions: boolean;
         };
         TurnRotationTurnResponse: {
             /** Format: date */
@@ -969,6 +997,8 @@ export interface components {
             scheduledTime: null | string;
         };
         WhoseTurnResponse: {
+            /** Format: uuid */
+            rotationId: string;
             question: string;
             /** Format: uuid */
             childId: string;
@@ -2208,7 +2238,7 @@ export interface operations {
             };
         };
     };
-    GetTurnRotation: {
+    ListTurnRotations: {
         parameters: {
             query?: never;
             header?: never;
@@ -2228,7 +2258,7 @@ export interface operations {
             };
         };
     };
-    SaveTurnRotation: {
+    CreateTurnRotation: {
         parameters: {
             query?: never;
             header?: never;
@@ -2257,6 +2287,90 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    UpdateTurnRotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rotationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveTurnRotationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRotationOverviewResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    EndTurnRotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rotationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRotationOverviewResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
                 };
             };
         };

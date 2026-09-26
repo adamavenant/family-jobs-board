@@ -1,4 +1,4 @@
-# Whose Turn Is It? daily household rotation
+# Whose Turn Is It? daily household rotations
 
 ## Status
 
@@ -11,8 +11,9 @@ table.
 ## Outcome and user value
 
 The daily board answers "Who is Pink today?" — the household practice where
-one child gets the pink crockery each day. An adult configures an ordered
-list of participating children once; from then on every household-local
+one child gets the pink crockery each day. An adult configures one or more
+rotations — for example "Who is Pink today?" and "Who sits next to Mum?" —
+each with its own ordered list of participating children; from then on every household-local
 calendar day automatically advances to the next child and wraps at the end,
 with no daily data entry and no background job. The feature is purely
 informational: it is independent of jobs, completions, approvals, and points,
@@ -34,6 +35,10 @@ configuration screen, and the API rejects a non-adult on every
 
 ## Domain rules and state
 
+- A household can run any number of independent rotations. Each has a
+  `RotationId`; its history is the set of revisions sharing that ID. Rotations
+  never affect one another, and the board shows one card per active rotation in
+  the order they were created.
 - `TurnRotationRevision` is an immutable, effective-dated configuration:
   `EffectiveFrom` (date), `Question`, an ordered list of distinct child
   participants, `FirstChildId` (which participant is assigned on
@@ -52,9 +57,9 @@ configuration screen, and the API rejects a non-adult on every
   needed.
 - Revisions are never edited or deleted. Reconfiguring — including changing
   participants, reordering, changing who goes first, or dropping a
-  participant — always creates a new revision. The first-ever revision may be
-  effective today or later; once any revision exists, every later revision
-  must be effective no earlier than tomorrow (household-local), so today's
+  participant — always creates a new revision. A rotation's first revision may be
+  effective today or later; once it has a revision, every later revision of
+  that rotation must be effective no earlier than tomorrow (household-local), so today's
   answer, and every date before the new revision's effective date, is
   unaffected. A participant who is dropped from a later revision keeps
   appearing on the dates the earlier revision already governs. When a child is
@@ -69,7 +74,10 @@ configuration screen, and the API rejects a non-adult on every
   active children (validated at save time). `FirstChildId` must be one of the
   selected participants. The question defaults to "Who is Pink today?" when
   left blank and is otherwise trimmed to at most 200 characters.
-- If no revision has ever been created, the rota is unavailable: `GET
+- An adult can end a rotation: a participant-less "cleared" revision effective
+  tomorrow removes it from the board from then on, while today and earlier dates
+  keep their answers.
+- If no rotation exists, nothing is shown to children: `GET
   /api/today` reports no whose-turn answer and the configuration screen shows
   a setup invitation instead of a saved configuration.
 
@@ -77,9 +85,10 @@ configuration screen, and the API rejects a non-adult on every
 
 `AddTurnRotations` adds two tables:
 
-- `turn_rotation_revisions` — `id`, `effective_from` (date), `question`,
+- `turn_rotation_revisions` — `id`, `rotation_id`, `effective_from` (date), `question`,
   `first_child_id` (null for a cleared revision), `created_by_member_id`, `created_at_utc`. Indexed on
-  `effective_from` for resolving the applicable revision.
+  `(rotation_id, effective_from)` for resolving each rotation's applicable
+  revision.
 - `turn_rotation_participants` — an owned collection keyed by
   `(turn_rotation_revision_id, order_index)`, with `child_id` and a unique
   index on `(turn_rotation_revision_id, child_id)` so a revision cannot repeat
@@ -94,26 +103,30 @@ drops both tables.
 ## HTTP contract
 
 - `GET /api/today?date=YYYY-MM-DD` — any signed-in member. The existing daily
-  board response gains a `whoseTurn` field: `{ question, childId,
-  childDisplayName } | null`. `null` means no revision applies to that date,
-  or the rota was cleared because every participant was deactivated. This reuses the existing board endpoint rather than adding a
-  parallel read path, so the browsed date and the answer always agree.
-- `GET /api/turn-rotation` — adult-only. Returns `{ current, upcomingTurns, hasRevisions
-  }`: `current` is the revision applicable today (or `null` if unconfigured),
-  and `upcomingTurns` is a 14-day preview of `{ date, question, childId }`
-  starting today, each day resolved independently so an already-scheduled
-  future revision shows correctly ahead of its effective date.
-- `PUT /api/turn-rotation` — adult-only. Body: `{ participantChildIds,
-  firstChildId, effectiveFrom, question }`. Always creates a new revision;
-  `200` with the refreshed `{ current, upcomingTurns }` on success, `400`
-  with field errors for an empty, duplicate, inactive, or non-child
-  participant list, a `firstChildId` outside the selected participants, an
-  `effectiveFrom` earlier than allowed, or an over-long question. Children
-  receive `403` from both `turn-rotation` routes.
+  board response gains `whoseTurns`: a list of `{ rotationId, question,
+  childId, childDisplayName }`, one per rotation that applies to that date
+  (empty when none do). This reuses the existing board endpoint so the
+  browsed date and the answers always agree.
+- `GET /api/turn-rotations` — adult-only. Returns `{ rotations }`; each item
+  is `{ rotationId, current, upcomingTurns }`, where `current` is the revision
+  applicable today (or `null` if it has not started) and `upcomingTurns` is a
+  14-day preview of `{ date, question, childId, childDisplayName }`.
+- `POST /api/turn-rotations` — adult-only. Body: `{ participantChildIds,
+  firstChildId, effectiveFrom, question }`. Starts a new rotation (effective
+  today or later); returns the refreshed `{ rotations }`.
+- `PUT /api/turn-rotations/{rotationId}` — adult-only. Same body; adds a new
+  revision effective no earlier than tomorrow; `404` for an unknown or ended
+  rotation.
+- `DELETE /api/turn-rotations/{rotationId}` — adult-only. Ends the rotation
+  from tomorrow; `404` if unknown or already ended.
+- All writes return `400` with field errors for an empty, duplicate, inactive,
+  or non-child participant list, a `firstChildId` outside the selected
+  participants, an `effectiveFrom` earlier than allowed, or an over-long
+  question. Children receive `403` from every `turn-rotations` route.
 
 ## UI
 
-- A compact card sits directly under the daily board's date heading. On
+- One compact card per rotation sits directly under the daily board's date heading. On
   today it reads the configured question verbatim (default "Who is Pink
   today?"); browsing another date rewrites a trailing "today" to "on
   {Weekday}" (for example "Who is Pink on Friday?") so custom questions still
@@ -124,7 +137,9 @@ drops both tables.
 - The card is informational only: no completion action, no interaction.
 - Children never see an unconfigured card. Adults instead see a small
   "isn't set up yet" note near the same spot, pointing at the admin tools.
-- The adult "Whose Turn Is It?" tool (in the same collapsible tools list as
+- The adult "Whose Turn Is It?" tool lists the existing rotations (each with
+  today's answer, an "Edit" form, and an "End" action with confirmation) and an
+  "Add a rotation" form; the tool (in the same collapsible tools list as
   Good behaviours, Points, and Family administration) offers: a checkbox per
   active child, an up/down-button reorderable list of the selected children,
   a "first turn" picker restricted to the selected children, an effective
@@ -150,6 +165,9 @@ readiness behaviour.
 
 ## Acceptance criteria
 
+- Given an adult adds a second rotation (for example "Who sits next to Mum?")
+  alongside "Who is Pink today?", the board shows a card for each and each
+  advances independently; ending one leaves the other running.
 - Given three children ordered A, B, C with A first on Monday, the board
   shows B on Tuesday, C on Wednesday, and A on Thursday.
 - Given one participating child, that child is shown every day.
@@ -217,7 +235,7 @@ readiness behaviour.
 
 ## Out of scope
 
-Multiple simultaneous rotations, per-weekday rotations, skipping or swapping
+Per-weekday rotations, skipping or swapping
 an individual date, notifications/reminders, and any interaction with jobs,
 approvals, or points — all as scoped by issue #112. Per-child avatars or
 colours beyond the single-letter badge introduced here are not a general

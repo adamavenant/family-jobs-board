@@ -20,10 +20,14 @@ export interface TurnRotationTurn {
   childDisplayName: string;
 }
 
-export interface TurnRotationOverview {
+export interface TurnRotationSummary {
+  rotationId: string;
   current: TurnRotationConfiguration | null;
   upcomingTurns: TurnRotationTurn[];
-  hasRevisions: boolean;
+}
+
+export interface TurnRotationOverview {
+  rotations: TurnRotationSummary[];
 }
 
 export interface SaveTurnRotationInput {
@@ -40,11 +44,11 @@ export class TurnRotationApiError extends Error {
   }
 }
 
-export async function getTurnRotation(): Promise<TurnRotationOverview> {
-  const { data, error } = await apiClient().GET("/api/turn-rotation");
+export async function getTurnRotations(): Promise<TurnRotationOverview> {
+  const { data, error } = await apiClient().GET("/api/turn-rotations");
   if (!data) {
     throw new TurnRotationApiError(
-      problemMessage(error, "We couldn't load the whose-turn rotation."),
+      problemMessage(error, "We couldn't load the whose-turn rotations."),
     );
   }
 
@@ -52,14 +56,34 @@ export async function getTurnRotation(): Promise<TurnRotationOverview> {
 }
 
 export async function saveTurnRotation(
+  rotationId: string | null,
   input: SaveTurnRotationInput,
 ): Promise<TurnRotationOverview> {
-  const { data, error } = await apiClient().PUT("/api/turn-rotation", {
-    body: input,
-  });
+  const { data, error } = rotationId
+    ? await apiClient().PUT("/api/turn-rotations/{rotationId}", {
+        params: { path: { rotationId } },
+        body: input,
+      })
+    : await apiClient().POST("/api/turn-rotations", { body: input });
   if (!data) {
     throw new TurnRotationApiError(
       problemMessage(error, "That rotation couldn't be saved."),
+    );
+  }
+
+  return data;
+}
+
+export async function endTurnRotation(
+  rotationId: string,
+): Promise<TurnRotationOverview> {
+  const { data, error } = await apiClient().DELETE(
+    "/api/turn-rotations/{rotationId}",
+    { params: { path: { rotationId } } },
+  );
+  if (!data) {
+    throw new TurnRotationApiError(
+      problemMessage(error, "That rotation couldn't be ended."),
     );
   }
 

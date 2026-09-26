@@ -2,10 +2,7 @@ import { useEffect, useState } from "react";
 import { useFetcher } from "react-router";
 
 import type { HouseholdMember } from "../../api/today";
-import type {
-  TurnRotationConfiguration,
-  TurnRotationTurn,
-} from "../../api/turnRotation";
+import type { TurnRotationSummary } from "../../api/turnRotation";
 import { useSuccessToast } from "../../app/SuccessToast";
 import type { WhoseTurnActionResult } from "./whoseTurnRoute";
 
@@ -22,12 +19,13 @@ export function WhoseTurnPanel({
   const { showSuccess } = useSuccessToast();
   const overview = fetcher.data?.overview;
   const hasLoaded = overview !== undefined;
+  const message = fetcher.data?.error ? undefined : fetcher.data?.message;
 
   useEffect(() => {
-    if (fetcher.state === "idle" && fetcher.data?.saved) {
-      showSuccess("Whose Turn Is It? rotation saved.");
+    if (fetcher.state === "idle" && message) {
+      showSuccess(message);
     }
-  }, [fetcher.state, fetcher.data, showSuccess]);
+  }, [fetcher.state, message, showSuccess]);
 
   return (
     <details
@@ -45,8 +43,7 @@ export function WhoseTurnPanel({
       <summary>
         <span className="eyebrow">Whose Turn Is It?</span>
         <span className="grown-up-tools__action">
-          {overview?.current ? "Manage the rotation" : "Set it up"}{" "}
-          <span aria-hidden="true">+</span>
+          Manage rotations <span aria-hidden="true">+</span>
         </span>
       </summary>
       <div className="family-members__content">
@@ -54,8 +51,9 @@ export function WhoseTurnPanel({
           <div>
             <h2>Whose Turn Is It?</h2>
             <p>
-              Choose which children take turns and the order they cycle through.
-              Changes never rewrite an answer that already happened.
+              Run as many daily rotations as you like — who is Pink, who sits
+              next to Mum — each cycling through its own children. Changes never
+              rewrite an answer that already happened.
             </p>
           </div>
         </div>
@@ -75,18 +73,131 @@ export function WhoseTurnPanel({
         ) : !hasLoaded ? (
           <p role="status">Loading…</p>
         ) : (
-          <WhoseTurnForm
-            key={overview.current?.id ?? "unset"}
-            fetcher={fetcher}
-            children={children}
-            currentDate={currentDate}
-            current={overview.current}
-            upcomingTurns={overview.upcomingTurns}
-            hasRevisions={overview.hasRevisions}
-          />
+          <>
+            {overview.rotations.length === 0 ? (
+              <p className="inactive-family-members__empty">
+                No rotations yet. Add the first one below.
+              </p>
+            ) : (
+              <ul className="whose-turn-rotations" aria-label="Rotations">
+                {overview.rotations.map((rotation) => (
+                  <RotationItem
+                    key={rotation.rotationId}
+                    rotation={rotation}
+                    fetcher={fetcher}
+                    children={children}
+                    currentDate={currentDate}
+                  />
+                ))}
+              </ul>
+            )}
+            <section aria-labelledby="whose-turn-add-heading">
+              <h3 id="whose-turn-add-heading">Add a rotation</h3>
+              <WhoseTurnForm
+                key={overview.rotations.length}
+                fetcher={fetcher}
+                children={children}
+                currentDate={currentDate}
+                rotation={null}
+              />
+            </section>
+          </>
         )}
       </div>
     </details>
+  );
+}
+
+function RotationItem({
+  rotation,
+  fetcher,
+  children,
+  currentDate,
+}: {
+  rotation: TurnRotationSummary;
+  fetcher: WhoseTurnFetcher;
+  children: HouseholdMember[];
+  currentDate: string;
+}) {
+  const [confirmingEnd, setConfirmingEnd] = useState(false);
+  const title = rotation.current?.question ?? "Scheduled rotation";
+  const submitting = fetcher.state !== "idle";
+  const endError =
+    fetcher.data?.intent === "end" &&
+    fetcher.data.rotationId === rotation.rotationId
+      ? fetcher.data.error
+      : undefined;
+
+  return (
+    <li>
+      <div className="family-member-list__identity">
+        <strong>{title}</strong>
+        {rotation.upcomingTurns[0] ? (
+          <span>Today: {rotation.upcomingTurns[0].childDisplayName}</span>
+        ) : (
+          <span>Not started yet</span>
+        )}
+      </div>
+      <details className="family-member-edit">
+        <summary>Edit {title}</summary>
+        <WhoseTurnForm
+          fetcher={fetcher}
+          children={children}
+          currentDate={currentDate}
+          rotation={rotation}
+        />
+      </details>
+      {confirmingEnd ? (
+        <div
+          className="deactivate-confirmation"
+          role="group"
+          aria-label={`End ${title}`}
+        >
+          <p>
+            End “{title}”? It stops appearing on the board from tomorrow; past
+            answers stay as they were.
+          </p>
+          {endError ? (
+            <p className="error-message" role="alert">
+              {endError}
+            </p>
+          ) : null}
+          <div>
+            <fetcher.Form method="post" action="/whose-turn">
+              <input type="hidden" name="intent" value="end" />
+              <input
+                type="hidden"
+                name="rotationId"
+                value={rotation.rotationId}
+              />
+              <button
+                type="submit"
+                className="button--danger"
+                disabled={submitting}
+              >
+                Yes, end it
+              </button>
+            </fetcher.Form>
+            <button
+              type="button"
+              className="button--quiet"
+              onClick={() => setConfirmingEnd(false)}
+              disabled={submitting}
+            >
+              Keep it
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="button--quiet"
+          onClick={() => setConfirmingEnd(true)}
+        >
+          End {title}
+        </button>
+      )}
+    </li>
   );
 }
 
@@ -94,17 +205,16 @@ function WhoseTurnForm({
   fetcher,
   children,
   currentDate,
-  current,
-  upcomingTurns,
-  hasRevisions,
+  rotation,
 }: {
   fetcher: WhoseTurnFetcher;
   children: HouseholdMember[];
   currentDate: string;
-  current: TurnRotationConfiguration | null;
-  upcomingTurns: TurnRotationTurn[];
-  hasRevisions: boolean;
+  rotation: TurnRotationSummary | null;
 }) {
+  const current = rotation?.current ?? null;
+  const upcomingTurns = rotation?.upcomingTurns ?? [];
+  const idPrefix = `whose-turn-${rotation?.rotationId ?? "new"}`;
   const activeIds = new Set(children.map((child) => child.id));
   const initialOrder = (current?.participantChildIds ?? []).filter((id) =>
     activeIds.has(id),
@@ -116,19 +226,22 @@ function WhoseTurnForm({
       : (initialOrder[0] ?? ""),
   );
   const [question, setQuestion] = useState(current?.question ?? "");
-  const minimumEffectiveFrom = hasRevisions
+  const minimumEffectiveFrom = rotation
     ? addDaysIso(currentDate, 1)
     : currentDate;
   const [effectiveFrom, setEffectiveFrom] = useState(minimumEffectiveFrom);
   const submitting = fetcher.state !== "idle";
+  const result =
+    fetcher.data?.intent === "save" &&
+    (fetcher.data.rotationId ?? "") === (rotation?.rotationId ?? "")
+      ? fetcher.data
+      : undefined;
 
   function toggleChild(id: string) {
     setOrder((previous) => {
       if (previous.includes(id)) {
         const next = previous.filter((item) => item !== id);
-        setFirstChildId((current) =>
-          current === id ? (next[0] ?? "") : current,
-        );
+        setFirstChildId((chosen) => (chosen === id ? (next[0] ?? "") : chosen));
         return next;
       }
 
@@ -156,8 +269,18 @@ function WhoseTurnForm({
         method="post"
         action="/whose-turn"
         className="family-member-form"
-        aria-label="Configure whose turn is it"
+        aria-label={
+          rotation
+            ? `Configure ${current?.question ?? "rotation"}`
+            : "Add a rotation"
+        }
       >
+        <input type="hidden" name="intent" value="save" />
+        <input
+          type="hidden"
+          name="rotationId"
+          value={rotation?.rotationId ?? ""}
+        />
         <fieldset className="assignee-picker">
           <legend>Participants</legend>
           <div className="assignee-picker__options">
@@ -215,9 +338,9 @@ function WhoseTurnForm({
         ) : null}
 
         <div className="form-group">
-          <label htmlFor="whose-turn-first">First turn</label>
+          <label htmlFor={`${idPrefix}-first`}>First turn</label>
           <select
-            id="whose-turn-first"
+            id={`${idPrefix}-first`}
             name="firstChildId"
             value={firstChildId}
             onChange={(event) => setFirstChildId(event.target.value)}
@@ -239,9 +362,9 @@ function WhoseTurnForm({
         </div>
 
         <div className="form-group">
-          <label htmlFor="whose-turn-effective">Effective from</label>
+          <label htmlFor={`${idPrefix}-effective`}>Effective from</label>
           <input
-            id="whose-turn-effective"
+            id={`${idPrefix}-effective`}
             name="effectiveFrom"
             type="date"
             min={minimumEffectiveFrom}
@@ -250,16 +373,16 @@ function WhoseTurnForm({
             required
           />
           <small>
-            {hasRevisions
+            {rotation
               ? "A change starts tomorrow at the earliest, so today's answer stays put."
-              : "The first setup can start today."}
+              : "A new rotation can start today."}
           </small>
         </div>
 
         <div className="form-group">
-          <label htmlFor="whose-turn-question">Question (optional)</label>
+          <label htmlFor={`${idPrefix}-question`}>Question (optional)</label>
           <input
-            id="whose-turn-question"
+            id={`${idPrefix}-question`}
             name="question"
             maxLength={200}
             value={question}
@@ -268,31 +391,29 @@ function WhoseTurnForm({
           />
         </div>
 
-        {fetcher.data?.error ? (
+        {result?.error ? (
           <p className="error-message" role="alert">
-            {fetcher.data.error}
+            {result.error}
           </p>
         ) : null}
         <button
           type="submit"
           disabled={submitting || order.length === 0 || !firstChildId}
         >
-          {hasRevisions ? "Save changes" : "Set up rotation"}
+          {rotation ? "Save changes" : "Add rotation"}
         </button>
       </fetcher.Form>
 
       {upcomingTurns.length > 0 ? (
-        <section aria-labelledby="whose-turn-preview-heading">
-          <h3 id="whose-turn-preview-heading">Upcoming turns</h3>
+        <section aria-labelledby={`${idPrefix}-preview-heading`}>
+          <h3 id={`${idPrefix}-preview-heading`}>Upcoming turns</h3>
           <ul className="whose-turn-preview">
-            {upcomingTurns.map((turn) => {
-              return (
-                <li key={turn.date}>
-                  <span>{formatShortDate(turn.date)}</span>
-                  <span>{turn.childDisplayName}</span>
-                </li>
-              );
-            })}
+            {upcomingTurns.map((turn) => (
+              <li key={turn.date}>
+                <span>{formatShortDate(turn.date)}</span>
+                <span>{turn.childDisplayName}</span>
+              </li>
+            ))}
           </ul>
         </section>
       ) : null}

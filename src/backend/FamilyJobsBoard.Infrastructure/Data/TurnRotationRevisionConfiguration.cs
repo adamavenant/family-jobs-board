@@ -12,6 +12,7 @@ internal sealed class TurnRotationRevisionConfiguration : IEntityTypeConfigurati
         builder.ToTable("turn_rotation_revisions");
         builder.HasKey(revision => revision.Id);
         builder.Property(revision => revision.Id).HasColumnName("id");
+        builder.Property(revision => revision.RotationId).HasColumnName("rotation_id");
         builder.Property(revision => revision.EffectiveFrom).HasColumnName("effective_from");
         builder.Property(revision => revision.Question)
             .HasColumnName("question")
@@ -25,8 +26,8 @@ internal sealed class TurnRotationRevisionConfiguration : IEntityTypeConfigurati
             .HasForeignKey(revision => revision.CreatedByMemberId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        builder.HasIndex(revision => revision.EffectiveFrom)
-            .HasDatabaseName("ix_turn_rotation_revisions_effective_from");
+        builder.HasIndex(revision => new { revision.RotationId, revision.EffectiveFrom })
+            .HasDatabaseName("ix_turn_rotation_revisions_rotation_effective_from");
 
         builder.Metadata
             .FindNavigation(nameof(TurnRotationRevision.Participants))!

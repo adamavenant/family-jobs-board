@@ -14,6 +14,8 @@ const fredster = member(
   false,
 );
 const harrie = member("e22facf5-69ce-45ce-9dad-306eef1852c9", "Harrie", false);
+const pinkId = "11111111-1111-4111-8111-111111111111";
+const mumId = "22222222-2222-4222-8222-222222222222";
 
 const baseBoard = {
   members: [addie, fredster, harrie],
@@ -33,41 +35,38 @@ afterEach(() => {
 });
 
 describe("Whose Turn Is It?", () => {
-  it("shows today's answer on the board when configured", async () => {
+  it("shows one card per rotation on the board", async () => {
     fakeApi(addie, {
-      whoseTurn: {
-        question: "Who is Pink today?",
-        childId: fredster.id,
-        childDisplayName: "Fredster",
-      },
+      whoseTurns: [
+        turn(pinkId, "Who is Pink today?", fredster),
+        turn(mumId, "Who sits next to Mum?", harrie),
+      ],
     });
     renderApp(addie);
 
     await screen.findByRole("heading", { name: "Good day, Addie!" });
 
-    const question = await screen.findByText("Who is Pink today?");
-    const card = question.closest(".whose-turn-card");
-    expect(card).not.toBeNull();
-    expect(
-      within(card as HTMLElement).getByText("Fredster"),
-    ).toBeInTheDocument();
+    const pink = (await screen.findByText("Who is Pink today?")).closest(
+      ".whose-turn-card",
+    ) as HTMLElement;
+    const mum = (await screen.findByText("Who sits next to Mum?")).closest(
+      ".whose-turn-card",
+    ) as HTMLElement;
+    expect(within(pink).getByText("Fredster")).toBeInTheDocument();
+    expect(within(mum).getByText("Harrie")).toBeInTheDocument();
   });
 
-  it("hides the card and shows a setup invitation to adults when unconfigured", async () => {
-    fakeApi(addie, { whoseTurn: null });
+  it("shows a setup invitation to adults only when nothing is configured", async () => {
+    fakeApi(addie, { whoseTurns: [] });
     renderApp(addie);
-
     await screen.findByRole("heading", { name: "Good day, Addie!" });
-
     expect(
-      await screen.findByText(
-        "Whose Turn Is It? isn’t set up yet. Configure it in the tools above.",
-      ),
+      await screen.findByText(/Whose Turn Is It\? isn’t set up yet/),
     ).toBeInTheDocument();
   });
 
   it("does not show the setup invitation to children", async () => {
-    fakeApi(fredster, { whoseTurn: null });
+    fakeApi(fredster, { whoseTurns: [] });
     renderApp(fredster);
 
     await screen.findByRole("heading", { name: "Good day, Fredster!" });
@@ -77,29 +76,18 @@ describe("Whose Turn Is It?", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("lets an adult choose participants, order, and first turn, then saves", async () => {
-    const api = fakeApi(addie, { whoseTurn: null });
+  it("lets an adult add a rotation with participants, order, and first turn", async () => {
+    const api = fakeApi(addie, { whoseTurns: [] });
     const user = userEvent.setup();
     renderApp(addie);
 
     await screen.findByRole("heading", { name: "Good day, Addie!" });
-    await user.click(screen.getByText("Set it up"));
-    const form = await screen.findByRole("form", {
-      name: "Configure whose turn is it",
-    });
+    await user.click(screen.getByText("Manage rotations"));
+    const form = await screen.findByRole("form", { name: "Add a rotation" });
 
     await user.click(within(form).getByLabelText("Fredster"));
     await user.click(within(form).getByLabelText("Harrie"));
-
     const order = within(form).getByRole("list");
-    expect(
-      within(order)
-        .getAllByRole("listitem")
-        .map((item) => item.textContent),
-    ).toEqual([
-      expect.stringContaining("Fredster"),
-      expect.stringContaining("Harrie"),
-    ]);
     await user.click(
       within(order).getByRole("button", {
         name: "Move Harrie earlier in the order",
@@ -113,160 +101,253 @@ describe("Whose Turn Is It?", () => {
       expect.stringContaining("Harrie"),
       expect.stringContaining("Fredster"),
     ]);
-
     await user.selectOptions(
       within(form).getByLabelText("First turn"),
       "Fredster",
     );
-    const effectiveInput = within(form).getByLabelText("Effective from");
-    expect(effectiveInput).toHaveValue("2026-09-21");
+    expect(within(form).getByLabelText("Effective from")).toHaveValue(
+      "2026-09-21",
+    );
     await user.type(
       within(form).getByLabelText("Question (optional)"),
       "Who feeds the fish?",
     );
     await user.click(
-      within(form).getByRole("button", { name: "Set up rotation" }),
+      within(form).getByRole("button", { name: "Add rotation" }),
     );
 
     expect(
       await screen.findByText("Whose Turn Is It? rotation saved."),
     ).toBeInTheDocument();
-    expect(api.saveRequests).toHaveLength(1);
-    expect(api.saveRequests[0]).toEqual({
-      participantChildIds: [harrie.id, fredster.id],
-      firstChildId: fredster.id,
-      effectiveFrom: "2026-09-21",
-      question: "Who feeds the fish?",
-    });
-
-    const preview = await screen.findByRole("heading", {
-      name: "Upcoming turns",
-    });
-    expect(preview).toBeInTheDocument();
+    expect(api.requests).toEqual([
+      {
+        method: "POST",
+        path: "/api/turn-rotations",
+        body: {
+          participantChildIds: [harrie.id, fredster.id],
+          firstChildId: fredster.id,
+          effectiveFrom: "2026-09-21",
+          question: "Who feeds the fish?",
+        },
+      },
+    ]);
+    expect(
+      await screen.findByRole("list", { name: "Rotations" }),
+    ).toBeInTheDocument();
   });
 
-  it("drops a deactivated participant from the form so a repair can be saved", async () => {
-    const gone = "99999999-9999-4999-8999-999999999999";
-    const api = fakeApi(
-      addie,
-      { whoseTurn: null },
-      {
-        id: "11111111-1111-4111-8111-111111111111",
-        effectiveFrom: "2026-09-01",
-        question: "Who is Pink today?",
-        participantChildIds: [gone, harrie.id],
-        firstChildId: gone,
-        createdByMemberId: addie.id,
-        createdAtUtc: "2026-09-01T08:00:00Z",
-      },
-    );
+  it("adds a second rotation alongside an existing one", async () => {
+    const api = fakeApi(addie, { whoseTurns: [] }, [
+      rotation(pinkId, "Who is Pink today?", [fredster, harrie], fredster),
+    ]);
     const user = userEvent.setup();
     renderApp(addie);
 
     await screen.findByRole("heading", { name: "Good day, Addie!" });
-    await user.click(screen.getByText("Set it up"));
-    const form = await screen.findByRole("form", {
-      name: "Configure whose turn is it",
-    });
+    await user.click(screen.getByText("Manage rotations"));
+    const form = await screen.findByRole("form", { name: "Add a rotation" });
+    await user.click(within(form).getByLabelText("Harrie"));
+    await user.selectOptions(
+      within(form).getByLabelText("First turn"),
+      "Harrie",
+    );
+    await user.type(
+      within(form).getByLabelText("Question (optional)"),
+      "Who sits next to Mum?",
+    );
+    await user.click(
+      within(form).getByRole("button", { name: "Add rotation" }),
+    );
 
+    await screen.findByText("Whose Turn Is It? rotation saved.");
+    expect(api.requests[0]).toMatchObject({
+      method: "POST",
+      path: "/api/turn-rotations",
+    });
+    const list = await screen.findByRole("list", { name: "Rotations" });
+    expect(within(list).getAllByRole("button", { name: /^End / })).toHaveLength(
+      2,
+    );
+    expect(within(list).getByText("Who sits next to Mum?")).toBeInTheDocument();
+    expect(within(list).getByText("Who is Pink today?")).toBeInTheDocument();
+  });
+
+  it("drops a deactivated participant when editing so the repair can be saved", async () => {
+    const gone = "99999999-9999-4999-8999-999999999999";
+    const api = fakeApi(addie, { whoseTurns: [] }, [
+      {
+        ...rotation(pinkId, "Who is Pink today?", [harrie], harrie),
+        current: {
+          ...rotation(pinkId, "Who is Pink today?", [harrie], harrie).current,
+          participantChildIds: [gone, harrie.id],
+          firstChildId: gone,
+        },
+      },
+    ]);
+    const user = userEvent.setup();
+    renderApp(addie);
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Manage rotations"));
+    const form = await screen.findByRole("form", {
+      name: "Configure Who is Pink today?",
+    });
     expect(
       within(within(form).getByRole("list"))
         .getAllByRole("listitem")
         .map((item) => item.textContent),
     ).toEqual([expect.stringContaining("Harrie")]);
-    expect(within(form).getByLabelText("First turn")).toHaveValue(harrie.id);
     await user.click(
       within(form).getByRole("button", { name: "Save changes" }),
     );
 
     await screen.findByText("Whose Turn Is It? rotation saved.");
-    expect(api.saveRequests[0]).toMatchObject({
-      participantChildIds: [harrie.id],
-      firstChildId: harrie.id,
+    expect(api.requests[0]).toMatchObject({
+      method: "PUT",
+      path: `/api/turn-rotations/${pinkId}`,
+      body: { participantChildIds: [harrie.id], firstChildId: harrie.id },
     });
   });
 
-  it("disables submit until at least one participant is selected", async () => {
-    fakeApi(addie, { whoseTurn: null });
+  it("ends a rotation after confirmation", async () => {
+    const api = fakeApi(addie, { whoseTurns: [] }, [
+      rotation(pinkId, "Who is Pink today?", [fredster], fredster),
+    ]);
     const user = userEvent.setup();
     renderApp(addie);
 
     await screen.findByRole("heading", { name: "Good day, Addie!" });
-    await user.click(screen.getByText("Set it up"));
-    const form = await screen.findByRole("form", {
-      name: "Configure whose turn is it",
-    });
+    await user.click(screen.getByText("Manage rotations"));
+    await user.click(
+      await screen.findByRole("button", { name: "End Who is Pink today?" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Yes, end it" }));
 
     expect(
-      within(form).getByRole("button", { name: "Set up rotation" }),
+      await screen.findByText(
+        "Rotation ended. It stops appearing from tomorrow.",
+      ),
+    ).toBeInTheDocument();
+    expect(api.requests).toEqual([
+      {
+        method: "DELETE",
+        path: `/api/turn-rotations/${pinkId}`,
+        body: undefined,
+      },
+    ]);
+  });
+
+  it("disables submit until at least one participant is selected", async () => {
+    fakeApi(addie, { whoseTurns: [] });
+    const user = userEvent.setup();
+    renderApp(addie);
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Manage rotations"));
+    const form = await screen.findByRole("form", { name: "Add a rotation" });
+
+    expect(
+      within(form).getByRole("button", { name: "Add rotation" }),
     ).toBeDisabled();
   });
 });
 
+function turn(
+  rotationId: string,
+  question: string,
+  child: ReturnType<typeof member>,
+) {
+  return {
+    rotationId,
+    question,
+    childId: child.id,
+    childDisplayName: child.displayName,
+  };
+}
+
+function rotation(
+  rotationId: string,
+  question: string,
+  participants: ReturnType<typeof member>[],
+  first: ReturnType<typeof member>,
+) {
+  return {
+    rotationId,
+    current: {
+      id: crypto.randomUUID(),
+      effectiveFrom: "2026-09-01",
+      question,
+      participantChildIds: participants.map((child) => child.id),
+      firstChildId: first.id,
+      createdByMemberId: addie.id,
+      createdAtUtc: "2026-09-01T08:00:00Z",
+    },
+    upcomingTurns: [
+      {
+        date: "2026-09-21",
+        question,
+        childId: first.id,
+        childDisplayName: first.displayName,
+      },
+    ],
+  };
+}
+
+interface RecordedRequest {
+  method: string;
+  path: string;
+  body: unknown;
+}
+
 function fakeApi(
   viewer: ReturnType<typeof member>,
-  boardExtras: { whoseTurn: unknown },
-  initialCurrent: Record<string, unknown> | null = null,
+  boardExtras: { whoseTurns: unknown[] },
+  initialRotations: ReturnType<typeof rotation>[] = [],
 ) {
   const board = { viewer, ...baseBoard, ...boardExtras };
   const state = {
-    saveRequests: [] as unknown[],
-    current: initialCurrent,
+    rotations: [...initialRotations],
+    requests: [] as RecordedRequest[],
   };
+  const overview = () => ({ rotations: state.rotations });
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const request = input as Request;
       const path = new URL(request.url).pathname;
       const method = request.method;
-      if (path === "/api/turn-rotation" && method === "GET") {
-        return jsonResponse({
-          current: state.current,
-          hasRevisions: state.current !== null,
-          upcomingTurns: state.current
-            ? [
-                {
-                  date: "2026-09-21",
-                  childDisplayName: "Fredster",
-                  question: (state.current.question as string) ?? "",
-                  childId: (state.current.participantChildIds as string[])[0],
-                },
-              ]
-            : [],
-        });
+      if (!path.startsWith("/api/turn-rotations")) {
+        return jsonResponse(board);
       }
-      if (path === "/api/turn-rotation" && method === "PUT") {
-        const body = await request.clone().json();
-        state.saveRequests.push(body);
-        state.current = {
-          id: crypto.randomUUID(),
-          effectiveFrom: body.effectiveFrom,
-          question: body.question ?? "Who is Pink today?",
-          participantChildIds: body.participantChildIds,
-          firstChildId: body.firstChildId,
-          createdByMemberId: viewer.id,
-          createdAtUtc: "2026-09-21T08:00:00Z",
-        };
-        return jsonResponse({
-          current: state.current,
-          hasRevisions: true,
-          upcomingTurns: [
-            {
-              childDisplayName: "Fredster",
-              date: body.effectiveFrom,
-              question: state.current.question,
-              childId: body.firstChildId,
-            },
-          ],
-        });
+      if (method === "GET") {
+        return jsonResponse(overview());
       }
-      return jsonResponse(board);
+      const body =
+        method === "DELETE" ? undefined : await request.clone().json();
+      state.requests.push({ method, path, body });
+      const id = path.split("/")[3] ?? "";
+      if (method === "DELETE") {
+        state.rotations = state.rotations.filter((r) => r.rotationId !== id);
+        return jsonResponse(overview());
+      }
+      const created = rotation(
+        id || crypto.randomUUID(),
+        body.question ?? "Who is Pink today?",
+        [fredster, harrie].filter((c) =>
+          body.participantChildIds.includes(c.id),
+        ),
+        body.firstChildId === harrie.id ? harrie : fredster,
+      );
+      state.rotations = id
+        ? state.rotations.map((r) => (r.rotationId === id ? created : r))
+        : [...state.rotations, created];
+      return jsonResponse(overview());
     }),
   );
 
   return {
-    get saveRequests() {
-      return state.saveRequests;
+    get requests() {
+      return state.requests;
     },
   };
 }

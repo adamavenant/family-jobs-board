@@ -1,7 +1,7 @@
 namespace FamilyJobsBoard.Domain.TurnRotations;
 
 /// <summary>
-/// An immutable, effective-dated configuration of the household's daily "whose turn"
+/// An immutable, effective-dated configuration of one of the household's daily "whose turn"
 /// rotation. A new revision is created whenever an adult reconfigures the rotation;
 /// existing revisions are never edited, so historical answers stay stable.
 /// </summary>
@@ -18,6 +18,7 @@ public sealed class TurnRotationRevision
 
     public TurnRotationRevision(
         Guid id,
+        Guid rotationId,
         DateOnly effectiveFrom,
         string? question,
         IReadOnlyList<Guid> participantChildIds,
@@ -25,9 +26,9 @@ public sealed class TurnRotationRevision
         Guid createdByMemberId,
         DateTimeOffset createdAtUtc)
     {
-        if (id == Guid.Empty)
+        if (id == Guid.Empty || rotationId == Guid.Empty)
         {
-            throw new ArgumentException("A turn rotation revision needs an ID.", nameof(id));
+            throw new ArgumentException("A turn rotation revision needs an ID and a rotation ID.", nameof(id));
         }
 
         if (createdByMemberId == Guid.Empty)
@@ -67,6 +68,7 @@ public sealed class TurnRotationRevision
         }
 
         Id = id;
+        RotationId = rotationId;
         EffectiveFrom = effectiveFrom;
         Question = NormalizeQuestion(question);
         FirstChildId = firstChildId;
@@ -84,12 +86,13 @@ public sealed class TurnRotationRevision
     /// </summary>
     public static TurnRotationRevision Cleared(
         Guid id,
+        Guid rotationId,
         DateOnly effectiveFrom,
         string question,
         Guid createdByMemberId,
         DateTimeOffset createdAtUtc)
     {
-        if (id == Guid.Empty || createdByMemberId == Guid.Empty)
+        if (id == Guid.Empty || rotationId == Guid.Empty || createdByMemberId == Guid.Empty)
         {
             throw new ArgumentException("A cleared turn rotation revision needs an ID and creator ID.");
         }
@@ -97,6 +100,7 @@ public sealed class TurnRotationRevision
         return new TurnRotationRevision
         {
             Id = id,
+            RotationId = rotationId,
             EffectiveFrom = effectiveFrom,
             Question = NormalizeQuestion(question),
             FirstChildId = null,
@@ -106,6 +110,9 @@ public sealed class TurnRotationRevision
     }
 
     public Guid Id { get; private set; }
+
+    /// <summary>Identifies which household rotation this revision belongs to.</summary>
+    public Guid RotationId { get; private set; }
 
     public DateOnly EffectiveFrom { get; private set; }
 

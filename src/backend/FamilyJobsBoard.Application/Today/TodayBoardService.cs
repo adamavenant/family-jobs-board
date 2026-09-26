@@ -106,10 +106,11 @@ public sealed class TodayBoardService
             points = await _repository.GetPointsSummaryAsync(viewer.Id, cancellationToken);
         }
 
-        var turn = await _turnRotationService.GetTurnAsync(date, cancellationToken);
-        var whoseTurn = turn is null
-            ? null
-            : new TodayWhoseTurn(turn.Question, turn.ChildId, turn.ChildDisplayName);
+        var turns = await _turnRotationService.GetTurnsAsync(date, cancellationToken);
+        var whoseTurns = turns
+            .Select(turn => new TodayWhoseTurn(
+                turn.RotationId, turn.Question, turn.ChildId, turn.ChildDisplayName))
+            .ToArray();
 
         return new TodayBoard(
             MapMember(viewer),
@@ -124,7 +125,7 @@ public sealed class TodayBoardService
             points?.Balance,
             points?.Earnings ?? [],
             householdVisibleJobs.Count(job => job.Status == JobStatus.PendingApproval),
-            whoseTurn);
+            whoseTurns);
     }
 
     public async Task<TodayJob> CompleteAsync(

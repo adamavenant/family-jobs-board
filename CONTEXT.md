@@ -114,8 +114,10 @@ today?") by cycling through an ordered list of children, one per calendar
 day, with no interaction or completion step.
 
 #### Characteristics
-- One rotation exists per household, held as an ordered, append-only history
-  of effective-dated revisions; existing revisions are never edited.
+- A household can run any number of independent rotations (for example "Who
+  is Pink today?" and "Who sits next to Mum?"). Each is an ordered,
+  append-only history of effective-dated revisions; existing revisions are
+  never edited, and a rotation is ended by a participant-less revision.
 - Each revision has an effective date, a question, an ordered list of
   distinct active-child participants, which participant is assigned on the
   effective date, and the creating Adult and UTC creation time.
@@ -123,8 +125,8 @@ day, with no interaction or completion step.
   effective date, modulo the participant count, starting from the configured
   first child; every calendar day counts and the calculation needs no
   background job.
-- The first-ever revision may take effect today; every later revision takes
-  effect no earlier than the next household-local day, so reconfiguring
+- A rotation's first revision may take effect today; every later revision of
+  it takes effect no earlier than the next household-local day, so reconfiguring
   never changes an answer that already happened.
 
 ### Administration

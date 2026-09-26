@@ -1710,14 +1710,14 @@
         ]
       }
     },
-    "/api/turn-rotation": {
+    "/api/turn-rotations": {
       "get": {
         "tags": [
           "Whose turn"
         ],
-        "summary": "Get the household's whose-turn rotation configuration.",
-        "description": "Adult-only. Returns the revision effective today, if any, and a short preview of upcoming turns.",
-        "operationId": "GetTurnRotation",
+        "summary": "List the household's whose-turn rotations.",
+        "description": "Adult-only. Returns every active rotation with the revision effective today, if any, and a short preview of upcoming turns.",
+        "operationId": "ListTurnRotations",
         "responses": {
           "200": {
             "description": "OK",
@@ -1736,13 +1736,13 @@
           }
         ]
       },
-      "put": {
+      "post": {
         "tags": [
           "Whose turn"
         ],
-        "summary": "Create a new effective-dated whose-turn rotation revision.",
-        "description": "Adult-only. Existing revisions are immutable; this always creates a new one, effective today for the first-ever configuration or no earlier than tomorrow otherwise.",
-        "operationId": "SaveTurnRotation",
+        "summary": "Start a new whose-turn rotation.",
+        "description": "Adult-only. Creates the rotation's first revision, which may be effective today or later.",
+        "operationId": "CreateTurnRotation",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1770,6 +1770,130 @@
               "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/turn-rotations/{rotationId}": {
+      "put": {
+        "tags": [
+          "Whose turn"
+        ],
+        "summary": "Create a new effective-dated revision of a rotation.",
+        "description": "Adult-only. Existing revisions are immutable; this always adds one, effective no earlier than tomorrow.",
+        "operationId": "UpdateTurnRotation",
+        "parameters": [
+          {
+            "name": "rotationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveTurnRotationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnRotationOverviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Whose turn"
+        ],
+        "summary": "End a rotation from tomorrow.",
+        "description": "Adult-only. The rotation stops appearing on the board from tomorrow; earlier dates keep their answers.",
+        "operationId": "EndTurnRotation",
+        "parameters": [
+          {
+            "name": "rotationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnRotationOverviewResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3295,7 +3419,7 @@
           "pointsBalance",
           "pointEarnings",
           "pendingApprovalCount",
-          "whoseTurn"
+          "whoseTurns"
         ],
         "type": "object",
         "properties": {
@@ -3352,15 +3476,11 @@
             ],
             "format": "int32"
           },
-          "whoseTurn": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/WhoseTurnResponse"
-              }
-            ]
+          "whoseTurns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WhoseTurnResponse"
+            }
           }
         }
       },
@@ -3410,12 +3530,30 @@
       },
       "TurnRotationOverviewResponse": {
         "required": [
-          "current",
-          "upcomingTurns",
-          "hasRevisions"
+          "rotations"
         ],
         "type": "object",
         "properties": {
+          "rotations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TurnRotationSummaryResponse"
+            }
+          }
+        }
+      },
+      "TurnRotationSummaryResponse": {
+        "required": [
+          "rotationId",
+          "current",
+          "upcomingTurns"
+        ],
+        "type": "object",
+        "properties": {
+          "rotationId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "current": {
             "oneOf": [
               {
@@ -3431,9 +3569,6 @@
             "items": {
               "$ref": "#/components/schemas/TurnRotationTurnResponse"
             }
-          },
-          "hasRevisions": {
-            "type": "boolean"
           }
         }
       },
@@ -3545,12 +3680,17 @@
       },
       "WhoseTurnResponse": {
         "required": [
+          "rotationId",
           "question",
           "childId",
           "childDisplayName"
         ],
         "type": "object",
         "properties": {
+          "rotationId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "question": {
             "type": "string"
           },

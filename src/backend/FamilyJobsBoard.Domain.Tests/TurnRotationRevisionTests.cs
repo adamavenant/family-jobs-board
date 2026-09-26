@@ -16,7 +16,7 @@ public sealed class TurnRotationRevisionTests
     {
         var monday = new DateOnly(2026, 9, 21);
         var revision = new TurnRotationRevision(
-            Guid.NewGuid(), monday, null, [ChildA, ChildB, ChildC], ChildA, Adult, Now);
+            Guid.NewGuid(), Guid.NewGuid(), monday, null, [ChildA, ChildB, ChildC], ChildA, Adult, Now);
 
         Assert.Equal((Guid?)ChildA, revision.GetAssignedChildId(monday));
         Assert.Equal((Guid?)ChildB, revision.GetAssignedChildId(monday.AddDays(1)));
@@ -29,7 +29,7 @@ public sealed class TurnRotationRevisionTests
     {
         var effectiveFrom = new DateOnly(2026, 9, 21);
         var revision = new TurnRotationRevision(
-            Guid.NewGuid(), effectiveFrom, null, [ChildA], ChildA, Adult, Now);
+            Guid.NewGuid(), Guid.NewGuid(), effectiveFrom, null, [ChildA], ChildA, Adult, Now);
 
         for (var offset = 0; offset < 30; offset++)
         {
@@ -42,7 +42,7 @@ public sealed class TurnRotationRevisionTests
     {
         var effectiveFrom = new DateOnly(2026, 9, 21);
         var revision = new TurnRotationRevision(
-            Guid.NewGuid(), effectiveFrom, null, [ChildA, ChildB, ChildC], ChildB, Adult, Now);
+            Guid.NewGuid(), Guid.NewGuid(), effectiveFrom, null, [ChildA, ChildB, ChildC], ChildB, Adult, Now);
 
         Assert.Equal((Guid?)ChildB, revision.GetAssignedChildId(effectiveFrom));
         Assert.Equal((Guid?)ChildC, revision.GetAssignedChildId(effectiveFrom.AddDays(1)));
@@ -55,7 +55,7 @@ public sealed class TurnRotationRevisionTests
     {
         var effectiveFrom = new DateOnly(2028, 2, 27);
         var revision = new TurnRotationRevision(
-            Guid.NewGuid(), effectiveFrom, null, [ChildA, ChildB], ChildA, Adult, Now);
+            Guid.NewGuid(), Guid.NewGuid(), effectiveFrom, null, [ChildA, ChildB], ChildA, Adult, Now);
 
         Assert.Equal((Guid?)ChildA, revision.GetAssignedChildId(new DateOnly(2028, 2, 27)));
         Assert.Equal((Guid?)ChildB, revision.GetAssignedChildId(new DateOnly(2028, 2, 28)));
@@ -73,7 +73,7 @@ public sealed class TurnRotationRevisionTests
         // observes daylight saving.
         var effectiveFrom = new DateOnly(2026, 3, 6);
         var revision = new TurnRotationRevision(
-            Guid.NewGuid(), effectiveFrom, null, [ChildA, ChildB, ChildC], ChildA, Adult, Now);
+            Guid.NewGuid(), Guid.NewGuid(), effectiveFrom, null, [ChildA, ChildB, ChildC], ChildA, Adult, Now);
 
         Assert.Equal((Guid?)ChildA, revision.GetAssignedChildId(new DateOnly(2026, 3, 6)));
         Assert.Equal((Guid?)ChildB, revision.GetAssignedChildId(new DateOnly(2026, 3, 7)));
@@ -85,7 +85,7 @@ public sealed class TurnRotationRevisionTests
     public void Default_question_applies_when_none_is_given()
     {
         var revision = new TurnRotationRevision(
-            Guid.NewGuid(), new DateOnly(2026, 9, 21), "   ", [ChildA], ChildA, Adult, Now);
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 9, 21), "   ", [ChildA], ChildA, Adult, Now);
 
         Assert.Equal(TurnRotationRevision.DefaultQuestion, revision.Question);
     }
@@ -94,7 +94,7 @@ public sealed class TurnRotationRevisionTests
     public void Custom_question_is_trimmed()
     {
         var revision = new TurnRotationRevision(
-            Guid.NewGuid(),
+            Guid.NewGuid(), Guid.NewGuid(),
             new DateOnly(2026, 9, 21),
             "  Who sets the table today?  ",
             [ChildA],
@@ -110,7 +110,7 @@ public sealed class TurnRotationRevisionTests
     {
         var effectiveFrom = new DateOnly(2026, 9, 21);
         var revision = new TurnRotationRevision(
-            Guid.NewGuid(), effectiveFrom, null, [ChildA, ChildB], ChildA, Adult, Now);
+            Guid.NewGuid(), Guid.NewGuid(), effectiveFrom, null, [ChildA, ChildB], ChildA, Adult, Now);
 
         Assert.Throws<ArgumentOutOfRangeException>(
             () => revision.GetAssignedChildId(effectiveFrom.AddDays(-1)));
@@ -120,14 +120,14 @@ public sealed class TurnRotationRevisionTests
     public void Rejects_no_participants()
     {
         Assert.Throws<ArgumentException>(() => new TurnRotationRevision(
-            Guid.NewGuid(), new DateOnly(2026, 9, 21), null, [], ChildA, Adult, Now));
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 9, 21), null, [], ChildA, Adult, Now));
     }
 
     [Fact]
     public void Rejects_duplicate_participants()
     {
         Assert.Throws<ArgumentException>(() => new TurnRotationRevision(
-            Guid.NewGuid(),
+            Guid.NewGuid(), Guid.NewGuid(),
             new DateOnly(2026, 9, 21),
             null,
             [ChildA, ChildB, ChildA],
@@ -140,7 +140,7 @@ public sealed class TurnRotationRevisionTests
     public void Rejects_a_first_child_not_among_the_participants()
     {
         Assert.Throws<ArgumentException>(() => new TurnRotationRevision(
-            Guid.NewGuid(),
+            Guid.NewGuid(), Guid.NewGuid(),
             new DateOnly(2026, 9, 21),
             null,
             [ChildA, ChildB],
@@ -153,7 +153,7 @@ public sealed class TurnRotationRevisionTests
     public void Rejects_an_over_long_question()
     {
         Assert.Throws<ArgumentException>(() => new TurnRotationRevision(
-            Guid.NewGuid(),
+            Guid.NewGuid(), Guid.NewGuid(),
             new DateOnly(2026, 9, 21),
             new string('a', TurnRotationRevision.MaximumQuestionLength + 1),
             [ChildA],
@@ -166,7 +166,7 @@ public sealed class TurnRotationRevisionTests
     public void Participants_are_stored_in_the_given_order()
     {
         var revision = new TurnRotationRevision(
-            Guid.NewGuid(), new DateOnly(2026, 9, 21), null, [ChildC, ChildA, ChildB], ChildC, Adult, Now);
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 9, 21), null, [ChildC, ChildA, ChildB], ChildC, Adult, Now);
 
         Assert.Equal([ChildC, ChildA, ChildB], revision.OrderedParticipantChildIds);
     }

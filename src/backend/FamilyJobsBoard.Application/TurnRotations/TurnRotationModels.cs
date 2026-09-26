@@ -1,6 +1,7 @@
 namespace FamilyJobsBoard.Application.TurnRotations;
 
 public sealed record TurnRotationAnswer(
+    Guid RotationId,
     DateOnly Date,
     string Question,
     Guid ChildId,
@@ -15,10 +16,12 @@ public sealed record TurnRotationConfiguration(
     Guid CreatedByMemberId,
     DateTimeOffset CreatedAtUtc);
 
-public sealed record TurnRotationOverview(
+public sealed record TurnRotationSummary(
+    Guid RotationId,
     TurnRotationConfiguration? Current,
-    IReadOnlyList<TurnRotationAnswer> UpcomingTurns,
-    bool HasRevisions);
+    IReadOnlyList<TurnRotationAnswer> UpcomingTurns);
+
+public sealed record TurnRotationOverview(IReadOnlyList<TurnRotationSummary> Rotations);
 
 public sealed record SaveTurnRotation(
     IReadOnlyList<Guid>? ParticipantChildIds,

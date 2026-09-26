@@ -16,11 +16,16 @@ public sealed class TurnRotationService
         _clock = clock;
     }
 
-    public async Task<TurnRotationAnswer?> GetTurnAsync(DateOnly date, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<TurnRotationAnswer>> GetTurnsAsync(
+        DateOnly date,
+        CancellationToken cancellationToken)
     {
         var revisions = await _repository.GetRevisionsAsync(cancellationToken);
         var names = await LoadNamesAsync(revisions, cancellationToken);
-        return ResolveTurn(revisions, date, names);
+        return Groups(revisions)
+            .Select(group => ResolveTurn(group, date, names))
+            .OfType<TurnRotationAnswer>()
+            .ToArray();
     }
 
     public async Task<TurnRotationOverview> GetOverviewAsync(CancellationToken cancellationToken)
@@ -30,9 +35,9 @@ public sealed class TurnRotationService
     }
 
     /// <summary>
-    /// Creates a replacement revision effective tomorrow that leaves out a deactivated
-    /// child, keeping the next assignee unchanged where possible. Earlier dates keep
-    /// their answers, and restoring the child does not re-add them.
+    /// Creates a replacement revision in every rotation, effective tomorrow, that leaves
+    /// out a deactivated child, keeping the next assignee unchanged where possible.
+    /// Earlier dates keep their answers, and restoring the child does not re-add them.
     /// </summary>
     public async Task RemoveParticipantAsync(
         Guid childId,
@@ -41,48 +46,94 @@ public sealed class TurnRotationService
     {
         var revisions = await _repository.GetRevisionsAsync(cancellationToken);
         var effectiveFrom = _clock.Today.AddDays(1);
-        var applicable = ResolveRevision(revisions, effectiveFrom);
-        if (applicable is null || !applicable.OrderedParticipantChildIds.Contains(childId))
+        var changed = false;
+        foreach (var group in Groups(revisions))
         {
-            return;
-        }
-
-        var order = applicable.OrderedParticipantChildIds;
-        var remaining = order.Where(id => id != childId).ToArray();
-        TurnRotationRevision replacement;
-        if (remaining.Length == 0)
-        {
-            replacement = TurnRotationRevision.Cleared(
-                Guid.NewGuid(), effectiveFrom, applicable.Question, actorMemberId, _clock.UtcNow);
-        }
-        else
-        {
-            var next = applicable.GetAssignedChildId(effectiveFrom)!.Value;
-            if (next == childId)
+            var applicable = ResolveRevision(group, effectiveFrom);
+            if (applicable is null || !applicable.OrderedParticipantChildIds.Contains(childId))
             {
-                var position = order.ToList().IndexOf(childId);
-                next = order.Skip(position + 1).Concat(order.Take(position))
-                    .First(id => id != childId);
+                continue;
             }
 
-            replacement = new TurnRotationRevision(
-                Guid.NewGuid(), effectiveFrom, applicable.Question, remaining, next,
-                actorMemberId, _clock.UtcNow);
+            var order = applicable.OrderedParticipantChildIds;
+            var remaining = order.Where(id => id != childId).ToArray();
+            TurnRotationRevision replacement;
+            if (remaining.Length == 0)
+            {
+                replacement = TurnRotationRevision.Cleared(
+                    Guid.NewGuid(), applicable.RotationId, effectiveFrom, applicable.Question,
+                    actorMemberId, _clock.UtcNow);
+            }
+            else
+            {
+                var next = applicable.GetAssignedChildId(effectiveFrom)!.Value;
+                if (next == childId)
+                {
+                    var position = order.ToList().IndexOf(childId);
+                    next = order.Skip(position + 1).Concat(order.Take(position))
+                        .First(id => id != childId);
+                }
+
+                replacement = new TurnRotationRevision(
+                    Guid.NewGuid(), applicable.RotationId, effectiveFrom, applicable.Question,
+                    remaining, next, actorMemberId, _clock.UtcNow);
+            }
+
+            await _repository.AddRevisionAsync(replacement, cancellationToken);
+            changed = true;
         }
 
-        await _repository.AddRevisionAsync(replacement, cancellationToken);
-        await _repository.SaveChangesAsync(cancellationToken);
+        if (changed)
+        {
+            await _repository.SaveChangesAsync(cancellationToken);
+        }
     }
 
+    /// <summary>Ends a rotation from tomorrow; earlier dates keep their answers.</summary>
+    public async Task<TurnRotationOverview> EndAsync(
+        Guid actorMemberId,
+        Guid rotationId,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdultAsync(actorMemberId, cancellationToken);
+        var revisions = await _repository.GetRevisionsAsync(cancellationToken);
+        var group = Groups(revisions).FirstOrDefault(item => item[0].RotationId == rotationId);
+        var applicable = group is null ? null : ResolveRevision(group, _clock.Today.AddDays(1));
+        if (applicable is null || applicable.IsCleared)
+        {
+            throw new TurnRotationNotFoundException(rotationId);
+        }
+
+        var ended = TurnRotationRevision.Cleared(
+            Guid.NewGuid(), rotationId, _clock.Today.AddDays(1), applicable.Question,
+            actorMemberId, _clock.UtcNow);
+        await _repository.AddRevisionAsync(ended, cancellationToken);
+        await _repository.SaveChangesAsync(cancellationToken);
+        return await BuildOverviewAsync([.. revisions, ended], cancellationToken);
+    }
+
+    /// <summary>
+    /// Saves a new revision. A null <paramref name="rotationId"/> starts a brand-new rotation.
+    /// </summary>
     public async Task<TurnRotationOverview> SaveAsync(
         Guid actorMemberId,
+        Guid? rotationId,
         SaveTurnRotation request,
         CancellationToken cancellationToken)
     {
-        var actor = await _repository.GetMemberAsync(actorMemberId, cancellationToken);
-        if (actor is not { IsAdult: true })
+        await EnsureAdultAsync(actorMemberId, cancellationToken);
+
+        var revisions = await _repository.GetRevisionsAsync(cancellationToken);
+        var isNew = rotationId is null;
+        if (!isNew)
         {
-            throw new TurnRotationForbiddenException();
+            var group = Groups(revisions).FirstOrDefault(item => item[0].RotationId == rotationId);
+            var latest = group is null ? null : ResolveRevision(group, DateOnly.MaxValue);
+            var applicable = group is null ? null : ResolveRevision(group, _clock.Today.AddDays(1));
+            if (group is null || latest is null || (applicable?.IsCleared ?? false))
+            {
+                throw new TurnRotationNotFoundException(rotationId!.Value);
+            }
         }
 
         var errors = new Dictionary<string, string[]>();
@@ -112,10 +163,7 @@ public sealed class TurnRotationService
                 ["Choose the child who takes the first turn from the selected participants."];
         }
 
-        var revisions = await _repository.GetRevisionsAsync(cancellationToken);
-        var minimumEffectiveFrom = revisions.Count == 0
-            ? _clock.Today
-            : _clock.Today.AddDays(1);
+        var minimumEffectiveFrom = isNew ? _clock.Today : _clock.Today.AddDays(1);
         if (request.EffectiveFrom is null)
         {
             errors[nameof(SaveTurnRotation.EffectiveFrom)] = ["Choose an effective date."];
@@ -139,6 +187,7 @@ public sealed class TurnRotationService
 
         var revision = new TurnRotationRevision(
             Guid.NewGuid(),
+            rotationId ?? Guid.NewGuid(),
             request.EffectiveFrom!.Value,
             request.Question,
             distinctIds,
@@ -152,22 +201,52 @@ public sealed class TurnRotationService
         return await BuildOverviewAsync([.. revisions, revision], cancellationToken);
     }
 
+    private async Task EnsureAdultAsync(Guid actorMemberId, CancellationToken cancellationToken)
+    {
+        var actor = await _repository.GetMemberAsync(actorMemberId, cancellationToken);
+        if (actor is not { IsAdult: true })
+        {
+            throw new TurnRotationForbiddenException();
+        }
+    }
+
     private async Task<TurnRotationOverview> BuildOverviewAsync(
         IReadOnlyList<TurnRotationRevision> revisions,
         CancellationToken cancellationToken)
     {
         var today = _clock.Today;
         var names = await LoadNamesAsync(revisions, cancellationToken);
-        var current = ResolveRevision(revisions, today);
-        var upcomingTurns = Enumerable.Range(0, PreviewDays)
-            .Select(offset => ResolveTurn(revisions, today.AddDays(offset), names))
-            .OfType<TurnRotationAnswer>()
-            .ToArray();
+        var summaries = new List<TurnRotationSummary>();
+        foreach (var group in Groups(revisions))
+        {
+            var current = ResolveRevision(group, today);
+            if (current is { IsCleared: true })
+            {
+                continue;
+            }
 
-        return new TurnRotationOverview(
-            current is null || current.IsCleared ? null : MapConfiguration(current),
-            upcomingTurns,
-            revisions.Count > 0);
+            summaries.Add(new TurnRotationSummary(
+                group[0].RotationId,
+                current is null ? null : MapConfiguration(current),
+                Enumerable.Range(0, PreviewDays)
+                    .Select(offset => ResolveTurn(group, today.AddDays(offset), names))
+                    .OfType<TurnRotationAnswer>()
+                    .ToArray()));
+        }
+
+        return new TurnRotationOverview(summaries);
+    }
+
+    /// <summary>Revisions grouped per rotation, oldest rotation first.</summary>
+    private static List<IReadOnlyList<TurnRotationRevision>> Groups(
+        IReadOnlyList<TurnRotationRevision> revisions)
+    {
+        return revisions
+            .GroupBy(revision => revision.RotationId)
+            .OrderBy(group => group.Min(revision => revision.CreatedAtUtc))
+            .ThenBy(group => group.Key)
+            .Select(group => (IReadOnlyList<TurnRotationRevision>)group.ToArray())
+            .ToList();
     }
 
     private async Task<IReadOnlyDictionary<Guid, string>> LoadNamesAsync(
@@ -196,6 +275,7 @@ public sealed class TurnRotationService
         return revision is null || childId is null
             ? null
             : new TurnRotationAnswer(
+                revision.RotationId,
                 date,
                 revision.Question,
                 childId.Value,

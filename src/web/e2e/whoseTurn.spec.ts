@@ -5,13 +5,18 @@ const addieId = "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c";
 const albaId = "c8318644-906d-420c-89f4-d5672e2c9b71";
 const benId = "38692edf-3474-45a5-b979-5fb206f34c59";
 
-test("an adult sets up the whose-turn rotation and it updates across days", async ({
+test("an adult runs several whose-turn rotations side by side", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1024, height: 900 });
-  let configured = false;
-  let savedQuestion: string | null = null;
-  let saveRequestBody: Record<string, unknown> | null = null;
+  interface Saved {
+    rotationId: string;
+    question: string;
+    order: string[];
+    first: string;
+  }
+  const saved: Saved[] = [];
+  const names: Record<string, string> = { [albaId]: "Alba", [benId]: "Ben" };
 
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -32,14 +37,17 @@ test("an adult sets up the whose-turn rotation and it updates across days", asyn
     if (path === "/api/auth/sign-in") {
       return json(route, auth(addieId, "Addie", "adult"));
     }
-    if (path === "/api/turn-rotation" && request.method() === "GET") {
+    if (path === "/api/turn-rotations" && request.method() === "GET") {
       return json(route, overview());
     }
-    if (path === "/api/turn-rotation" && request.method() === "PUT") {
-      saveRequestBody = request.postDataJSON();
-      configured = true;
-      savedQuestion =
-        (saveRequestBody.question as string | null) ?? "Who is Pink today?";
+    if (path === "/api/turn-rotations" && request.method() === "POST") {
+      const body = request.postDataJSON();
+      saved.push({
+        rotationId: `00000000-0000-4000-8000-00000000000${saved.length + 1}`,
+        question: body.question ?? "Who is Pink today?",
+        order: body.participantChildIds,
+        first: body.firstChildId,
+      });
       return json(route, overview());
     }
     if (path === "/api/today") {
@@ -64,47 +72,60 @@ test("an adult sets up the whose-turn rotation and it updates across days", asyn
     ),
   ).toBeVisible();
 
-  await page.getByText("Set it up").click();
-  const form = page.getByRole("form", { name: "Configure whose turn is it" });
-  await form.getByLabel("Alba").check();
-  await form.getByLabel("Ben").check();
-  await form.getByLabel("First turn").selectOption(albaId);
-  await form.getByLabel("Question (optional)").fill("Who feeds the fish?");
-  await form.getByRole("button", { name: "Set up rotation" }).click();
-
+  await page.getByText("Manage rotations").click();
+  const first = page.getByRole("form", { name: "Add a rotation" });
+  await first.getByLabel("Alba").check();
+  await first.getByLabel("Ben").check();
+  await first.getByLabel("First turn").selectOption(albaId);
+  await first.getByRole("button", { name: "Add rotation" }).click();
   await expect(
     page.getByText("Whose Turn Is It? rotation saved."),
   ).toBeVisible();
-  expect(configured).toBe(true);
-  expect(saveRequestBody).toMatchObject({
-    participantChildIds: [albaId, benId],
-    firstChildId: albaId,
-    effectiveFrom: "2026-09-21",
-    question: "Who feeds the fish?",
-  });
 
-  const card = page.locator(".whose-turn-card").filter({
-    hasText: "Who feeds the fish?",
+  const second = page.getByRole("form", { name: "Add a rotation" });
+  await second.getByLabel("Alba").check();
+  await second.getByLabel("Ben").check();
+  await second.getByLabel("First turn").selectOption(benId);
+  await second.getByLabel("Question (optional)").fill("Who sits next to Mum?");
+  await second.getByRole("button", { name: "Add rotation" }).click();
+
+  const pink = page.locator(".whose-turn-card").filter({
+    hasText: "Who is Pink today?",
   });
-  await expect(card).toBeVisible();
-  await expect(card.locator(".whose-turn-card__child")).toContainText("Alba");
+  const mum = page.locator(".whose-turn-card").filter({
+    hasText: "Who sits next to Mum?",
+  });
+  await expect(pink.locator(".whose-turn-card__child")).toContainText("Alba");
+  await expect(mum.locator(".whose-turn-card__child")).toContainText("Ben");
 
   await page.getByRole("link", { name: "Next day →" }).click();
 
-  const tomorrowCard = page.locator(".whose-turn-card").filter({
-    hasText: "Who feeds the fish? (Tuesday)",
+  const pinkTomorrow = page.locator(".whose-turn-card").filter({
+    hasText: "Who is Pink on Tuesday?",
   });
-  await expect(tomorrowCard).toBeVisible();
-  await expect(tomorrowCard.locator(".whose-turn-card__child")).toContainText(
+  const mumTomorrow = page.locator(".whose-turn-card").filter({
+    hasText: "Who sits next to Mum? (Tuesday)",
+  });
+  await expect(pinkTomorrow.locator(".whose-turn-card__child")).toContainText(
     "Ben",
   );
+  await expect(mumTomorrow.locator(".whose-turn-card__child")).toContainText(
+    "Alba",
+  );
+
+  function turnFor(rotation: Saved, date: string) {
+    const offset = date === "2026-09-22" ? 1 : 0;
+    const start = rotation.order.indexOf(rotation.first);
+    const childId = rotation.order[(start + offset) % rotation.order.length]!;
+    return {
+      rotationId: rotation.rotationId,
+      question: rotation.question,
+      childId,
+      childDisplayName: names[childId],
+    };
+  }
 
   function board(date: string) {
-    const whoseTurn = configured
-      ? date === "2026-09-22"
-        ? { question: savedQuestion, childId: benId, childDisplayName: "Ben" }
-        : { question: savedQuestion, childId: albaId, childDisplayName: "Alba" }
-      : null;
     return {
       viewer: {
         id: addieId,
@@ -143,40 +164,30 @@ test("an adult sets up the whose-turn rotation and it updates across days", asyn
       pointsBalance: null,
       pointEarnings: [],
       pendingApprovalCount: 0,
-      whoseTurn,
+      whoseTurns: saved.map((rotation) => turnFor(rotation, date)),
     };
   }
 
   function overview() {
-    if (!configured) {
-      return { current: null, upcomingTurns: [], hasRevisions: false };
-    }
-
     return {
-      hasRevisions: true,
-      current: {
-        id: "11111111-1111-1111-1111-111111111111",
-        effectiveFrom: "2026-09-21",
-        question: savedQuestion,
-        participantChildIds: [albaId, benId],
-        firstChildId: albaId,
-        createdByMemberId: addieId,
-        createdAtUtc: "2026-09-21T08:00:00Z",
-      },
-      upcomingTurns: [
-        {
-          date: "2026-09-21",
-          question: savedQuestion,
-          childId: albaId,
-          childDisplayName: "Alba",
+      rotations: saved.map((rotation) => ({
+        rotationId: rotation.rotationId,
+        current: {
+          id: "11111111-1111-4111-8111-111111111111",
+          effectiveFrom: "2026-09-21",
+          question: rotation.question,
+          participantChildIds: rotation.order,
+          firstChildId: rotation.first,
+          createdByMemberId: addieId,
+          createdAtUtc: "2026-09-21T08:00:00Z",
         },
-        {
-          date: "2026-09-22",
-          question: savedQuestion,
-          childId: benId,
-          childDisplayName: "Ben",
-        },
-      ],
+        upcomingTurns: [
+          {
+            ...turnFor(rotation, "2026-09-21"),
+            date: "2026-09-21",
+          },
+        ],
+      })),
     };
   }
 });

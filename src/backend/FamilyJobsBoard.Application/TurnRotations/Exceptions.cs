@@ -18,3 +18,11 @@ public sealed class TurnRotationForbiddenException : Exception
     {
     }
 }
+
+public sealed class TurnRotationNotFoundException : Exception
+{
+    public TurnRotationNotFoundException(Guid rotationId)
+        : base($"Whose-turn rotation {rotationId} was not found.")
+    {
+    }
+}

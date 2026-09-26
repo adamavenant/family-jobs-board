@@ -16,6 +16,7 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
+                    rotation_id = table.Column<Guid>(type: "uuid", nullable: false),
                     effective_from = table.Column<DateOnly>(type: "date", nullable: false),
                     question = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     first_child_id = table.Column<Guid>(type: "uuid", nullable: true),
@@ -75,9 +76,9 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                 column: "created_by_member_id");
 
             migrationBuilder.CreateIndex(
-                name: "ix_turn_rotation_revisions_effective_from",
+                name: "ix_turn_rotation_revisions_rotation_effective_from",
                 table: "turn_rotation_revisions",
-                column: "effective_from");
+                columns: new[] { "rotation_id", "effective_from" });
         }
 
         /// <inheritdoc />

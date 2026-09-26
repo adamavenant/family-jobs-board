@@ -188,13 +188,15 @@ export function TodayPage({ board }: { board: TodayBoard }) {
           </p>
         </div>
 
-        {board.whoseTurn ? (
+        {board.whoseTurns.map((turn) => (
           <WhoseTurnCard
-            whoseTurn={board.whoseTurn}
+            key={turn.rotationId}
+            whoseTurn={turn}
             date={board.date}
             isToday={isToday}
           />
-        ) : board.viewer.isAdult ? (
+        ))}
+        {board.whoseTurns.length === 0 && board.viewer.isAdult ? (
           <p className="whose-turn-card whose-turn-card--unset">
             Whose Turn Is It? isn’t set up yet. Configure it in the tools above.
           </p>

@@ -786,12 +786,16 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("question");
 
+                    b.Property<Guid>("RotationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rotation_id");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedByMemberId");
 
-                    b.HasIndex("EffectiveFrom")
-                        .HasDatabaseName("ix_turn_rotation_revisions_effective_from");
+                    b.HasIndex("RotationId", "EffectiveFrom")
+                        .HasDatabaseName("ix_turn_rotation_revisions_rotation_effective_from");
 
                     b.ToTable("turn_rotation_revisions", (string)null);
                 });

@@ -10,9 +10,10 @@ public sealed record TodayResponse(
     int? PointsBalance,
     IReadOnlyList<PointEarningResponse> PointEarnings,
     int PendingApprovalCount,
-    WhoseTurnResponse? WhoseTurn);
+    IReadOnlyList<WhoseTurnResponse> WhoseTurns);
 
 public sealed record WhoseTurnResponse(
+    Guid RotationId,
     string Question,
     Guid ChildId,
     string ChildDisplayName);
