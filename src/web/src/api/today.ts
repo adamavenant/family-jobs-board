@@ -337,7 +337,7 @@ function earningSource(value: string): PointEarning["source"] {
     : "job";
 }
 
-function mapJob(job: {
+export function mapJob(job: {
   id: string;
   childId: string;
   childDisplayName: string;

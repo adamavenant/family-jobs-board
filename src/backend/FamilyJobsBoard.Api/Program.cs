@@ -1,6 +1,7 @@
 using FamilyJobsBoard.Api.Composition;
 using FamilyJobsBoard.Api.Features.Administration;
 using FamilyJobsBoard.Api.Features.Health;
+using FamilyJobsBoard.Api.Features.Calendar;
 using FamilyJobsBoard.Api.Features.Identity;
 using FamilyJobsBoard.Api.Features.PointAdjustments;
 using FamilyJobsBoard.Api.Features.GoodBehaviours;
@@ -37,6 +38,7 @@ app.MapIdentityEndpoints();
 app.MapTodayEndpoints();
 app.MapGoodBehaviourEndpoints();
 app.MapPointAdjustmentEndpoints();
+app.MapCalendarEndpoints();
 
 app.Run();
 
