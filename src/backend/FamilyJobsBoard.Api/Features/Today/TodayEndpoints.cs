@@ -539,7 +539,11 @@ internal static class TodayEndpoints
             board.Jobs.Select(MapJob).ToArray(),
             board.PointsBalance,
             board.PointEarnings.Select(MapPointEarning).ToArray(),
-            board.PendingApprovalCount);
+            board.PendingApprovalCount,
+            board.WhoseTurns
+                .Select(turn => new WhoseTurnResponse(
+                    turn.RotationId, turn.Question, turn.ChildId, turn.ChildDisplayName))
+                .ToArray());
     }
 
     private static RecurringJobResponse MapRecurringCreation(RecurringJobCreation creation)

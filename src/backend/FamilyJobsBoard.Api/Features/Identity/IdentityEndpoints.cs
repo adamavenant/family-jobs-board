@@ -1,3 +1,4 @@
+using FamilyJobsBoard.Application.TurnRotations;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using FamilyJobsBoard.Application.Identity;
@@ -174,6 +175,7 @@ internal static class IdentityEndpoints
         Guid memberId,
         HttpContext context,
         IdentityService service,
+        TurnRotationService turnRotation,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -189,6 +191,7 @@ internal static class IdentityEndpoints
                 memberId,
                 actorId.Value,
                 cancellationToken);
+            await turnRotation.RemoveParticipantAsync(memberId, actorId.Value, cancellationToken);
             loggerFactory.CreateLogger("IdentityAudit").LogInformation(
                 "FamilyMemberDeactivated ActorId={ActorId} TargetId={TargetId}",
                 actorId,

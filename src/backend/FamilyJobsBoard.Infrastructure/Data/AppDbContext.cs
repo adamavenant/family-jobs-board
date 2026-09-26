@@ -5,6 +5,7 @@ using FamilyJobsBoard.Domain.Identity;
 using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Domain.PointAdjustments;
 using FamilyJobsBoard.Domain.Points;
+using FamilyJobsBoard.Domain.TurnRotations;
 using Microsoft.EntityFrameworkCore;
 
 namespace FamilyJobsBoard.Infrastructure.Data;
@@ -41,6 +42,8 @@ public sealed class AppDbContext : DbContext
     public DbSet<PointAdjustment> PointAdjustments => Set<PointAdjustment>();
 
     public DbSet<HouseholdDataReset> HouseholdDataResets => Set<HouseholdDataReset>();
+
+    public DbSet<TurnRotationRevision> TurnRotationRevisions => Set<TurnRotationRevision>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

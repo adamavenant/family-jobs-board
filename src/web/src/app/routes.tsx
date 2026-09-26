@@ -54,6 +54,10 @@ import {
   goodBehavioursLoader,
 } from "../features/goodBehaviours/goodBehavioursRoute";
 import { pointAdjustmentsAction } from "../features/pointAdjustments/pointAdjustmentsRoute";
+import {
+  whoseTurnAction,
+  whoseTurnLoader,
+} from "../features/whoseTurn/whoseTurnRoute";
 import { calendarLoader } from "../features/calendar/calendarRoute";
 import { CalendarPage } from "../features/calendar/CalendarPage";
 
@@ -1015,6 +1019,11 @@ export const routes: RouteObject[] = [
     path: "/good-behaviours",
     loader: goodBehavioursLoader,
     action: goodBehavioursAction,
+  },
+  {
+    path: "/whose-turn",
+    loader: whoseTurnLoader,
+    action: whoseTurnAction,
   },
   {
     path: "/point-adjustments",

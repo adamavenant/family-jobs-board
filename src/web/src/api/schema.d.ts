@@ -521,6 +521,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/turn-rotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the household's whose-turn rotations.
+         * @description Adult-only. Returns every active rotation with the revision effective today, if any, and a short preview of upcoming turns.
+         */
+        get: operations["ListTurnRotations"];
+        put?: never;
+        /**
+         * Start a new whose-turn rotation.
+         * @description Adult-only. Creates the rotation's first revision, which may be effective today or later.
+         */
+        post: operations["CreateTurnRotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/turn-rotations/{rotationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Create a new effective-dated revision of a rotation.
+         * @description Adult-only. Existing revisions are immutable; this always adds one, effective no earlier than tomorrow.
+         */
+        put: operations["UpdateTurnRotation"];
+        post?: never;
+        /**
+         * End a rotation from tomorrow.
+         * @description Adult-only. The rotation stops appearing on the board from tomorrow; earlier dates keep their answers.
+         */
+        delete: operations["EndTurnRotation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -857,6 +905,14 @@ export interface components {
             /** Format: int32 */
             points: number | string;
         };
+        SaveTurnRotationRequest: {
+            participantChildIds: null | string[];
+            /** Format: uuid */
+            firstChildId: null | string;
+            /** Format: date */
+            effectiveFrom: null | string;
+            question: null | string;
+        };
         SetupPinRequest: {
             setupToken: null | string;
             pin: null | string;
@@ -891,6 +947,38 @@ export interface components {
             pointEarnings: components["schemas"]["PointEarningResponse"][];
             /** Format: int32 */
             pendingApprovalCount: number | string;
+            whoseTurns: components["schemas"]["WhoseTurnResponse"][];
+        };
+        TurnRotationConfigurationResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date */
+            effectiveFrom: string;
+            question: string;
+            participantChildIds: string[];
+            /** Format: uuid */
+            firstChildId: string;
+            /** Format: uuid */
+            createdByMemberId: string;
+            /** Format: date-time */
+            createdAtUtc: string;
+        };
+        TurnRotationOverviewResponse: {
+            rotations: components["schemas"]["TurnRotationSummaryResponse"][];
+        };
+        TurnRotationSummaryResponse: {
+            /** Format: uuid */
+            rotationId: string;
+            current: null | components["schemas"]["TurnRotationConfigurationResponse"];
+            upcomingTurns: components["schemas"]["TurnRotationTurnResponse"][];
+        };
+        TurnRotationTurnResponse: {
+            /** Format: date */
+            date: string;
+            question: string;
+            /** Format: uuid */
+            childId: string;
+            childDisplayName: string;
         };
         UpdateFamilyMemberRequest: {
             firstName: null | string;
@@ -907,6 +995,14 @@ export interface components {
             agendaPeriod: null | string;
             /** Format: time */
             scheduledTime: null | string;
+        };
+        WhoseTurnResponse: {
+            /** Format: uuid */
+            rotationId: string;
+            question: string;
+            /** Format: uuid */
+            childId: string;
+            childDisplayName: string;
         };
     };
     responses: never;
@@ -2129,6 +2225,143 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    ListTurnRotations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRotationOverviewResponse"];
+                };
+            };
+        };
+    };
+    CreateTurnRotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveTurnRotationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRotationOverviewResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    UpdateTurnRotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rotationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveTurnRotationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRotationOverviewResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    EndTurnRotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rotationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRotationOverviewResponse"];
                 };
             };
             /** @description Not Found */
