@@ -12,6 +12,7 @@
 
 - Agent-authored commits: require `git config user.name` = `adamavenagent` and `git config user.email` = `321782925+adamavenagent@users.noreply.github.com` before committing.
 - Before agent-authored push/PR: require `gh api user --jq .login` = `adamavenagent`; mismatch or unavailable: stop before publishing.
+- Agent-authored PR reviews: post as `adamavenant-claude-reviewer[bot]` with an inline token (`GH_TOKEN=$(claude-reviewer-token) gh …`), never as `adamavenagent`; token unavailable: stop before posting. Never print or persist the token.
 - Do not rewrite or attribute human-authored commits to `adamavenagent`; change identity only when explicitly authorised.
 
 ## During work
