@@ -1315,6 +1315,209 @@
         ]
       }
     },
+    "/api/jobs/{id}/recurrence": {
+      "get": {
+        "tags": [
+          "Today"
+        ],
+        "summary": "Get the recurrence definition for a generated job occurrence.",
+        "operationId": "GetRecurringJobDetails",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringJobSeriesDetailsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/jobs/{id}/recurring-change/preview": {
+      "post": {
+        "tags": [
+          "Today"
+        ],
+        "summary": "Preview a This Only, All Future, or All recurring-job change.",
+        "description": "Calculates updated, created, cancelled, and immutable occurrence counts without changing data.",
+        "operationId": "PreviewRecurringJobChange",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecurringJobChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringJobChangeImpactResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/jobs/{id}/recurring-change": {
+      "post": {
+        "tags": [
+          "Today"
+        ],
+        "summary": "Atomically apply a scoped recurring-job edit or cancellation.",
+        "description": "Recalculates the impact, preserves approved/cancelled history and ledger entries, and is request-ID idempotent.",
+        "operationId": "ApplyRecurringJobChange",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyRecurringJobChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringJobChangeResultResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
     "/api/good-behaviour-types": {
       "get": {
         "tags": [
@@ -1984,6 +2187,22 @@
             "items": {
               "$ref": "#/components/schemas/JobResponse"
             }
+          }
+        }
+      },
+      "ApplyRecurringJobChangeRequest": {
+        "required": [
+          "requestId",
+          "change"
+        ],
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "change": {
+            "$ref": "#/components/schemas/RecurringJobChangeRequest"
           }
         }
       },
@@ -2749,7 +2968,8 @@
           "status",
           "completedAtUtc",
           "approvedAtUtc",
-          "latestRejection"
+          "latestRejection",
+          "recurrence"
         ],
         "type": "object",
         "properties": {
@@ -2829,6 +3049,16 @@
               },
               {
                 "$ref": "#/components/schemas/JobRejectionResponse"
+              }
+            ]
+          },
+          "recurrence": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecurringJobSeriesDetailsResponse"
               }
             ]
           }
@@ -3164,6 +3394,223 @@
           }
         }
       },
+      "RecurringJobChangeImpactResponse": {
+        "required": [
+          "updatedCount",
+          "createdCount",
+          "cancelledCount",
+          "approvedSkippedCount",
+          "cancelledSkippedCount",
+          "retrospectivePointIncreaseSkippedCount",
+          "warnings"
+        ],
+        "type": "object",
+        "properties": {
+          "updatedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "createdCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "cancelledCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "approvedSkippedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "cancelledSkippedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "retrospectivePointIncreaseSkippedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RecurringJobChangeRequest": {
+        "required": [
+          "operation",
+          "scope",
+          "expectedSeriesVersion",
+          "name",
+          "description",
+          "points",
+          "scheduledDate",
+          "agendaPeriod",
+          "scheduledTime",
+          "frequency",
+          "weekdays",
+          "dayOfMonth",
+          "endDate"
+        ],
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scope": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "expectedSeriesVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "points": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "scheduledDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "agendaPeriod": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scheduledTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "time"
+          },
+          "frequency": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "weekdays": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "dayOfMonth": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "endDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          }
+        }
+      },
+      "RecurringJobChangeResultResponse": {
+        "required": [
+          "requestId",
+          "seriesId",
+          "seriesVersion",
+          "operation",
+          "scope",
+          "impact"
+        ],
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "seriesId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "seriesVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "impact": {
+            "$ref": "#/components/schemas/RecurringJobChangeImpactResponse"
+          }
+        }
+      },
       "RecurringJobResponse": {
         "required": [
           "assignments"
@@ -3175,6 +3622,65 @@
             "items": {
               "$ref": "#/components/schemas/RecurringJobAssignmentResponse"
             }
+          }
+        }
+      },
+      "RecurringJobSeriesDetailsResponse": {
+        "required": [
+          "seriesId",
+          "version",
+          "frequency",
+          "weekdays",
+          "dayOfMonth",
+          "startDate",
+          "endDate",
+          "takesTurns"
+        ],
+        "type": "object",
+        "properties": {
+          "seriesId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "frequency": {
+            "type": "string"
+          },
+          "weekdays": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dayOfMonth": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "endDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "takesTurns": {
+            "type": "boolean"
           }
         }
       },

@@ -31,6 +31,11 @@ public sealed class AppDbContext : DbContext
 
     public DbSet<RecurringJobSeries> RecurringJobSeries => Set<RecurringJobSeries>();
 
+    public DbSet<RecurringJobSeriesRevision> RecurringJobSeriesRevisions =>
+        Set<RecurringJobSeriesRevision>();
+
+    public DbSet<RecurringJobChange> RecurringJobChanges => Set<RecurringJobChange>();
+
     public DbSet<JobReviewDecision> JobReviewDecisions => Set<JobReviewDecision>();
 
     public DbSet<PointsLedgerEntry> PointsLedgerEntries => Set<PointsLedgerEntry>();

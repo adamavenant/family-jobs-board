@@ -22,7 +22,8 @@ internal static class TodayJobMapping
     public static TodayJob MapJob(
         Job job,
         HouseholdMember child,
-        TodayJobRejection? latestRejection)
+        TodayJobRejection? latestRejection,
+        RecurringJobSeries? series = null)
     {
         return new TodayJob(
             job.Id,
@@ -41,7 +42,20 @@ internal static class TodayJobMapping
             MapStatus(job.Status),
             job.CompletedAtUtc,
             job.ApprovedAtUtc,
-            job.Status == JobStatus.Open ? latestRejection : null);
+            job.Status == JobStatus.Open ? latestRejection : null,
+            series is null
+                ? null
+                : new TodayRecurringJobSeries(
+                    series.Id,
+                    series.Version,
+                    MapRecurrenceFrequency(series.Frequency),
+                    series.SelectedWeekdays()
+                        .Select(weekday => weekday.ToString().ToLowerInvariant())
+                        .ToArray(),
+                    series.MonthlyDay,
+                    series.StartDate,
+                    series.EndDate,
+                    series.TakesTurns));
     }
 
     public static string MapStatus(JobStatus status)

@@ -218,4 +218,30 @@ public sealed class Job
     {
         ScheduledDate = date;
     }
+
+    public void EditRecurringOccurrence(
+        Guid childId,
+        string name,
+        string description,
+        int points,
+        DateOnly scheduledDate,
+        AgendaPeriod agendaPeriod,
+        TimeOnly? scheduledTime,
+        RecurrenceFrequency frequency)
+    {
+        Edit(name, description, points, scheduledDate, agendaPeriod, scheduledTime);
+
+        if (childId == Guid.Empty)
+        {
+            throw new ArgumentException("A recurring occurrence needs an assigned child.", nameof(childId));
+        }
+
+        if (RecurringJobSeriesId is null)
+        {
+            throw new InvalidOperationException("Only recurring occurrences can be reconciled.");
+        }
+
+        ChildId = childId;
+        RecurrenceFrequency = frequency;
+    }
 }

@@ -556,6 +556,11 @@ public sealed class TodayBoardServiceTests
             LastGenerationHorizon = horizon;
             return Task.FromResult<IReadOnlyList<RecurringJobSeries>>([]);
         }
+        public Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesAsync(
+            IReadOnlyCollection<Guid> seriesIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<RecurringJobSeries>>(
+                Series.Where(item => seriesIds.Contains(item.Id)).ToArray());
         public Task<TodayPointsSummary> GetPointsSummaryAsync(Guid childId, CancellationToken cancellationToken) =>
             Task.FromResult(new TodayPointsSummary(0, []));
         public Task AddPointsAwardAsync(PointsLedgerEntry entry, CancellationToken cancellationToken) => throw Unused();

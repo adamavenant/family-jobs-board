@@ -1030,6 +1030,128 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Scoped_weekday_edit_reconciles_generated_jobs_and_preserves_approved_history()
+    {
+        var endDate = CurrentDate.AddDays(6);
+        using var createResponse = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/daily",
+            new
+            {
+                requestId = Guid.NewGuid(),
+                childIds = new[] { DemoDataIds.Fredster },
+                name = "Empty school bags",
+                description = "Put everything away.",
+                points = 3,
+                agendaPeriod = "evening",
+                scheduledTime = "18:00:00",
+                startDate = CurrentDate,
+                endDate,
+            });
+        createResponse.EnsureSuccessStatusCode();
+        var created = await createResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
+        var seriesId = Assert.Single(created!.Assignments).SeriesId;
+
+        await using (var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var approved = await database.Jobs
+                .SingleAsync(job => job.RecurringJobSeriesId == seriesId
+                    && job.ScheduledDate == CurrentDate.AddDays(1));
+            await CompleteAndApproveAsync(approved.Id);
+        }
+
+        var board = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}");
+        var anchor = Assert.Single(board!.Jobs, job => job.RecurringJobSeriesId == seriesId);
+        Assert.NotNull(anchor.Recurrence);
+        var change = new
+        {
+            operation = "edit",
+            scope = "allFuture",
+            expectedSeriesVersion = anchor.Recurrence.Version,
+            name = "Empty school bags",
+            description = "Weekdays only.",
+            points = 4,
+            scheduledDate = anchor.ScheduledDate,
+            agendaPeriod = "evening",
+            scheduledTime = "18:30:00",
+            frequency = "weekly",
+            weekdays = new[] { "monday", "tuesday", "wednesday", "thursday", "friday" },
+            dayOfMonth = (int?)null,
+            endDate,
+        };
+
+        using var childPreviewRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/jobs/{anchor.Id}/recurring-change/preview")
+        {
+            Content = JsonContent.Create(change),
+        };
+        childPreviewRequest.Headers.Add("X-Test-Member-Id", DemoDataIds.Fredster.ToString());
+        using var childPreviewResponse = await Client.SendAsync(childPreviewRequest);
+        Assert.Equal(HttpStatusCode.Forbidden, childPreviewResponse.StatusCode);
+
+        using var previewResponse = await Client.PostAsJsonAsync(
+            $"/api/jobs/{anchor.Id}/recurring-change/preview",
+            change);
+        var preview = await previewResponse.Content.ReadFromJsonAsync<RecurringJobChangeImpactResponse>();
+        Assert.Equal(HttpStatusCode.OK, previewResponse.StatusCode);
+        Assert.NotNull(preview);
+        Assert.Equal(1, preview.ApprovedSkippedCount);
+        Assert.True(preview.CancelledCount >= 1);
+
+        var requestId = Guid.NewGuid();
+        var applyRequests = new[]
+        {
+            Client.PostAsJsonAsync(
+                $"/api/jobs/{anchor.Id}/recurring-change",
+                new { requestId, change }),
+            Client.PostAsJsonAsync(
+                $"/api/jobs/{anchor.Id}/recurring-change",
+                new { requestId, change }),
+        };
+        var applyResponses = await Task.WhenAll(applyRequests);
+        Assert.All(applyResponses, response => Assert.Equal(HttpStatusCode.OK, response.StatusCode));
+        var applied = await applyResponses[0].Content
+            .ReadFromJsonAsync<RecurringJobChangeResultResponse>();
+        Assert.NotNull(applied);
+        Assert.Equal(preview.ApprovedSkippedCount, applied.Impact.ApprovedSkippedCount);
+        Assert.Equal(preview.CancelledCount, applied.Impact.CancelledCount);
+        foreach (var response in applyResponses)
+        {
+            response.Dispose();
+        }
+
+        await using var verificationScope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var verificationDatabase = verificationScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var storedSeries = await verificationDatabase.RecurringJobSeries.SingleAsync(
+            series => series.Id == seriesId);
+        var storedJobs = await verificationDatabase.Jobs
+            .Where(job => job.RecurringJobSeriesId == seriesId)
+            .OrderBy(job => job.ScheduledDate)
+            .ToListAsync();
+        var approvedJob = Assert.Single(storedJobs, job => job.Status == JobStatus.Approved);
+        Assert.Equal(3, approvedJob.Points);
+        Assert.Equal(RecurrenceFrequency.Weekly, storedSeries.Frequency);
+        Assert.DoesNotContain(DayOfWeek.Saturday, storedSeries.SelectedWeekdays());
+        Assert.DoesNotContain(DayOfWeek.Sunday, storedSeries.SelectedWeekdays());
+        Assert.Single(await verificationDatabase.RecurringJobChanges
+            .Where(item => item.Id == requestId)
+            .ToListAsync());
+        Assert.Single(await verificationDatabase.RecurringJobSeriesRevisions
+            .Where(revision => revision.ChangeRequestId == requestId)
+            .ToListAsync());
+        var storedJobIds = storedJobs.Select(job => job.Id).ToArray();
+        Assert.Equal(1, await verificationDatabase.PointsLedgerEntries
+            .CountAsync(entry => entry.JobId != null
+                && storedJobIds.Contains(entry.JobId.Value)));
+    }
+
+    [Fact]
     public async Task Take_turns_schedule_alternates_children_and_continues_after_restart()
     {
         var requestId = Guid.NewGuid();
@@ -1960,7 +2082,35 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         string Status,
         DateTimeOffset? CompletedAtUtc,
         DateTimeOffset? ApprovedAtUtc,
-        JobRejectionResponse? LatestRejection);
+        JobRejectionResponse? LatestRejection,
+        RecurringJobSeriesDetailsResponse? Recurrence);
+
+    internal sealed record RecurringJobSeriesDetailsResponse(
+        Guid SeriesId,
+        int Version,
+        string Frequency,
+        IReadOnlyList<string> Weekdays,
+        int? DayOfMonth,
+        DateOnly StartDate,
+        DateOnly? EndDate,
+        bool TakesTurns);
+
+    private sealed record RecurringJobChangeImpactResponse(
+        int UpdatedCount,
+        int CreatedCount,
+        int CancelledCount,
+        int ApprovedSkippedCount,
+        int CancelledSkippedCount,
+        int RetrospectivePointIncreaseSkippedCount,
+        IReadOnlyList<string> Warnings);
+
+    private sealed record RecurringJobChangeResultResponse(
+        Guid RequestId,
+        Guid SeriesId,
+        int SeriesVersion,
+        string Operation,
+        string Scope,
+        RecurringJobChangeImpactResponse Impact);
 
     internal sealed record JobRejectionResponse(
         Guid DecisionId,

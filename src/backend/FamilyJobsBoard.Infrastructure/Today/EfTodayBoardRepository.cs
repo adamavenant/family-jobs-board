@@ -189,6 +189,16 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesAsync(
+        IReadOnlyCollection<Guid> seriesIds,
+        CancellationToken cancellationToken)
+    {
+        return await _database.RecurringJobSeries
+            .AsNoTracking()
+            .Where(series => seriesIds.Contains(series.Id))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task AddRecurringJobSeriesAsync(
         IReadOnlyCollection<RecurringJobSeries> series,
         CancellationToken cancellationToken)

@@ -143,6 +143,7 @@ public sealed class RecurringJobSeries
         MonthlyDay = monthlyDay;
         RotationChildIds = rotation;
         GeneratedThrough = startDate.AddDays(-1);
+        Version = 1;
     }
 
     public Guid Id { get; private set; }
@@ -178,6 +179,8 @@ public sealed class RecurringJobSeries
     public IReadOnlyList<Guid> RotationChildIds { get; private set; } = [];
 
     public int NextTurnIndex { get; private set; }
+
+    public int Version { get; private set; }
 
     public bool TakesTurns => RotationChildIds.Count > 0;
 
@@ -339,7 +342,113 @@ public sealed class RecurringJobSeries
         }
 
         GeneratedThrough = lastDate;
+        Version++;
         return occurrences;
+    }
+
+    public void EditSchedule(
+        string name,
+        string description,
+        int points,
+        AgendaPeriod agendaPeriod,
+        TimeOnly? scheduledTime,
+        DateOnly? endDate,
+        RecurrenceFrequency frequency,
+        IReadOnlyCollection<DayOfWeek>? weekdays,
+        int? monthlyDay,
+        int nextTurnIndex)
+    {
+        var selectedWeekdays = weekdays?.ToArray() ?? [];
+        var weekdayMask = 0;
+        if (frequency == RecurrenceFrequency.Weekly)
+        {
+            if (selectedWeekdays.Length == 0
+                || selectedWeekdays.Length != selectedWeekdays.Distinct().Count()
+                || selectedWeekdays.Any(weekday => !Enum.IsDefined(weekday)))
+            {
+                throw new ArgumentException(
+                    "A weekly job series needs one or more distinct weekdays.",
+                    nameof(weekdays));
+            }
+
+            foreach (var weekday in selectedWeekdays)
+            {
+                weekdayMask |= 1 << (int)weekday;
+            }
+        }
+        else if (selectedWeekdays.Length > 0)
+        {
+            throw new ArgumentException("Only weekly job series can select weekdays.", nameof(weekdays));
+        }
+
+        if (frequency == RecurrenceFrequency.Monthly && monthlyDay is null or < 1 or > 31)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(monthlyDay),
+                "Choose a day of month from 1 through 31.");
+        }
+
+        if (frequency != RecurrenceFrequency.Monthly && monthlyDay is not null)
+        {
+            throw new ArgumentException("Only monthly job series can select a day of month.", nameof(monthlyDay));
+        }
+
+        var trimmedName = name.Trim();
+        if (trimmedName.Length == 0 || trimmedName.Length > Job.MaximumNameLength)
+        {
+            throw new ArgumentException(
+                $"A job name must contain between 1 and {Job.MaximumNameLength} characters.",
+                nameof(name));
+        }
+
+        var trimmedDescription = description.Trim();
+        if (trimmedDescription.Length > Job.MaximumDescriptionLength)
+        {
+            throw new ArgumentException(
+                $"A job description cannot exceed {Job.MaximumDescriptionLength} characters.",
+                nameof(description));
+        }
+
+        if (points < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(points), "Points cannot be negative.");
+        }
+
+        if (nextTurnIndex < 0 || (TakesTurns && nextTurnIndex >= RotationChildIds.Count)
+            || (!TakesTurns && nextTurnIndex != 0))
+        {
+            throw new ArgumentOutOfRangeException(nameof(nextTurnIndex));
+        }
+
+        Name = trimmedName;
+        Description = trimmedDescription;
+        Points = points;
+        AgendaPeriod = agendaPeriod;
+        ScheduledTime = scheduledTime;
+        EndDate = endDate;
+        Frequency = frequency;
+        WeekdayMask = weekdayMask;
+        MonthlyDay = monthlyDay;
+        NextTurnIndex = nextTurnIndex;
+        Version++;
+    }
+
+    public void EndBefore(DateOnly date)
+    {
+        var finalDate = date.AddDays(-1);
+        if (EndDate is null || finalDate < EndDate)
+        {
+            EndDate = finalDate;
+        }
+
+        Version++;
+    }
+
+    public bool OccursOnDate(DateOnly date)
+    {
+        return date >= StartDate
+            && (EndDate is null || date <= EndDate)
+            && OccursOn(date);
     }
 
     public bool MatchesDaily(

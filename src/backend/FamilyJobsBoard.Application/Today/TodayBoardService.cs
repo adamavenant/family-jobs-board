@@ -100,6 +100,17 @@ public sealed class TodayBoardService
             cancellationToken);
         var rejectionByJobId = latestRejections.ToDictionary(rejection => rejection.JobId);
         var childById = children.ToDictionary(child => child.Id);
+        var recurringSeriesIds = jobs
+            .Select(job => job.RecurringJobSeriesId)
+            .OfType<Guid>()
+            .Distinct()
+            .ToArray();
+        var seriesById = recurringSeriesIds.Length == 0
+            ? new Dictionary<Guid, RecurringJobSeries>()
+            : (await _repository.GetRecurringJobSeriesAsync(
+                    recurringSeriesIds,
+                    cancellationToken))
+                .ToDictionary(series => series.Id);
         TodayPointsSummary? points = null;
         if (!viewer.IsAdult)
         {
@@ -121,7 +132,10 @@ public sealed class TodayBoardService
             jobs.Select(job => MapJob(
                 job,
                 childById[job.ChildId],
-                rejectionByJobId.GetValueOrDefault(job.Id))).ToArray(),
+                rejectionByJobId.GetValueOrDefault(job.Id),
+                job.RecurringJobSeriesId is { } seriesId
+                    ? seriesById.GetValueOrDefault(seriesId)
+                    : null)).ToArray(),
             points?.Balance,
             points?.Earnings ?? [],
             householdVisibleJobs.Count(job => job.Status == JobStatus.PendingApproval),
@@ -905,8 +919,9 @@ public sealed class TodayBoardService
     private static TodayJob MapJob(
         Job job,
         HouseholdMember child,
-        TodayJobRejection? latestRejection) =>
-        TodayJobMapping.MapJob(job, child, latestRejection);
+        TodayJobRejection? latestRejection,
+        RecurringJobSeries? series = null) =>
+        TodayJobMapping.MapJob(job, child, latestRejection, series);
 
     private static string MapAgendaPeriod(AgendaPeriod agendaPeriod) =>
         TodayJobMapping.MapAgendaPeriod(agendaPeriod);

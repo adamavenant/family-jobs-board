@@ -40,7 +40,18 @@ public sealed record TodayJob(
     string Status,
     DateTimeOffset? CompletedAtUtc,
     DateTimeOffset? ApprovedAtUtc,
-    TodayJobRejection? LatestRejection);
+    TodayJobRejection? LatestRejection,
+    TodayRecurringJobSeries? Recurrence);
+
+public sealed record TodayRecurringJobSeries(
+    Guid SeriesId,
+    int Version,
+    string Frequency,
+    IReadOnlyList<string> Weekdays,
+    int? DayOfMonth,
+    DateOnly StartDate,
+    DateOnly? EndDate,
+    bool TakesTurns);
 
 public sealed record TodayJobRejection(
     Guid DecisionId,

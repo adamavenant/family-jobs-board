@@ -19,6 +19,55 @@ export interface TodayJob {
   completedAtUtc: string | null;
   approvedAtUtc: string | null;
   latestRejection: JobRejection | null;
+  recurrence?: RecurringJobSeriesDetails | null;
+}
+
+export interface RecurringJobSeriesDetails {
+  seriesId: string;
+  version: number;
+  frequency: "daily" | "weekly" | "monthly";
+  weekdays: string[];
+  dayOfMonth: number | null;
+  startDate: string;
+  endDate: string | null;
+  takesTurns: boolean;
+}
+
+export type RecurringJobChangeScope = "thisOnly" | "allFuture" | "all";
+
+export interface RecurringJobChangeInput {
+  operation: "edit" | "cancel";
+  scope: RecurringJobChangeScope;
+  expectedSeriesVersion: number;
+  name: string;
+  description: string;
+  points: number;
+  scheduledDate: string;
+  agendaPeriod: "morning" | "arrivingHome" | "evening" | "unscheduled";
+  scheduledTime: string | null;
+  frequency: "daily" | "weekly" | "monthly";
+  weekdays: string[];
+  dayOfMonth: number | null;
+  endDate: string | null;
+}
+
+export interface RecurringJobChangeImpact {
+  updatedCount: number;
+  createdCount: number;
+  cancelledCount: number;
+  approvedSkippedCount: number;
+  cancelledSkippedCount: number;
+  retrospectivePointIncreaseSkippedCount: number;
+  warnings: string[];
+}
+
+export interface RecurringJobChangeResult {
+  requestId: string;
+  seriesId: string;
+  seriesVersion: number;
+  operation: string;
+  scope: string;
+  impact: RecurringJobChangeImpact;
 }
 
 export interface JobRejection {
@@ -109,13 +158,15 @@ export async function getToday(
     throw new ApiError(problemMessage(error, "We couldn't load today's jobs."));
   }
 
+  const jobs = data.jobs.map(mapJob);
+
   return {
     viewer: data.viewer,
     members: data.members,
     date: data.date,
     currentDate: data.currentDate,
     selectedChildId: data.selectedChildId,
-    jobs: data.jobs.map(mapJob),
+    jobs,
     pointsBalance:
       data.pointsBalance === null ? null : Number(data.pointsBalance),
     pointEarnings: data.pointEarnings.map((earning) => ({
@@ -129,6 +180,93 @@ export async function getToday(
     })),
     pendingApprovalCount: Number(data.pendingApprovalCount),
     whoseTurns: data.whoseTurns ?? [],
+  };
+}
+
+export async function getRecurringJobDetails(
+  id: string,
+): Promise<RecurringJobSeriesDetails> {
+  const client = apiClient();
+  const { data, error } = await client.GET("/api/jobs/{id}/recurrence", {
+    params: { path: { id } },
+  });
+  if (!data) {
+    throw new ApiError(
+      problemMessage(error, "That recurring schedule couldn't be loaded."),
+    );
+  }
+
+  return {
+    ...data,
+    version: Number(data.version),
+    frequency:
+      data.frequency === "weekly" || data.frequency === "monthly"
+        ? data.frequency
+        : "daily",
+    dayOfMonth: data.dayOfMonth === null ? null : Number(data.dayOfMonth),
+  };
+}
+
+export async function previewRecurringJobChange(
+  id: string,
+  change: RecurringJobChangeInput,
+): Promise<RecurringJobChangeImpact> {
+  const client = apiClient();
+  const { data, error } = await client.POST(
+    "/api/jobs/{id}/recurring-change/preview",
+    { params: { path: { id } }, body: change },
+  );
+  if (!data) {
+    throw new ApiError(
+      problemMessage(error, "That recurring change couldn't be previewed."),
+    );
+  }
+
+  return mapRecurringImpact(data);
+}
+
+export async function applyRecurringJobChange(
+  id: string,
+  requestId: string,
+  change: RecurringJobChangeInput,
+): Promise<RecurringJobChangeResult> {
+  const client = apiClient();
+  const { data, error } = await client.POST("/api/jobs/{id}/recurring-change", {
+    params: { path: { id } },
+    body: { requestId, change },
+  });
+  if (!data) {
+    throw new ApiError(
+      problemMessage(error, "That recurring change couldn't be applied."),
+    );
+  }
+
+  return {
+    ...data,
+    seriesVersion: Number(data.seriesVersion),
+    impact: mapRecurringImpact(data.impact),
+  };
+}
+
+function mapRecurringImpact(data: {
+  updatedCount: number | string;
+  createdCount: number | string;
+  cancelledCount: number | string;
+  approvedSkippedCount: number | string;
+  cancelledSkippedCount: number | string;
+  retrospectivePointIncreaseSkippedCount: number | string;
+  warnings: string[];
+}): RecurringJobChangeImpact {
+  return {
+    updatedCount: Number(data.updatedCount),
+    createdCount: Number(data.createdCount),
+    cancelledCount: Number(data.cancelledCount),
+    approvedSkippedCount: Number(data.approvedSkippedCount),
+    cancelledSkippedCount: Number(data.cancelledSkippedCount),
+    retrospectivePointIncreaseSkippedCount: Number(
+      data.retrospectivePointIncreaseSkippedCount,
+    ),
+    warnings: data.warnings,
   };
 }
 
@@ -366,6 +504,16 @@ export function mapJob(job: {
     reason: string | null;
     rejectedAtUtc: string;
   } | null;
+  recurrence?: {
+    seriesId: string;
+    version: number | string;
+    frequency: string;
+    weekdays: string[];
+    dayOfMonth: number | string | null;
+    startDate: string;
+    endDate: string | null;
+    takesTurns: boolean;
+  } | null;
 }): TodayJob {
   return {
     ...job,
@@ -388,6 +536,21 @@ export function mapJob(job: {
       job.status === "cancelled"
         ? job.status
         : "open",
+    recurrence: job.recurrence
+      ? {
+          ...job.recurrence,
+          version: Number(job.recurrence.version),
+          frequency:
+            job.recurrence.frequency === "weekly" ||
+            job.recurrence.frequency === "monthly"
+              ? job.recurrence.frequency
+              : "daily",
+          dayOfMonth:
+            job.recurrence.dayOfMonth === null
+              ? null
+              : Number(job.recurrence.dayOfMonth),
+        }
+      : null,
   };
 }
 
