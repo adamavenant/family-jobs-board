@@ -37,6 +37,14 @@ export interface TodayBoard {
   pointsBalance: number | null;
   pointEarnings: PointEarning[];
   pendingApprovalCount: number;
+  whoseTurns: WhoseTurn[];
+}
+
+export interface WhoseTurn {
+  rotationId: string;
+  question: string;
+  childId: string;
+  childDisplayName: string;
 }
 
 export interface HouseholdMember {
@@ -120,6 +128,7 @@ export async function getToday(
       loggedByDisplayName: earning.loggedByDisplayName,
     })),
     pendingApprovalCount: Number(data.pendingApprovalCount),
+    whoseTurns: data.whoseTurns ?? [],
   };
 }
 
