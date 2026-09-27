@@ -99,6 +99,7 @@ public sealed record CancelJobRequest(string? Reason);
 public sealed record RecurringJobChangeRequest(
     string? Operation,
     string? Scope,
+    string? Reason,
     int ExpectedSeriesVersion,
     string? Name,
     string? Description,
@@ -133,6 +134,16 @@ public sealed record RecurringJobChangeImpactResponse(
     int CancelledSkippedCount,
     int RetrospectivePointIncreaseSkippedCount,
     IReadOnlyList<string> Warnings);
+
+public sealed record RecurringJobScopePreviewResponse(
+    RecurringJobChangeImpactResponse? Impact,
+    string? Error);
+
+public sealed record RecurringJobChangePreviewResponse(
+    int SeriesVersion,
+    RecurringJobScopePreviewResponse ThisOnly,
+    RecurringJobScopePreviewResponse AllFuture,
+    RecurringJobScopePreviewResponse All);
 
 public sealed record RecurringJobChangeResultResponse(
     Guid RequestId,

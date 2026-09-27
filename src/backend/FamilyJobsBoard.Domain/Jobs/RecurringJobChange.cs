@@ -20,6 +20,7 @@ public sealed class RecurringJobChange
         int approvedSkippedCount,
         int cancelledSkippedCount,
         int retrospectivePointIncreaseSkippedCount,
+        IReadOnlyCollection<string> warnings,
         int seriesVersion,
         DateTimeOffset appliedAtUtc)
     {
@@ -42,6 +43,7 @@ public sealed class RecurringJobChange
         ApprovedSkippedCount = approvedSkippedCount;
         CancelledSkippedCount = cancelledSkippedCount;
         RetrospectivePointIncreaseSkippedCount = retrospectivePointIncreaseSkippedCount;
+        Warnings = warnings.ToArray();
         SeriesVersion = seriesVersion;
         AppliedAtUtc = appliedAtUtc.ToUniversalTime();
     }
@@ -59,6 +61,7 @@ public sealed class RecurringJobChange
     public int ApprovedSkippedCount { get; private set; }
     public int CancelledSkippedCount { get; private set; }
     public int RetrospectivePointIncreaseSkippedCount { get; private set; }
+    public string[] Warnings { get; private set; } = [];
     public int SeriesVersion { get; private set; }
     public DateTimeOffset AppliedAtUtc { get; private set; }
 }

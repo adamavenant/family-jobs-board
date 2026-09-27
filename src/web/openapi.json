@@ -1315,53 +1315,6 @@
         ]
       }
     },
-    "/api/jobs/{id}/recurrence": {
-      "get": {
-        "tags": [
-          "Today"
-        ],
-        "summary": "Get the recurrence definition for a generated job occurrence.",
-        "operationId": "GetRecurringJobDetails",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RecurringJobSeriesDetailsResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "Bearer": [ ]
-          }
-        ]
-      }
-    },
     "/api/jobs/{id}/recurring-change/preview": {
       "post": {
         "tags": [
@@ -1397,7 +1350,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RecurringJobChangeImpactResponse"
+                  "$ref": "#/components/schemas/RecurringJobChangePreviewResponse"
                 }
               }
             }
@@ -3462,10 +3415,39 @@
           }
         }
       },
+      "RecurringJobChangePreviewResponse": {
+        "required": [
+          "seriesVersion",
+          "thisOnly",
+          "allFuture",
+          "all"
+        ],
+        "type": "object",
+        "properties": {
+          "seriesVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "thisOnly": {
+            "$ref": "#/components/schemas/RecurringJobScopePreviewResponse"
+          },
+          "allFuture": {
+            "$ref": "#/components/schemas/RecurringJobScopePreviewResponse"
+          },
+          "all": {
+            "$ref": "#/components/schemas/RecurringJobScopePreviewResponse"
+          }
+        }
+      },
       "RecurringJobChangeRequest": {
         "required": [
           "operation",
           "scope",
+          "reason",
           "expectedSeriesVersion",
           "name",
           "description",
@@ -3487,6 +3469,12 @@
             ]
           },
           "scope": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reason": {
             "type": [
               "null",
               "string"
@@ -3622,6 +3610,31 @@
             "items": {
               "$ref": "#/components/schemas/RecurringJobAssignmentResponse"
             }
+          }
+        }
+      },
+      "RecurringJobScopePreviewResponse": {
+        "required": [
+          "impact",
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "impact": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecurringJobChangeImpactResponse"
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

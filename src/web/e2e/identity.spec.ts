@@ -570,16 +570,23 @@ test("a grown-up changes a daily schedule to weekdays for all future jobs", asyn
       return json(route, auth(addieId, "Addie", "adult"));
     }
     if (path.endsWith("/recurring-change/preview")) {
-      const change = request.postDataJSON();
-      const cancelledCount = change.scope === "thisOnly" ? 0 : 4;
+      const scopePreview = (updatedCount: number, cancelledCount: number) => ({
+        impact: {
+          updatedCount,
+          createdCount: 0,
+          cancelledCount,
+          approvedSkippedCount: 0,
+          cancelledSkippedCount: 0,
+          retrospectivePointIncreaseSkippedCount: 0,
+          warnings: [],
+        },
+        error: null,
+      });
       return json(route, {
-        updatedCount: change.scope === "thisOnly" ? 1 : 12,
-        createdCount: 0,
-        cancelledCount,
-        approvedSkippedCount: 0,
-        cancelledSkippedCount: 0,
-        retrospectivePointIncreaseSkippedCount: 0,
-        warnings: [],
+        seriesVersion: 4,
+        thisOnly: scopePreview(1, 0),
+        allFuture: scopePreview(12, 4),
+        all: scopePreview(20, 8),
       });
     }
     if (path.endsWith("/recurring-change") && request.method() === "POST") {

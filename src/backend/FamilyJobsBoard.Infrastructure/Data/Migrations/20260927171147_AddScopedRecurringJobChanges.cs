@@ -18,6 +18,19 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                 nullable: false,
                 defaultValue: 0);
 
+            migrationBuilder.AddColumn<DateOnly>(
+                name: "original_scheduled_date",
+                table: "jobs",
+                type: "date",
+                nullable: true);
+
+            migrationBuilder.Sql(
+                """
+                UPDATE jobs
+                SET original_scheduled_date = scheduled_date
+                WHERE recurring_job_series_id IS NOT NULL;
+                """);
+
             migrationBuilder.CreateTable(
                 name: "recurring_job_changes",
                 columns: table => new
@@ -35,6 +48,7 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                     approved_skipped_count = table.Column<int>(type: "integer", nullable: false),
                     cancelled_skipped_count = table.Column<int>(type: "integer", nullable: false),
                     retrospective_point_increase_skipped_count = table.Column<int>(type: "integer", nullable: false),
+                    warnings = table.Column<string[]>(type: "text[]", nullable: false),
                     series_version = table.Column<int>(type: "integer", nullable: false),
                     applied_at_utc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
@@ -149,6 +163,10 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
             migrationBuilder.DropColumn(
                 name: "version",
                 table: "recurring_job_series");
+
+            migrationBuilder.DropColumn(
+                name: "original_scheduled_date",
+                table: "jobs");
         }
     }
 }

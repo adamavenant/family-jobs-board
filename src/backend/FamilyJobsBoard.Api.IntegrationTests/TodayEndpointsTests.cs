@@ -1096,11 +1096,12 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         using var previewResponse = await Client.PostAsJsonAsync(
             $"/api/jobs/{anchor.Id}/recurring-change/preview",
             change);
-        var preview = await previewResponse.Content.ReadFromJsonAsync<RecurringJobChangeImpactResponse>();
+        var preview = await previewResponse.Content.ReadFromJsonAsync<RecurringJobChangePreviewResponse>();
         Assert.Equal(HttpStatusCode.OK, previewResponse.StatusCode);
         Assert.NotNull(preview);
-        Assert.Equal(1, preview.ApprovedSkippedCount);
-        Assert.True(preview.CancelledCount >= 1);
+        var allFuturePreview = Assert.IsType<RecurringJobChangeImpactResponse>(preview.AllFuture.Impact);
+        Assert.Equal(1, allFuturePreview.ApprovedSkippedCount);
+        Assert.True(allFuturePreview.CancelledCount >= 1);
 
         var requestId = Guid.NewGuid();
         var applyRequests = new[]
@@ -1117,8 +1118,8 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var applied = await applyResponses[0].Content
             .ReadFromJsonAsync<RecurringJobChangeResultResponse>();
         Assert.NotNull(applied);
-        Assert.Equal(preview.ApprovedSkippedCount, applied.Impact.ApprovedSkippedCount);
-        Assert.Equal(preview.CancelledCount, applied.Impact.CancelledCount);
+        Assert.Equal(allFuturePreview.ApprovedSkippedCount, applied.Impact.ApprovedSkippedCount);
+        Assert.Equal(allFuturePreview.CancelledCount, applied.Impact.CancelledCount);
         foreach (var response in applyResponses)
         {
             response.Dispose();
@@ -1149,6 +1150,181 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.Equal(1, await verificationDatabase.PointsLedgerEntries
             .CountAsync(entry => entry.JobId != null
                 && storedJobIds.Contains(entry.JobId.Value)));
+    }
+
+    [Fact]
+    public async Task This_only_move_beyond_the_horizon_is_not_recreated_by_later_generation()
+    {
+        using var createResponse = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/daily",
+            new
+            {
+                requestId = Guid.NewGuid(),
+                childIds = new[] { DemoDataIds.Fredster },
+                name = "Move beyond horizon",
+                description = "Keep the exception stable.",
+                points = 3,
+                agendaPeriod = "evening",
+                scheduledTime = "18:00:00",
+                startDate = CurrentDate,
+                endDate = (DateOnly?)null,
+            });
+        createResponse.EnsureSuccessStatusCode();
+        var created = await createResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
+        var seriesId = Assert.Single(created!.Assignments).SeriesId;
+        var board = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}");
+        var anchor = Assert.Single(board!.Jobs, job => job.RecurringJobSeriesId == seriesId);
+        var movedDate = CurrentDate.AddDays(57);
+
+        using var changeResponse = await Client.PostAsJsonAsync(
+            $"/api/jobs/{anchor.Id}/recurring-change",
+            new
+            {
+                requestId = Guid.NewGuid(),
+                change = new
+                {
+                    operation = "edit",
+                    scope = "thisOnly",
+                    expectedSeriesVersion = anchor.Recurrence!.Version,
+                    name = anchor.Name,
+                    description = anchor.Description,
+                    points = anchor.Points,
+                    scheduledDate = movedDate,
+                    agendaPeriod = anchor.AgendaPeriod,
+                    scheduledTime = anchor.ScheduledTime,
+                    frequency = anchor.Recurrence.Frequency,
+                    weekdays = anchor.Recurrence.Weekdays,
+                    dayOfMonth = anchor.Recurrence.DayOfMonth,
+                    endDate = anchor.Recurrence.EndDate,
+                },
+            });
+        changeResponse.EnsureSuccessStatusCode();
+
+        using var browseResponse = await Client.GetAsync(
+            $"/api/today?memberId={DemoDataIds.Addie}&date={movedDate:yyyy-MM-dd}");
+        browseResponse.EnsureSuccessStatusCode();
+
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var jobs = await database.Jobs
+            .Where(job => job.RecurringJobSeriesId == seriesId)
+            .ToListAsync();
+        var moved = Assert.Single(jobs, job => job.ScheduledDate == movedDate);
+        Assert.Equal(CurrentDate, moved.OriginalScheduledDate);
+        Assert.DoesNotContain(jobs, job => job.ScheduledDate == CurrentDate);
+        Assert.Equal(57, jobs.Count);
+    }
+
+    [Fact]
+    public async Task Concurrent_identical_change_that_creates_jobs_is_applied_once()
+    {
+        var daysUntilMonday = ((int)DayOfWeek.Monday - (int)CurrentDate.DayOfWeek + 7) % 7;
+        var startDate = CurrentDate.AddDays(daysUntilMonday);
+        using var createResponse = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/weekly",
+            new
+            {
+                requestId = Guid.NewGuid(),
+                childIds = new[] { DemoDataIds.Fredster },
+                name = "Daily after edit",
+                description = "Starts weekly.",
+                points = 2,
+                agendaPeriod = "morning",
+                scheduledTime = (string?)null,
+                startDate,
+                endDate = (DateOnly?)null,
+                weekdays = new[] { "monday" },
+            });
+        createResponse.EnsureSuccessStatusCode();
+        var created = await createResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
+        var seriesId = Assert.Single(created!.Assignments).SeriesId;
+        var board = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}&date={startDate:yyyy-MM-dd}");
+        var anchor = Assert.Single(board!.Jobs, job => job.RecurringJobSeriesId == seriesId);
+        var requestId = Guid.NewGuid();
+        var change = new
+        {
+            operation = "edit",
+            scope = "allFuture",
+            expectedSeriesVersion = anchor.Recurrence!.Version,
+            name = anchor.Name,
+            description = "Now every day.",
+            points = anchor.Points,
+            scheduledDate = anchor.ScheduledDate,
+            agendaPeriod = anchor.AgendaPeriod,
+            scheduledTime = anchor.ScheduledTime,
+            frequency = "daily",
+            weekdays = Array.Empty<string>(),
+            dayOfMonth = (int?)null,
+            endDate = (DateOnly?)null,
+        };
+
+        var responses = await Task.WhenAll(
+            Client.PostAsJsonAsync(
+                $"/api/jobs/{anchor.Id}/recurring-change",
+                new { requestId, change }),
+            Client.PostAsJsonAsync(
+                $"/api/jobs/{anchor.Id}/recurring-change",
+                new { requestId, change }));
+
+        Assert.All(responses, response => Assert.Equal(HttpStatusCode.OK, response.StatusCode));
+        var result = await responses[0].Content.ReadFromJsonAsync<RecurringJobChangeResultResponse>();
+        Assert.NotNull(result);
+        Assert.True(result.Impact.CreatedCount > 0);
+        foreach (var response in responses)
+        {
+            response.Dispose();
+        }
+
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(1, await database.RecurringJobChanges.CountAsync(change => change.Id == requestId));
+        var duplicateDates = await database.Jobs
+            .Where(job => job.RecurringJobSeriesId == seriesId)
+            .GroupBy(job => job.ScheduledDate)
+            .Where(group => group.Count() > 1)
+            .CountAsync();
+        Assert.Equal(0, duplicateDates);
+    }
+
+    [Fact]
+    public async Task Scoped_change_migration_backfills_original_slots_for_existing_recurring_jobs()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:18-alpine")
+            .WithDatabase("family_jobs_board_scoped_change_upgrade_tests")
+            .WithUsername("family_jobs_board")
+            .WithPassword("family_jobs_board")
+            .Build();
+        await postgres.StartAsync();
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(postgres.GetConnectionString())
+            .Options;
+        await using var database = new AppDbContext(options);
+        var migrator = database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260926143547_AddTurnRotations");
+        var adultId = Guid.NewGuid();
+        var childId = Guid.NewGuid();
+        var seriesId = Guid.NewGuid();
+        var jobId = Guid.NewGuid();
+        var scheduledDate = new DateOnly(2026, 9, 28);
+        await database.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO household_members (id, first_name, nickname, surname, role, is_active) VALUES ({adultId}, 'Addie', NULL, 'Avenant', 'Adult', TRUE), ({childId}, 'Fredster', NULL, 'Avenant', 'Child', TRUE);");
+        await database.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO recurring_job_series (id, assignment_request_id, child_id, created_by_adult_id, name, description, points, agenda_period, scheduled_time, start_date, end_date, generated_through, frequency, weekday_mask, monthly_day, rotation_child_ids, next_turn_index) VALUES ({seriesId}, {Guid.NewGuid()}, {childId}, {adultId}, 'Existing recurring job', '', 3, 'Evening', NULL, {scheduledDate}, NULL, {scheduledDate}, 'Daily', 0, NULL, ARRAY[]::uuid[], 0);");
+        await database.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO jobs (id, child_id, name, description, points, scheduled_date, agenda_period, scheduled_time, recurring_job_series_id, recurrence_frequency, status) VALUES ({jobId}, {childId}, 'Existing recurring job', '', 3, {scheduledDate}, 'Evening', NULL, {seriesId}, 'Daily', 'Open');");
+
+        await migrator.MigrateAsync();
+        database.ChangeTracker.Clear();
+
+        var job = await database.Jobs.SingleAsync(item => item.Id == jobId);
+        Assert.Equal(scheduledDate, job.OriginalScheduledDate);
     }
 
     [Fact]
@@ -2103,6 +2279,16 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         int CancelledSkippedCount,
         int RetrospectivePointIncreaseSkippedCount,
         IReadOnlyList<string> Warnings);
+
+    private sealed record RecurringJobScopePreviewResponse(
+        RecurringJobChangeImpactResponse? Impact,
+        string? Error);
+
+    private sealed record RecurringJobChangePreviewResponse(
+        int SeriesVersion,
+        RecurringJobScopePreviewResponse ThisOnly,
+        RecurringJobScopePreviewResponse AllFuture,
+        RecurringJobScopePreviewResponse All);
 
     private sealed record RecurringJobChangeResultResponse(
         Guid RequestId,

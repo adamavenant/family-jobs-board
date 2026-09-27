@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260927102654_AddScopedRecurringJobChanges")]
+    [Migration("20260927171147_AddScopedRecurringJobChanges")]
     partial class AddScopedRecurringJobChanges
     {
         /// <inheritdoc />
@@ -480,6 +480,10 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(160)")
                         .HasColumnName("name");
 
+                    b.Property<DateOnly?>("OriginalScheduledDate")
+                        .HasColumnType("date")
+                        .HasColumnName("original_scheduled_date");
+
                     b.Property<int>("Points")
                         .HasColumnType("integer")
                         .HasColumnName("points");
@@ -624,6 +628,11 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                     b.Property<int>("UpdatedCount")
                         .HasColumnType("integer")
                         .HasColumnName("updated_count");
+
+                    b.PrimitiveCollection<string[]>("Warnings")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("warnings");
 
                     b.HasKey("Id");
 

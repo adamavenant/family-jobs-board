@@ -29,6 +29,7 @@ internal sealed class RecurringJobChangeConfiguration : IEntityTypeConfiguration
             .HasColumnName("cancelled_skipped_count");
         builder.Property(change => change.RetrospectivePointIncreaseSkippedCount)
             .HasColumnName("retrospective_point_increase_skipped_count");
+        builder.Property(change => change.Warnings).HasColumnName("warnings");
         builder.Property(change => change.SeriesVersion).HasColumnName("series_version");
         builder.Property(change => change.AppliedAtUtc).HasColumnName("applied_at_utc");
         builder.HasOne<Job>().WithMany().HasForeignKey(change => change.AnchorJobId)

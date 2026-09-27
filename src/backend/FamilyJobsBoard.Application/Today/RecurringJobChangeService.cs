@@ -31,6 +31,7 @@ public sealed class RecurringJobChangeService
     private sealed record NormalizedChange(
         ChangeOperation Operation,
         ChangeScope Scope,
+        string? Reason,
         int ExpectedSeriesVersion,
         string Name,
         string Description,
@@ -46,6 +47,7 @@ public sealed class RecurringJobChangeService
     private sealed record PlannedAction(
         PlannedActionKind Kind,
         Job? Job,
+        DateOnly PatternDate,
         DateOnly Date,
         Guid ChildId,
         int Points);
@@ -82,28 +84,23 @@ public sealed class RecurringJobChangeService
         _clock = clock;
     }
 
-    public async Task<RecurringJobSeriesDetails> GetDetailsAsync(
-        Guid jobId,
-        Guid actorMemberId,
-        CancellationToken cancellationToken)
-    {
-        await EnsureAdultAsync(actorMemberId, cancellationToken);
-        var job = await _repository.GetJobAsync(jobId, false, cancellationToken)
-            ?? throw new JobNotFoundException(jobId);
-        var seriesId = job.RecurringJobSeriesId ?? throw new RecurringJobSeriesNotFoundException();
-        var series = await _repository.GetSeriesAsync(seriesId, false, cancellationToken)
-            ?? throw new RecurringJobSeriesNotFoundException();
-        return MapDetails(series);
-    }
-
-    public async Task<RecurringJobChangeImpact> PreviewAsync(
+    public async Task<RecurringJobChangePreview> PreviewAsync(
         Guid jobId,
         Guid actorMemberId,
         RecurringJobChangeInput input,
         CancellationToken cancellationToken)
     {
         await EnsureAdultAsync(actorMemberId, cancellationToken);
-        return (await BuildPlanAsync(jobId, input, false, cancellationToken)).Impact;
+        var (anchor, series, jobs) = await LoadContextAsync(
+            jobId,
+            input.ExpectedSeriesVersion,
+            false,
+            cancellationToken);
+        return new RecurringJobChangePreview(
+            series.Version,
+            PreviewScope(input with { Scope = "thisOnly" }, anchor, series, jobs),
+            PreviewScope(input with { Scope = "allFuture" }, anchor, series, jobs),
+            PreviewScope(input with { Scope = "all" }, anchor, series, jobs));
     }
 
     public async Task<RecurringJobChangeResult> ApplyAsync(
@@ -148,7 +145,12 @@ public sealed class RecurringJobChangeService
                         plan.Change.Frequency);
                     break;
                 case PlannedActionKind.Cancel:
-                    action.Job!.Cancel(actorMemberId, _clock.UtcNow, "Recurring schedule changed.");
+                    action.Job!.Cancel(
+                        actorMemberId,
+                        _clock.UtcNow,
+                        plan.Change.Operation == ChangeOperation.Cancel
+                            ? plan.Change.Reason
+                            : "Recurring schedule changed.");
                     break;
                 case PlannedActionKind.Create:
                     break;
@@ -182,7 +184,7 @@ public sealed class RecurringJobChangeService
             {
                 var boundary = plan.Change.Scope == ChangeScope.All
                     ? plan.Series.StartDate
-                    : plan.Anchor.ScheduledDate;
+                    : PatternDate(plan.Anchor);
                 plan.Series.EndBefore(boundary);
             }
             else
@@ -209,7 +211,7 @@ public sealed class RecurringJobChangeService
                     _clock.UtcNow,
                     plan.Change.Scope == ChangeScope.All
                         ? plan.Series.StartDate
-                        : plan.Anchor.ScheduledDate,
+                        : PatternDate(plan.Anchor),
                     plan.Change.Name,
                     plan.Change.Description,
                     plan.Change.Points,
@@ -238,6 +240,7 @@ public sealed class RecurringJobChangeService
             impact.ApprovedSkippedCount,
             impact.CancelledSkippedCount,
             impact.RetrospectivePointIncreaseSkippedCount,
+            impact.Warnings,
             plan.Series.Version,
             _clock.UtcNow);
         await _repository.AddChangeAsync(change, cancellationToken);
@@ -273,6 +276,20 @@ public sealed class RecurringJobChangeService
         bool tracking,
         CancellationToken cancellationToken)
     {
+        var (anchor, series, jobs) = await LoadContextAsync(
+            jobId,
+            input.ExpectedSeriesVersion,
+            tracking,
+            cancellationToken);
+        return BuildPlan(input, anchor, series, jobs);
+    }
+
+    private async Task<(Job Anchor, RecurringJobSeries Series, IReadOnlyList<Job> Jobs)> LoadContextAsync(
+        Guid jobId,
+        int expectedSeriesVersion,
+        bool tracking,
+        CancellationToken cancellationToken)
+    {
         var anchor = await _repository.GetJobAsync(jobId, tracking, cancellationToken)
             ?? throw new JobNotFoundException(jobId);
         if (anchor.Status is JobStatus.Approved or JobStatus.Cancelled)
@@ -284,17 +301,48 @@ public sealed class RecurringJobChangeService
         var seriesId = anchor.RecurringJobSeriesId ?? throw new RecurringJobSeriesNotFoundException();
         var series = await _repository.GetSeriesAsync(seriesId, tracking, cancellationToken)
             ?? throw new RecurringJobSeriesNotFoundException();
-        var change = Normalize(input, anchor, series);
-        if (change.ExpectedSeriesVersion != series.Version)
+        if (expectedSeriesVersion != series.Version)
         {
             throw new RecurringJobChangeConflictException(
                 "The recurring schedule changed after it was opened. Review the latest schedule and try again.");
         }
 
         var jobs = await _repository.GetSeriesJobsAsync(series.Id, tracking, cancellationToken);
+        return (anchor, series, jobs);
+    }
+
+    private ChangePlan BuildPlan(
+        RecurringJobChangeInput input,
+        Job anchor,
+        RecurringJobSeries series,
+        IReadOnlyList<Job> jobs)
+    {
+        var change = Normalize(input, anchor, series);
         return change.Scope == ChangeScope.ThisOnly
             ? PlanThisOnly(change, anchor, series, jobs)
             : PlanSeries(change, anchor, series, jobs);
+    }
+
+    private RecurringJobScopePreview PreviewScope(
+        RecurringJobChangeInput input,
+        Job anchor,
+        RecurringJobSeries series,
+        IReadOnlyList<Job> jobs)
+    {
+        try
+        {
+            return new RecurringJobScopePreview(BuildPlan(input, anchor, series, jobs).Impact, null);
+        }
+        catch (InvalidRecurringJobChangeException exception)
+        {
+            return new RecurringJobScopePreview(
+                null,
+                string.Join(" ", exception.Errors.Values.SelectMany(messages => messages)));
+        }
+        catch (RecurringJobChangeConflictException exception)
+        {
+            return new RecurringJobScopePreview(null, exception.Message);
+        }
     }
 
     private ChangePlan PlanThisOnly(
@@ -309,7 +357,13 @@ public sealed class RecurringJobChangeService
                 change,
                 anchor,
                 series,
-                [new PlannedAction(PlannedActionKind.Cancel, anchor, anchor.ScheduledDate, anchor.ChildId, anchor.Points)],
+                [new PlannedAction(
+                    PlannedActionKind.Cancel,
+                    anchor,
+                    PatternDate(anchor),
+                    anchor.ScheduledDate,
+                    anchor.ChildId,
+                    anchor.Points)],
                 0,
                 0,
                 0,
@@ -339,6 +393,7 @@ public sealed class RecurringJobChangeService
             [new PlannedAction(
                 PlannedActionKind.Update,
                 anchor,
+                PatternDate(anchor),
                 change.ScheduledDate,
                 anchor.ChildId,
                 retrospectiveIncrease ? anchor.Points : change.Points)],
@@ -362,9 +417,9 @@ public sealed class RecurringJobChangeService
                 "Changing one occurrence's date requires This Only; use the recurrence pattern for broader changes.");
         }
 
-        var boundary = change.Scope == ChangeScope.All ? DateOnly.MinValue : anchor.ScheduledDate;
-        var inScope = jobs.Where(job => job.ScheduledDate >= boundary)
-            .OrderBy(job => job.ScheduledDate)
+        var boundary = change.Scope == ChangeScope.All ? DateOnly.MinValue : PatternDate(anchor);
+        var inScope = jobs.Where(job => PatternDate(job) >= boundary)
+            .OrderBy(PatternDate)
             .ToArray();
         var approvedSkipped = inScope.Count(job => job.Status == JobStatus.Approved);
         var cancelledSkipped = inScope.Count(job => job.Status == JobStatus.Cancelled);
@@ -379,6 +434,7 @@ public sealed class RecurringJobChangeService
             actions.AddRange(eligible.Select(job => new PlannedAction(
                 PlannedActionKind.Cancel,
                 job,
+                PatternDate(job),
                 job.ScheduledDate,
                 job.ChildId,
                 job.Points)));
@@ -396,11 +452,13 @@ public sealed class RecurringJobChangeService
 
         foreach (var job in eligible)
         {
-            if (!OccursOn(change, series.StartDate, job.ScheduledDate))
+            var patternDate = PatternDate(job);
+            if (!OccursOn(change, series.StartDate, patternDate))
             {
                 actions.Add(new PlannedAction(
                     PlannedActionKind.Cancel,
                     job,
+                    patternDate,
                     job.ScheduledDate,
                     job.ChildId,
                     job.Points));
@@ -418,6 +476,7 @@ public sealed class RecurringJobChangeService
             actions.Add(new PlannedAction(
                 PlannedActionKind.Update,
                 job,
+                patternDate,
                 job.ScheduledDate,
                 job.ChildId,
                 points));
@@ -426,9 +485,15 @@ public sealed class RecurringJobChangeService
         var cursor = StartingTurnIndex(series, jobs, boundary);
         var firstCreationDate = change.Scope == ChangeScope.All
             ? _clock.Today
-            : (anchor.ScheduledDate > _clock.Today ? anchor.ScheduledDate : _clock.Today);
-        var byDate = jobs.GroupBy(job => job.ScheduledDate).ToDictionary(group => group.Key, group => group.ToArray());
-        var firstReconciledDate = change.Scope == ChangeScope.All ? series.StartDate : anchor.ScheduledDate;
+            : (boundary > _clock.Today ? boundary : _clock.Today);
+        var byDate = jobs.GroupBy(PatternDate).ToDictionary(group => group.Key, group => group.ToArray());
+        var byScheduledDate = jobs.GroupBy(job => job.ScheduledDate)
+            .ToDictionary(group => group.Key, group => group.ToArray());
+        var actionIndexByPatternDate = actions
+            .Select((action, index) => (action.PatternDate, index))
+            .Where(item => actions[item.index].Kind == PlannedActionKind.Update)
+            .ToDictionary(item => item.PatternDate, item => item.index);
+        var firstReconciledDate = change.Scope == ChangeScope.All ? series.StartDate : boundary;
         for (var date = firstReconciledDate;
              date <= series.GeneratedThrough;
              date = date.AddDays(1))
@@ -448,13 +513,14 @@ public sealed class RecurringJobChangeService
 
             if (existingOnDate?.Any(job => job.Status == JobStatus.Cancelled) == true)
             {
+                var cancelled = existingOnDate.First(job => job.Status == JobStatus.Cancelled);
+                cursor = NextTurnIndexAfter(series, cancelled.ChildId, cursor);
                 continue;
             }
 
-            var existingAction = actions.FirstOrDefault(action =>
-                action.Date == date && action.Kind == PlannedActionKind.Update);
-            if (existingAction is not null)
+            if (actionIndexByPatternDate.TryGetValue(date, out var actionIndex))
             {
+                var existingAction = actions[actionIndex];
                 if (existingAction.Job!.Status == JobStatus.PendingApproval)
                 {
                     cursor = NextTurnIndexAfter(series, existingAction.Job.ChildId, cursor);
@@ -462,9 +528,18 @@ public sealed class RecurringJobChangeService
                 else
                 {
                     var childId = TurnChild(series, cursor);
-                    actions[actions.IndexOf(existingAction)] = existingAction with { ChildId = childId };
+                    actions[actionIndex] = existingAction with { ChildId = childId };
                     cursor = AdvanceTurn(series, cursor);
                 }
+                continue;
+            }
+
+            var movedOccurrence = byScheduledDate.TryGetValue(date, out var jobsScheduledOnDate)
+                ? jobsScheduledOnDate.FirstOrDefault(job => PatternDate(job) != date)
+                : null;
+            if (movedOccurrence is not null)
+            {
+                cursor = NextTurnIndexAfter(series, movedOccurrence.ChildId, cursor);
                 continue;
             }
 
@@ -474,6 +549,7 @@ public sealed class RecurringJobChangeService
                 actions.Add(new PlannedAction(
                     PlannedActionKind.Create,
                     null,
+                    date,
                     date,
                     childId,
                     change.Points));
@@ -499,7 +575,13 @@ public sealed class RecurringJobChangeService
         RecurringJobSeries series)
     {
         var errors = new Dictionary<string, string[]>();
-        if (!Enum.TryParse<ChangeOperation>(input.Operation, true, out var operation))
+        var operation = input.Operation switch
+        {
+            "edit" => ChangeOperation.Edit,
+            "cancel" => ChangeOperation.Cancel,
+            _ => default,
+        };
+        if (input.Operation is not ("edit" or "cancel"))
         {
             errors[nameof(input.Operation)] = ["Choose edit or cancel."];
         }
@@ -516,6 +598,8 @@ public sealed class RecurringJobChangeService
             errors[nameof(input.Scope)] = ["Choose This Only, All Future, or All."];
         }
 
+        var reason = NormalizeReason(input.Reason, errors);
+
         if (operation == ChangeOperation.Cancel)
         {
             if (errors.Count > 0)
@@ -526,6 +610,7 @@ public sealed class RecurringJobChangeService
             return new NormalizedChange(
                 operation,
                 scope,
+                reason,
                 input.ExpectedSeriesVersion,
                 anchor.Name,
                 anchor.Description,
@@ -608,7 +693,7 @@ public sealed class RecurringJobChangeService
 
             endDate = input.EndDate;
             var minimumEndDate = scope == ChangeScope.AllFuture
-                ? anchor.ScheduledDate
+                ? PatternDate(anchor)
                 : series.StartDate;
             if (endDate is { } selectedEndDate && selectedEndDate < minimumEndDate)
             {
@@ -625,6 +710,7 @@ public sealed class RecurringJobChangeService
         return new NormalizedChange(
             operation,
             scope,
+            reason,
             input.ExpectedSeriesVersion,
             name,
             description,
@@ -691,8 +777,8 @@ public sealed class RecurringJobChangeService
             return 0;
         }
 
-        var last = jobs.Where(job => job.ScheduledDate < boundary && job.Status != JobStatus.Cancelled)
-            .OrderByDescending(job => job.ScheduledDate)
+        var last = jobs.Where(job => PatternDate(job) < boundary)
+            .OrderByDescending(PatternDate)
             .FirstOrDefault();
         return last is null ? 0 : NextTurnIndexAfter(series, last.ChildId, 0);
     }
@@ -714,23 +800,27 @@ public sealed class RecurringJobChangeService
         return index < 0 ? fallback : (index + 1) % series.RotationChildIds.Count;
     }
 
-    private static void WarnIfMovedAfterCompletion(
+    private void WarnIfMovedAfterCompletion(
         Job job,
         DateOnly date,
         TimeOnly? time,
         ICollection<string> warnings)
     {
-        if (job.CompletedAtUtc is null)
+        if (job.CompletedAtUtc is null
+            || (date == job.ScheduledDate && time == job.ScheduledTime))
         {
             return;
         }
 
-        var scheduled = date.ToDateTime(time ?? TimeOnly.MinValue, DateTimeKind.Utc);
-        if (scheduled > job.CompletedAtUtc.Value.UtcDateTime)
+        var scheduled = _clock.ToUtc(date, time ?? TimeOnly.MinValue);
+        if (scheduled > job.CompletedAtUtc.Value)
         {
             warnings.Add($"{job.Name} was completed before its proposed schedule.");
         }
     }
+
+    private static DateOnly PatternDate(Job job) =>
+        job.OriginalScheduledDate ?? job.ScheduledDate;
 
     private static IReadOnlyList<string> Warnings(
         int approved,
@@ -765,16 +855,6 @@ public sealed class RecurringJobChangeService
         }
     }
 
-    private static RecurringJobSeriesDetails MapDetails(RecurringJobSeries series) => new(
-        series.Id,
-        series.Version,
-        FrequencyValue(series.Frequency),
-        series.SelectedWeekdays().Select(WeekdayValue).ToArray(),
-        series.MonthlyDay,
-        series.StartDate,
-        series.EndDate,
-        series.TakesTurns);
-
     private static RecurringJobChangeResult MapResult(RecurringJobChange change) => new(
         change.Id,
         change.SeriesId,
@@ -788,7 +868,7 @@ public sealed class RecurringJobChangeService
             change.ApprovedSkippedCount,
             change.CancelledSkippedCount,
             change.RetrospectivePointIncreaseSkippedCount,
-            []));
+            change.Warnings));
 
     private static string Fingerprint(
         Guid jobId,
@@ -800,7 +880,7 @@ public sealed class RecurringJobChangeService
             actorMemberId,
             input.Operation,
             input.Scope,
-            input.ExpectedSeriesVersion,
+            input.Reason?.Trim(),
             input.Name?.Trim(),
             input.Description?.Trim(),
             input.Points,
@@ -832,16 +912,6 @@ public sealed class RecurringJobChangeService
         _ => throw new InvalidOperationException(),
     };
 
-    private static string FrequencyValue(RecurrenceFrequency frequency) => frequency switch
-    {
-        RecurrenceFrequency.Daily => "daily",
-        RecurrenceFrequency.Weekly => "weekly",
-        RecurrenceFrequency.Monthly => "monthly",
-        _ => throw new InvalidOperationException(),
-    };
-
-    private static string WeekdayValue(DayOfWeek weekday) => weekday.ToString().ToLowerInvariant();
-
     private static bool TryFrequency(string? value, out RecurrenceFrequency frequency)
     {
         frequency = value switch
@@ -869,4 +939,18 @@ public sealed class RecurringJobChangeService
 
     private static InvalidRecurringJobChangeException Invalid(string field, string message) =>
         new(new Dictionary<string, string[]> { [field] = [message] });
+
+    private static string? NormalizeReason(
+        string? reason,
+        IDictionary<string, string[]> errors)
+    {
+        var normalized = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        if (normalized?.Length > Job.MaximumCancellationReasonLength)
+        {
+            errors[nameof(RecurringJobChangeInput.Reason)] =
+                [$"A cancellation reason cannot exceed {Job.MaximumCancellationReasonLength} characters."];
+        }
+
+        return normalized;
+    }
 }

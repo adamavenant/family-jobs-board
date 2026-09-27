@@ -36,6 +36,7 @@ import type {
   RecurringJobChangeImpact,
   RecurringJobChangeInput,
   RecurringJobChangeScope,
+  RecurringJobScopePreview,
 } from "../api/today";
 import { LoadingPage } from "./LoadingPage";
 import { createRequestId } from "./requestId";
@@ -119,7 +120,8 @@ export interface PreviewRecurringJobChangeActionResult {
   intent: "previewRecurringJobChange";
   jobId: string;
   operation: "edit" | "cancel";
-  previews?: Record<RecurringJobChangeScope, RecurringJobChangeImpact>;
+  seriesVersion?: number;
+  previews?: Record<RecurringJobChangeScope, RecurringJobScopePreview>;
   error?: string;
 }
 
@@ -281,24 +283,16 @@ async function previewRecurringJobChangeAction(
   }
 
   try {
-    const scopes: RecurringJobChangeScope[] = ["thisOnly", "allFuture", "all"];
-    const impacts = await Promise.all(
-      scopes.map((scope) =>
-        previewRecurringJobChange(
-          jobId,
-          recurringChangeFromForm(form, operation, scope),
-        ),
-      ),
+    const preview = await previewRecurringJobChange(
+      jobId,
+      recurringChangeFromForm(form, operation, "thisOnly"),
     );
     return {
       intent: "previewRecurringJobChange",
       jobId,
       operation,
-      previews: {
-        thisOnly: impacts[0]!,
-        allFuture: impacts[1]!,
-        all: impacts[2]!,
-      },
+      seriesVersion: preview.seriesVersion,
+      previews: preview.previews,
     };
   } catch (error) {
     return {
@@ -376,6 +370,7 @@ function recurringChangeFromForm(
   const frequency = form.get("frequency");
   const dayOfMonthValue = form.get("dayOfMonth");
   const endDate = form.get("endDate");
+  const reason = form.get("reason");
   if (
     !Number.isInteger(expectedSeriesVersion) ||
     expectedSeriesVersion < 0 ||
@@ -398,6 +393,8 @@ function recurringChangeFromForm(
   return {
     operation,
     scope,
+    reason:
+      typeof reason === "string" && reason.trim().length > 0 ? reason : null,
     expectedSeriesVersion,
     name,
     description,

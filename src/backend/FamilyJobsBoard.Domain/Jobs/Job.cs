@@ -75,6 +75,7 @@ public sealed class Job
         ScheduledTime = scheduledTime;
         RecurringJobSeriesId = recurringJobSeriesId;
         RecurrenceFrequency = recurrenceFrequency;
+        OriginalScheduledDate = recurringJobSeriesId is null ? null : scheduledDate;
         Status = JobStatus.Open;
     }
 
@@ -97,6 +98,8 @@ public sealed class Job
     public Guid? RecurringJobSeriesId { get; private set; }
 
     public RecurrenceFrequency? RecurrenceFrequency { get; private set; }
+
+    public DateOnly? OriginalScheduledDate { get; private set; }
 
     public JobStatus Status { get; private set; }
 

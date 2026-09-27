@@ -85,7 +85,7 @@ public sealed class EfRecurringJobChangeRepository : IRecurringJobChangeReposito
             when (exception.InnerException is PostgresException
             {
                 SqlState: PostgresErrorCodes.UniqueViolation,
-                ConstraintName: "PK_recurring_job_changes",
+                ConstraintName: "PK_recurring_job_changes" or "ux_jobs_recurring_series_date",
             })
         {
             _database.ChangeTracker.Clear();

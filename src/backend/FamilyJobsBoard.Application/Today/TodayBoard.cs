@@ -53,6 +53,11 @@ public sealed record TodayRecurringJobSeries(
     DateOnly? EndDate,
     bool TakesTurns);
 
+public sealed record RecurringJobSlot(
+    Guid SeriesId,
+    DateOnly ScheduledDate,
+    DateOnly OriginalScheduledDate);
+
 public sealed record TodayJobRejection(
     Guid DecisionId,
     Guid JobId,

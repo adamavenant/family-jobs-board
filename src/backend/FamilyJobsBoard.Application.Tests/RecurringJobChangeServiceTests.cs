@@ -89,7 +89,7 @@ public sealed class RecurringJobChangeServiceTests
                 Edit("all", series.Version, jobs[0].ScheduledDate, 9, "daily", [])),
             CancellationToken.None);
 
-        Assert.Equal(2, preview.RetrospectivePointIncreaseSkippedCount);
+        Assert.Equal(2, preview.All.Impact!.RetrospectivePointIncreaseSkippedCount);
         Assert.Equal(2, result.Impact.RetrospectivePointIncreaseSkippedCount);
         Assert.Equal(3, jobs[0].Points);
         Assert.Equal(3, jobs[1].Points);
@@ -106,11 +106,42 @@ public sealed class RecurringJobChangeServiceTests
             Edit("allFuture", series.Version, Today, 4, "daily", []));
 
         var first = await service.ApplyAsync(jobs[0].Id, Adult.Id, request, CancellationToken.None);
-        var retry = await service.ApplyAsync(jobs[0].Id, Adult.Id, request, CancellationToken.None);
+        var retry = await service.ApplyAsync(
+            jobs[0].Id,
+            Adult.Id,
+            request with
+            {
+                Change = request.Change with { ExpectedSeriesVersion = first.SeriesVersion },
+            },
+            CancellationToken.None);
 
         Assert.Equal(first.Impact.UpdatedCount, retry.Impact.UpdatedCount);
         Assert.Equal(1, repository.SaveCount);
         Assert.Single(repository.Changes);
+    }
+
+    [Fact]
+    public async Task Retry_returns_the_stored_warnings_after_the_series_version_changes()
+    {
+        var (repository, series, jobs) = DailySeries(Today.AddDays(-1), Today);
+        var service = new RecurringJobChangeService(repository, new FixedClock());
+        var request = new ApplyRecurringJobChange(
+            Guid.NewGuid(),
+            Edit("all", series.Version, jobs[0].ScheduledDate, 9, "daily", []));
+
+        var first = await service.ApplyAsync(jobs[0].Id, Adult.Id, request, CancellationToken.None);
+        var retry = await service.ApplyAsync(
+            jobs[0].Id,
+            Adult.Id,
+            request with
+            {
+                Change = request.Change with { ExpectedSeriesVersion = first.SeriesVersion },
+            },
+            CancellationToken.None);
+
+        Assert.NotEmpty(first.Impact.Warnings);
+        Assert.Equal(first.Impact.Warnings, retry.Impact.Warnings);
+        Assert.Equal(1, repository.SaveCount);
     }
 
     [Fact]
@@ -127,7 +158,7 @@ public sealed class RecurringJobChangeServiceTests
             new ApplyRecurringJobChange(
                 Guid.NewGuid(),
                 new RecurringJobChangeInput(
-                    "cancel", "all", series.Version, null, null, 0, null, null,
+                    "cancel", "all", null, series.Version, null, null, 0, null, null,
                     null, null, null, null, null)),
             CancellationToken.None);
 
@@ -197,7 +228,7 @@ public sealed class RecurringJobChangeServiceTests
         var (repository, series, jobs) = DailySeries(Today, Today.AddDays(1));
         var service = new RecurringJobChangeService(repository, new FixedClock());
         var input = new RecurringJobChangeInput(
-            "cancel", "thisOnly", series.Version, null, null, 0, null, null,
+            "cancel", "thisOnly", null, series.Version, null, null, 0, null, null,
             null, null, null, null, null);
 
         var result = await service.ApplyAsync(
@@ -210,6 +241,134 @@ public sealed class RecurringJobChangeServiceTests
         Assert.Equal(JobStatus.Cancelled, jobs[0].Status);
         Assert.Equal(JobStatus.Open, jobs[1].Status);
         Assert.Null(series.EndDate);
+    }
+
+    [Fact]
+    public async Task Scoped_cancellation_keeps_the_supplied_reason()
+    {
+        var (repository, series, jobs) = DailySeries(Today, Today);
+        var service = new RecurringJobChangeService(repository, new FixedClock());
+        var input = new RecurringJobChangeInput(
+            "cancel", "thisOnly", "Away for the day", series.Version, null, null, 0,
+            null, null, null, null, null, null, null);
+
+        await service.ApplyAsync(
+            jobs[0].Id,
+            Adult.Id,
+            new ApplyRecurringJobChange(Guid.NewGuid(), input),
+            CancellationToken.None);
+
+        Assert.Equal("Away for the day", jobs[0].CancellationReason);
+    }
+
+    [Fact]
+    public async Task Broad_edit_uses_the_original_slot_and_preserves_a_this_only_move()
+    {
+        var (repository, series, jobs) = DailySeries(Today, Today.AddDays(2));
+        var service = new RecurringJobChangeService(repository, new FixedClock());
+        var movedDate = Today.AddDays(4);
+
+        await service.ApplyAsync(
+            jobs[0].Id,
+            Adult.Id,
+            new ApplyRecurringJobChange(
+                Guid.NewGuid(),
+                Edit("thisOnly", series.Version, movedDate, 3, "daily", [])),
+            CancellationToken.None);
+        await service.ApplyAsync(
+            jobs[0].Id,
+            Adult.Id,
+            new ApplyRecurringJobChange(
+                Guid.NewGuid(),
+                Edit("allFuture", series.Version, movedDate, 3, "daily", []) with
+                {
+                    Description = "Updated going forward.",
+                }),
+            CancellationToken.None);
+
+        Assert.Equal(movedDate, jobs[0].ScheduledDate);
+        Assert.Equal(Today, jobs[0].OriginalScheduledDate);
+        Assert.Equal("Updated going forward.", jobs[0].Description);
+        Assert.Equal(Today, Assert.Single(repository.Revisions).EffectiveFrom);
+    }
+
+    [Fact]
+    public async Task Cancelled_take_turn_slot_does_not_shift_later_assignments()
+    {
+        var secondChild = new HouseholdMember(
+            Guid.NewGuid(), "Harrie", "Avenant", HouseholdRole.Child);
+        var series = RecurringJobSeries.Daily(
+            Guid.NewGuid(), Child.Id, Adult.Id, "Empty school bags", "", 3,
+            AgendaPeriod.Evening, null, Today, null, Guid.NewGuid(),
+            [Child.Id, secondChild.Id]);
+        var jobs = series.GenerateOccurrencesThrough(Today.AddDays(2))
+            .Select(occurrence => new Job(
+                Guid.NewGuid(), occurrence.ChildId, series.Name, series.Description, series.Points,
+                occurrence.Date, series.AgendaPeriod, series.ScheduledTime, series.Id, series.Frequency))
+            .ToArray();
+        jobs[1].Cancel(Adult.Id, new FixedClock().UtcNow, null);
+        var repository = new RecordingRepository([Adult, Child, secondChild], series, jobs);
+        var service = new RecurringJobChangeService(repository, new FixedClock());
+
+        await service.ApplyAsync(
+            jobs[0].Id,
+            Adult.Id,
+            new ApplyRecurringJobChange(
+                Guid.NewGuid(),
+                Edit("all", series.Version, Today, 3, "daily", [])),
+            CancellationToken.None);
+
+        Assert.Equal(Child.Id, jobs[0].ChildId);
+        Assert.Equal(secondChild.Id, jobs[1].ChildId);
+        Assert.Equal(Child.Id, jobs[2].ChildId);
+    }
+
+    [Theory]
+    [InlineData("1", "all")]
+    [InlineData("edit", "2")]
+    public async Task Numeric_operation_or_scope_is_rejected(string operation, string scope)
+    {
+        var (repository, series, jobs) = DailySeries(Today, Today);
+        var service = new RecurringJobChangeService(repository, new FixedClock());
+        var input = Edit(scope, series.Version, Today, 3, "daily", []) with
+        {
+            Operation = operation,
+        };
+
+        await Assert.ThrowsAsync<InvalidRecurringJobChangeException>(() => service.ApplyAsync(
+            jobs[0].Id,
+            Adult.Id,
+            new ApplyRecurringJobChange(Guid.NewGuid(), input),
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Completion_warning_compares_scheduled_time_in_household_timezone()
+    {
+        var (repository, series, jobs) = DailySeries(Today, Today);
+        jobs[0].MarkComplete(new DateTimeOffset(2026, 9, 7, 16, 30, 0, TimeSpan.Zero));
+        var service = new RecurringJobChangeService(repository, new SouthAfricaClock());
+
+        var earlier = await service.PreviewAsync(
+            jobs[0].Id,
+            Adult.Id,
+            Edit("thisOnly", series.Version, Today, 3, "daily", []) with
+            {
+                ScheduledTime = new TimeOnly(17, 0),
+            },
+            CancellationToken.None);
+        var later = await service.PreviewAsync(
+            jobs[0].Id,
+            Adult.Id,
+            Edit("thisOnly", series.Version, Today, 3, "daily", []) with
+            {
+                ScheduledTime = new TimeOnly(19, 0),
+            },
+            CancellationToken.None);
+
+        Assert.Empty(earlier.ThisOnly.Impact!.Warnings);
+        Assert.Contains(later.ThisOnly.Impact!.Warnings, warning =>
+            warning.Contains("completed before", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -235,7 +394,17 @@ public sealed class RecurringJobChangeServiceTests
         var (repository, series, jobs) = DailySeries(Today, Today);
         var service = new RecurringJobChangeService(repository, new FixedClock());
         var staleVersion = series.Version;
-        series.GenerateOccurrencesThrough(Today.AddDays(1));
+        series.EditSchedule(
+            series.Name,
+            series.Description,
+            series.Points,
+            series.AgendaPeriod,
+            series.ScheduledTime,
+            series.EndDate,
+            series.Frequency,
+            series.SelectedWeekdays(),
+            series.MonthlyDay,
+            series.NextTurnIndex);
 
         await Assert.ThrowsAsync<RecurringJobChangeConflictException>(() => service.ApplyAsync(
             jobs[0].Id,
@@ -286,6 +455,7 @@ public sealed class RecurringJobChangeServiceTests
         IReadOnlyList<string> weekdays) => new(
             "edit",
             scope,
+            null,
             version,
             "Empty school bags",
             "Put everything away.",
@@ -317,6 +487,15 @@ public sealed class RecurringJobChangeServiceTests
     {
         public DateOnly Today => RecurringJobChangeServiceTests.Today;
         public DateTimeOffset UtcNow => new(2026, 9, 7, 8, 0, 0, TimeSpan.Zero);
+    }
+
+    private sealed class SouthAfricaClock : IHouseholdClock
+    {
+        public DateOnly Today => RecurringJobChangeServiceTests.Today;
+        public DateTimeOffset UtcNow => new(2026, 9, 7, 8, 0, 0, TimeSpan.Zero);
+
+        public DateTimeOffset ToUtc(DateOnly date, TimeOnly time) =>
+            new DateTimeOffset(date, time, TimeSpan.FromHours(2)).ToUniversalTime();
     }
 
     private sealed class RecordingRepository : IRecurringJobChangeRepository

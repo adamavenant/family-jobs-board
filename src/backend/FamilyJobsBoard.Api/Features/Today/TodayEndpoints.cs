@@ -79,11 +79,6 @@ internal static class TodayEndpoints
             .WithDescription(
                 "Records an optional reason, hides the occurrence from daily agendas, and leaves its recurring series and review history unchanged.");
 
-        group.MapGet("/jobs/{id:guid}/recurrence", GetRecurringJobDetailsAsync)
-            .RequireAuthorization("Adult")
-            .WithName("GetRecurringJobDetails")
-            .WithSummary("Get the recurrence definition for a generated job occurrence.");
-
         group.MapPost("/jobs/{id:guid}/recurring-change/preview", PreviewRecurringJobChangeAsync)
             .RequireAuthorization("Adult")
             .WithName("PreviewRecurringJobChange")
@@ -102,46 +97,7 @@ internal static class TodayEndpoints
     }
 
     private static async Task<Results<
-        Ok<RecurringJobSeriesDetailsResponse>,
-        NotFound<ProblemDetails>,
-        ForbidHttpResult>> GetRecurringJobDetailsAsync(
-        Guid id,
-        HttpContext context,
-        RecurringJobChangeService service,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var details = await service.GetDetailsAsync(
-                id,
-                IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
-                cancellationToken);
-            return TypedResults.Ok(new RecurringJobSeriesDetailsResponse(
-                details.SeriesId,
-                details.Version,
-                details.Frequency,
-                details.Weekdays,
-                details.DayOfMonth,
-                details.StartDate,
-                details.EndDate,
-                details.TakesTurns));
-        }
-        catch (JobNotFoundException exception)
-        {
-            return TypedResults.NotFound(NotFoundProblem(exception.Message));
-        }
-        catch (RecurringJobSeriesNotFoundException)
-        {
-            return TypedResults.NotFound(NotFoundProblem("Recurring job series not found."));
-        }
-        catch (RecurringJobChangeForbiddenException)
-        {
-            return TypedResults.Forbid();
-        }
-    }
-
-    private static async Task<Results<
-        Ok<RecurringJobChangeImpactResponse>,
+        Ok<RecurringJobChangePreviewResponse>,
         ValidationProblem,
         NotFound<ProblemDetails>,
         Conflict<ProblemDetails>,
@@ -154,12 +110,16 @@ internal static class TodayEndpoints
     {
         try
         {
-            var impact = await service.PreviewAsync(
+            var preview = await service.PreviewAsync(
                 id,
                 IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
                 MapChange(request),
                 cancellationToken);
-            return TypedResults.Ok(MapImpact(impact));
+            return TypedResults.Ok(new RecurringJobChangePreviewResponse(
+                preview.SeriesVersion,
+                MapScopePreview(preview.ThisOnly),
+                MapScopePreview(preview.AllFuture),
+                MapScopePreview(preview.All)));
         }
         catch (InvalidRecurringJobChangeException exception)
         {
@@ -235,6 +195,7 @@ internal static class TodayEndpoints
     private static RecurringJobChangeInput MapChange(RecurringJobChangeRequest request) => new(
         request.Operation,
         request.Scope,
+        request.Reason,
         request.ExpectedSeriesVersion,
         request.Name,
         request.Description,
@@ -255,6 +216,11 @@ internal static class TodayEndpoints
         impact.CancelledSkippedCount,
         impact.RetrospectivePointIncreaseSkippedCount,
         impact.Warnings);
+
+    private static RecurringJobScopePreviewResponse MapScopePreview(
+        RecurringJobScopePreview preview) => new(
+            preview.Impact is null ? null : MapImpact(preview.Impact),
+            preview.Error);
 
     private static ProblemDetails NotFoundProblem(string detail) => new()
     {

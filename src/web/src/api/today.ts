@@ -38,6 +38,7 @@ export type RecurringJobChangeScope = "thisOnly" | "allFuture" | "all";
 export interface RecurringJobChangeInput {
   operation: "edit" | "cancel";
   scope: RecurringJobChangeScope;
+  reason: string | null;
   expectedSeriesVersion: number;
   name: string;
   description: string;
@@ -49,6 +50,16 @@ export interface RecurringJobChangeInput {
   weekdays: string[];
   dayOfMonth: number | null;
   endDate: string | null;
+}
+
+export interface RecurringJobScopePreview {
+  impact: RecurringJobChangeImpact | null;
+  error: string | null;
+}
+
+export interface RecurringJobChangePreview {
+  seriesVersion: number;
+  previews: Record<RecurringJobChangeScope, RecurringJobScopePreview>;
 }
 
 export interface RecurringJobChangeImpact {
@@ -183,34 +194,10 @@ export async function getToday(
   };
 }
 
-export async function getRecurringJobDetails(
-  id: string,
-): Promise<RecurringJobSeriesDetails> {
-  const client = apiClient();
-  const { data, error } = await client.GET("/api/jobs/{id}/recurrence", {
-    params: { path: { id } },
-  });
-  if (!data) {
-    throw new ApiError(
-      problemMessage(error, "That recurring schedule couldn't be loaded."),
-    );
-  }
-
-  return {
-    ...data,
-    version: Number(data.version),
-    frequency:
-      data.frequency === "weekly" || data.frequency === "monthly"
-        ? data.frequency
-        : "daily",
-    dayOfMonth: data.dayOfMonth === null ? null : Number(data.dayOfMonth),
-  };
-}
-
 export async function previewRecurringJobChange(
   id: string,
   change: RecurringJobChangeInput,
-): Promise<RecurringJobChangeImpact> {
+): Promise<RecurringJobChangePreview> {
   const client = apiClient();
   const { data, error } = await client.POST(
     "/api/jobs/{id}/recurring-change/preview",
@@ -222,7 +209,24 @@ export async function previewRecurringJobChange(
     );
   }
 
-  return mapRecurringImpact(data);
+  return {
+    seriesVersion: Number(data.seriesVersion),
+    previews: {
+      thisOnly: mapScopePreview(data.thisOnly),
+      allFuture: mapScopePreview(data.allFuture),
+      all: mapScopePreview(data.all),
+    },
+  };
+}
+
+function mapScopePreview(data: {
+  impact: Parameters<typeof mapRecurringImpact>[0] | null;
+  error: string | null;
+}): RecurringJobScopePreview {
+  return {
+    impact: data.impact ? mapRecurringImpact(data.impact) : null,
+    error: data.error,
+  };
 }
 
 export async function applyRecurringJobChange(

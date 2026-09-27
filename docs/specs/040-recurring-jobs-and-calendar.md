@@ -80,7 +80,8 @@ concurrency version, and
 for take-turns schedules an ordered `rotation_child_ids` array and
 `next_turn_index` (empty and 0 otherwise; a check constraint keeps them
 consistent with `child_id`).
-Generated jobs reference their series and recurrence frequency. Series and all
+Generated jobs reference their series and recurrence frequency and retain their
+original recurrence-slot date when a single occurrence is moved. Series and all
 initial child assignments commit atomically. Migrations are forward-only.
 `recurring_job_series_revisions` records the effective schedule snapshot for each
 broad change. `recurring_job_changes` records the request ID, scope, operation,
@@ -92,7 +93,6 @@ providing idempotent retries and an audit trail.
 - `POST /api/recurring-jobs/daily`
 - `POST /api/recurring-jobs/weekly`
 - `POST /api/recurring-jobs/monthly`
-- `GET /api/jobs/{jobId}/recurrence`
 - `POST /api/jobs/{jobId}/recurring-change/preview`
 - `POST /api/jobs/{jobId}/recurring-change`
 
@@ -105,13 +105,15 @@ return `201`; identical retries return `200` with
 the existing assignments; conflicting retries return `409`; invalid data
 returns validation Problem Details.
 
-The recurring-change routes are adult-only. Preview returns the number of jobs
-that would be updated, cancelled, created, or skipped, plus warnings and the
-series version. Apply requires a request ID and that version, executes the full
-change atomically, and returns the same impact. Reusing the request ID with the
-same request returns the stored result; reusing it with different data, using a
-stale version, or moving a single occurrence onto an occupied date returns
-`409`. A child caller receives `403`.
+The recurring-change routes are adult-only. One preview request returns the
+series version and the impact for each valid scope, including the number of jobs
+that would be updated, cancelled, created, or skipped and any warnings. A scope
+that is invalid for the proposed values carries its own explanation without
+blocking the other choices. Apply requires a request ID and the previewed
+version, executes the full change atomically, and returns the selected impact.
+Reusing the request ID with the same request returns the stored result; reusing
+it with different data, using a stale version, or moving a single occurrence
+onto an occupied date returns `409`. A child caller receives `403`.
 
 - `GET /api/calendar?view={day|week|month}&date={yyyy-MM-dd}&childId={guid}` —
   adult-only. `view` and `date` default to the week containing household today
@@ -195,6 +197,9 @@ no background scheduler or additional service is introduced.
   applied, then its points remain unchanged and the result reports the skip.
 - Given the same change request is retried, then the stored result is returned
   without applying the change twice; a stale series version returns `409`.
+- Given a single occurrence is moved beyond the generated horizon, when later
+  browsing extends generation past that date, then neither its original slot nor
+  its moved date is recreated.
 - Given a child, when they preview or apply a recurring change, then the API
   returns `403`.
 

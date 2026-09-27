@@ -213,6 +213,7 @@ export function ScopedRecurringJobEditForm({ job }: { job: TodayJob }) {
 
 export function ScopedRecurringJobCancelForm({ job }: { job: TodayJob }) {
   const fetcher = useFetcher<TodayActionResult>();
+  const [formRevision, setFormRevision] = useState(0);
   if (!job.recurrence) {
     return <p role="alert">The repeating schedule could not be loaded.</p>;
   }
@@ -220,18 +221,39 @@ export function ScopedRecurringJobCancelForm({ job }: { job: TodayJob }) {
   return (
     <details>
       <summary>Cancel job</summary>
-      <fetcher.Form method="post" className="job-management__form">
+      <fetcher.Form
+        method="post"
+        className="job-management__form"
+        onChange={(event) => {
+          const target = event.nativeEvent.target;
+          if (
+            !(target instanceof Element) ||
+            target.getAttribute("name") !== "scope"
+          ) {
+            setFormRevision((revision) => revision + 1);
+          }
+        }}
+      >
         <RecurringHiddenFields job={job} operation="cancel" />
         <p>
           Cancellation is permanent and awards no points. Choose whether to
           cancel this job, this and later jobs, or every editable job in the
           schedule.
         </p>
+        <label htmlFor={`cancel-reason-${job.id}`}>
+          Cancellation reason <span>(optional)</span>
+        </label>
+        <textarea
+          id={`cancel-reason-${job.id}`}
+          name="reason"
+          maxLength={500}
+          rows={2}
+        />
         <ScopeReview
           fetcher={fetcher}
           job={job}
           operation="cancel"
-          formRevision={0}
+          formRevision={formRevision}
         />
       </fetcher.Form>
     </details>
@@ -250,11 +272,6 @@ function RecurringHiddenFields({
     <>
       <input type="hidden" name="jobId" value={job.id} />
       <input type="hidden" name="operation" value={operation} />
-      <input
-        type="hidden"
-        name="expectedSeriesVersion"
-        value={recurrence.version}
-      />
       <input
         type="hidden"
         name="anchorScheduledDate"
@@ -331,6 +348,11 @@ function ScopeReview({
   return (
     <div className="scope-review">
       <input type="hidden" name="requestId" value={requestId} />
+      <input
+        type="hidden"
+        name="expectedSeriesVersion"
+        value={preview?.seriesVersion ?? job.recurrence!.version}
+      />
       <button
         type="submit"
         name="intent"
@@ -349,20 +371,30 @@ function ScopeReview({
         <fieldset className="scope-picker">
           <legend>Apply to</legend>
           {scopes.map((scope, index) => {
-            const impact = preview.previews![scope.value];
+            const scopePreview = preview.previews![scope.value];
+            const impact = scopePreview.impact;
+            const firstAvailable = scopes.findIndex(
+              (candidate) => preview.previews![candidate.value].impact !== null,
+            );
             return (
               <label key={scope.value}>
                 <input
                   type="radio"
                   name="scope"
                   value={scope.value}
-                  defaultChecked={index === 0}
+                  defaultChecked={index === firstAvailable}
+                  disabled={!impact}
                 />
                 <span>
                   <strong>{scope.label}</strong>
                   <small>{scope.description}</small>
-                  <small>{impactSummary(impact)}</small>
-                  {impact.warnings.map((warning) => (
+                  {impact ? <small>{impactSummary(impact)}</small> : null}
+                  {scopePreview.error ? (
+                    <small className="scope-picker__warning">
+                      {scopePreview.error}
+                    </small>
+                  ) : null}
+                  {impact?.warnings.map((warning) => (
                     <small key={warning} className="scope-picker__warning">
                       {warning}
                     </small>
@@ -380,7 +412,11 @@ function ScopeReview({
             name="intent"
             value="applyRecurringJobChange"
             className={operation === "cancel" ? "button--danger" : undefined}
-            disabled={busy || requestId.length === 0}
+            disabled={
+              busy ||
+              requestId.length === 0 ||
+              !Object.values(preview.previews).some((item) => item.impact)
+            }
           >
             {busy
               ? "Applying…"

@@ -158,6 +158,21 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         {
             throw new DuplicateJobPointsAwardException();
         }
+        catch (DbUpdateConcurrencyException exception)
+        {
+            _database.ChangeTracker.Clear();
+            throw new RecurringJobGenerationConflictException(exception);
+        }
+        catch (DbUpdateException exception)
+            when (exception.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation,
+                ConstraintName: "ux_jobs_recurring_series_date",
+            })
+        {
+            _database.ChangeTracker.Clear();
+            throw new RecurringJobGenerationConflictException(exception);
+        }
     }
 
     public async Task AddJobsAsync(
@@ -186,6 +201,21 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
             .Where(series =>
                 series.GeneratedThrough < horizon
                 && (series.EndDate == null || series.GeneratedThrough < series.EndDate))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<RecurringJobSlot>> GetRecurringJobSlotsAsync(
+        IReadOnlyCollection<Guid> seriesIds,
+        CancellationToken cancellationToken)
+    {
+        return await _database.Jobs
+            .AsNoTracking()
+            .Where(job => job.RecurringJobSeriesId != null
+                && seriesIds.Contains(job.RecurringJobSeriesId.Value))
+            .Select(job => new RecurringJobSlot(
+                job.RecurringJobSeriesId!.Value,
+                job.ScheduledDate,
+                job.OriginalScheduledDate ?? job.ScheduledDate))
             .ToListAsync(cancellationToken);
     }
 

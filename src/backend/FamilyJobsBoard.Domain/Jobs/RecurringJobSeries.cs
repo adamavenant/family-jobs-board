@@ -342,7 +342,6 @@ public sealed class RecurringJobSeries
         }
 
         GeneratedThrough = lastDate;
-        Version++;
         return occurrences;
     }
 
@@ -442,13 +441,6 @@ public sealed class RecurringJobSeries
         }
 
         Version++;
-    }
-
-    public bool OccursOnDate(DateOnly date)
-    {
-        return date >= StartDate
-            && (EndDate is null || date <= EndDate)
-            && OccursOn(date);
     }
 
     public bool MatchesDaily(

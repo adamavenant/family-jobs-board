@@ -413,23 +413,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/jobs/{id}/recurrence": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get the recurrence definition for a generated job occurrence. */
-        get: operations["GetRecurringJobDetails"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/jobs/{id}/recurring-change/preview": {
         parameters: {
             query?: never;
@@ -954,9 +937,17 @@ export interface components {
             retrospectivePointIncreaseSkippedCount: number | string;
             warnings: string[];
         };
+        RecurringJobChangePreviewResponse: {
+            /** Format: int32 */
+            seriesVersion: number | string;
+            thisOnly: components["schemas"]["RecurringJobScopePreviewResponse"];
+            allFuture: components["schemas"]["RecurringJobScopePreviewResponse"];
+            all: components["schemas"]["RecurringJobScopePreviewResponse"];
+        };
         RecurringJobChangeRequest: {
             operation: null | string;
             scope: null | string;
+            reason: null | string;
             /** Format: int32 */
             expectedSeriesVersion: number | string;
             name: null | string;
@@ -988,6 +979,10 @@ export interface components {
         };
         RecurringJobResponse: {
             assignments: components["schemas"]["RecurringJobAssignmentResponse"][];
+        };
+        RecurringJobScopePreviewResponse: {
+            impact: null | components["schemas"]["RecurringJobChangeImpactResponse"];
+            error: null | string;
         };
         RecurringJobSeriesDetailsResponse: {
             /** Format: uuid */
@@ -2084,37 +2079,6 @@ export interface operations {
             };
         };
     };
-    GetRecurringJobDetails: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RecurringJobSeriesDetailsResponse"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProblemDetails"];
-                };
-            };
-        };
-    };
     PreviewRecurringJobChange: {
         parameters: {
             query?: never;
@@ -2136,7 +2100,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RecurringJobChangeImpactResponse"];
+                    "application/json": components["schemas"]["RecurringJobChangePreviewResponse"];
                 };
             };
             /** @description Bad Request */

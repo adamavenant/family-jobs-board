@@ -15,6 +15,27 @@ internal static class RecurringOccurrenceGenerator
         DateOnly requestedDate,
         CancellationToken cancellationToken)
     {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                await GenerateOnceAsync(repository, clock, requestedDate, cancellationToken);
+                return;
+            }
+            catch (RecurringJobGenerationConflictException) when (attempt < 2)
+            {
+                // Another request changed or generated the same series. The repository has
+                // cleared its stale tracking state, so rebuild from the committed definition.
+            }
+        }
+    }
+
+    private static async Task GenerateOnceAsync(
+        ITodayBoardRepository repository,
+        IHouseholdClock clock,
+        DateOnly requestedDate,
+        CancellationToken cancellationToken)
+    {
         var rollingHorizon = clock.Today.AddDays(55);
         var horizon = requestedDate > rollingHorizon ? requestedDate : rollingHorizon;
         var seriesToAdvance = await repository.GetRecurringJobSeriesNeedingGenerationAsync(
@@ -25,11 +46,31 @@ internal static class RecurringOccurrenceGenerator
             return;
         }
 
-        var occurrences = seriesToAdvance
-            .SelectMany(series => series
-                .GenerateOccurrencesThrough(horizon)
-                .Select(occurrence => CreateOccurrence(series, occurrence)))
-            .ToArray();
+        var slots = await repository.GetRecurringJobSlotsAsync(
+            seriesToAdvance.Select(series => series.Id).ToArray(),
+            cancellationToken);
+        var occupiedBySeries = slots
+            .GroupBy(slot => slot.SeriesId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.SelectMany(slot => new[]
+                    {
+                        slot.ScheduledDate,
+                        slot.OriginalScheduledDate,
+                    })
+                    .ToHashSet());
+        var occurrences = new List<Job>();
+        foreach (var series in seriesToAdvance)
+        {
+            var occupied = occupiedBySeries.GetValueOrDefault(series.Id) ?? [];
+            foreach (var occurrence in series.GenerateOccurrencesThrough(horizon))
+            {
+                if (occupied.Add(occurrence.Date))
+                {
+                    occurrences.Add(CreateOccurrence(series, occurrence));
+                }
+            }
+        }
 
         await repository.AddJobsAsync(occurrences, cancellationToken);
         await repository.SaveChangesAsync(cancellationToken);
@@ -50,5 +91,13 @@ internal static class RecurringOccurrenceGenerator
             series.ScheduledTime,
             series.Id,
             series.Frequency);
+    }
+}
+
+public sealed class RecurringJobGenerationConflictException : Exception
+{
+    public RecurringJobGenerationConflictException(Exception innerException)
+        : base("Recurring jobs changed while occurrences were being generated.", innerException)
+    {
     }
 }

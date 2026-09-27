@@ -47,6 +47,12 @@ const impacts = {
   all: impact(20, 0, 8),
 };
 
+const previews = {
+  thisOnly: { impact: impacts.thisOnly, error: null },
+  allFuture: { impact: impacts.allFuture, error: null },
+  all: { impact: impacts.all, error: null },
+};
+
 it("previews all scopes after an edit and applies the selected future scope", async () => {
   const submissions: FormData[] = [];
   const router = createMemoryRouter(
@@ -62,7 +68,8 @@ it("previews all scopes after an edit and applies the selected future scope", as
                 intent: "previewRecurringJobChange",
                 jobId: job.id,
                 operation: "edit",
-                previews: impacts,
+                seriesVersion: 4,
+                previews,
               }
             : {
                 intent: "applyRecurringJobChange",
@@ -134,7 +141,8 @@ it("uses the same three scopes for cancellation", async () => {
       intent: "previewRecurringJobChange",
       jobId: job.id,
       operation: "cancel",
-      previews: impacts,
+      seriesVersion: 4,
+      previews,
       submittedOperation: form.get("operation"),
     };
   });
@@ -172,7 +180,8 @@ it("requires another preview after an edited value changes", async () => {
           intent: "previewRecurringJobChange",
           jobId: job.id,
           operation: "edit",
-          previews: impacts,
+          seriesVersion: 4,
+          previews,
         }),
       },
     ],
@@ -196,6 +205,54 @@ it("requires another preview after an edited value changes", async () => {
   expect(
     screen.getByRole("button", { name: "Review changes" }),
   ).toBeInTheDocument();
+});
+
+it("disables only scopes that cannot apply the proposed change", async () => {
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: <ScopedRecurringJobEditForm job={job} />,
+        action: async () => ({
+          intent: "previewRecurringJobChange",
+          jobId: job.id,
+          operation: "edit",
+          seriesVersion: 4,
+          previews: {
+            thisOnly: {
+              impact: null,
+              error:
+                "This recurring series already has a job on the selected date.",
+            },
+            allFuture: previews.allFuture,
+            all: previews.all,
+          },
+        }),
+      },
+    ],
+    { initialEntries: ["/"] },
+  );
+  const user = userEvent.setup();
+  render(<RouterProvider router={router} />);
+
+  await user.click(screen.getByText("Edit job"));
+  await user.click(screen.getByRole("button", { name: "Review changes" }));
+
+  const scopeGroup = await screen.findByRole("group", { name: "Apply to" });
+  expect(
+    within(scopeGroup).getByRole("radio", { name: /This Only/ }),
+  ).toBeDisabled();
+  expect(
+    within(scopeGroup).getByRole("radio", { name: /All Future/ }),
+  ).toBeChecked();
+  expect(
+    within(scopeGroup).getByText(
+      "This recurring series already has a job on the selected date.",
+    ),
+  ).toBeInTheDocument();
+  expect(
+    within(scopeGroup).getByRole("button", { name: "Confirm changes" }),
+  ).toBeEnabled();
 });
 
 function impact(
