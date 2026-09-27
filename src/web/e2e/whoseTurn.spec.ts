@@ -162,7 +162,6 @@ test("an adult runs several whose-turn rotations side by side", async ({
       selectedChildId: null,
       jobs: [],
       pointsBalance: null,
-      pointEarnings: [],
       pendingApprovalCount: 0,
       whoseTurns: saved.map((rotation) => turnFor(rotation, date)),
     };

@@ -21,7 +21,7 @@ behaviour awards alongside job awards.
 | List active behaviour types (name, description, usual points) | No | Yes | Yes |
 | Create, edit, or delete a behaviour type | No | No | Yes |
 | Log a behaviour for a child | No | No | Yes |
-| See behaviour awards in points history | No | Own | Not exposed as an adult points view |
+| See behaviour awards in points history | No | Own | Any child, via the points ledger view (issue #77) |
 
 Children are shown the usual points so expectations are transparent. The amount
 actually awarded can differ, and history always shows the amount awarded.
@@ -95,10 +95,9 @@ yet count deleted behaviour logs.
   unknown or deleted type, no children, duplicate children, an inactive or
   non-child member, or negative points; `409` for a request-ID conflict.
 - Children receive `403` on every write endpoint.
-- `GET /api/today` point earnings carry `source` (`job` or `goodBehaviour`),
-  `name`, optional `jobId`, `points`, `awardedAtUtc`, and `loggedByDisplayName`
-  (behaviour entries only). Job entries do not currently record an approving
-  adult.
+- Behaviour awards appear in `GET /api/points-ledger` under the type name as
+  it was logged. The ledger shows no source or logging adult; see the points
+  ledger view in `060-redemptions-adjustments-and-audit.md`.
 
 ## UI
 
@@ -107,7 +106,7 @@ yet count deleted behaviour logs.
   chosen; type; editable points defaulting to the type's), and type management
   with confirmation before delete.
 - Children get a read-only "Ways to earn points" list and see behaviour entries
-  in their history with the logging adult.
+  in their points ledger.
 
 ## Tests
 

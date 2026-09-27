@@ -1638,6 +1638,62 @@
         ]
       }
     },
+    "/api/points-ledger": {
+      "get": {
+        "tags": [
+          "Points ledger"
+        ],
+        "summary": "Get the points ledger, newest first.",
+        "description": "Children always receive their own ledger; any other childId returns 403. Adults receive every child's ledger, or one child's with childId; an unknown or adult ID returns 400. Each page holds up to 20 entries with the name, signed points, award time, and the child's balance after the entry. Pass nextCursor as 'before' to read older entries.",
+        "operationId": "GetPointsLedger",
+        "parameters": [
+          {
+            "name": "childId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PointsLedgerResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
     "/api/calendar": {
       "get": {
         "tags": [
@@ -2981,15 +3037,12 @@
           }
         }
       },
-      "PointEarningResponse": {
+      "PointsLedgerChildResponse": {
         "required": [
           "id",
-          "source",
-          "name",
-          "jobId",
-          "points",
-          "awardedAtUtc",
-          "loggedByDisplayName"
+          "displayName",
+          "isActive",
+          "balance"
         ],
         "type": "object",
         "properties": {
@@ -2997,20 +3050,57 @@
             "type": "string",
             "format": "uuid"
           },
-          "source": {
+          "displayName": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "balance": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PointsLedgerEntryResponse": {
+        "required": [
+          "id",
+          "childId",
+          "childDisplayName",
+          "name",
+          "points",
+          "balanceAfter",
+          "awardedAtUtc"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childDisplayName": {
             "type": "string"
           },
           "name": {
             "type": "string"
           },
-          "jobId": {
+          "points": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
+              "integer",
               "string"
             ],
-            "format": "uuid"
+            "format": "int32"
           },
-          "points": {
+          "balanceAfter": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
@@ -3021,8 +3111,38 @@
           "awardedAtUtc": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "PointsLedgerResponse": {
+        "required": [
+          "selectedChildId",
+          "children",
+          "entries",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "selectedChildId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           },
-          "loggedByDisplayName": {
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PointsLedgerChildResponse"
+            }
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PointsLedgerEntryResponse"
+            }
+          },
+          "nextCursor": {
             "type": [
               "null",
               "string"
@@ -3417,7 +3537,6 @@
           "selectedChildId",
           "jobs",
           "pointsBalance",
-          "pointEarnings",
           "pendingApprovalCount",
           "whoseTurns"
         ],
@@ -3461,12 +3580,6 @@
               "string"
             ],
             "format": "int32"
-          },
-          "pointEarnings": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PointEarningResponse"
-            }
           },
           "pendingApprovalCount": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -3731,6 +3844,9 @@
     },
     {
       "name": "Point adjustments"
+    },
+    {
+      "name": "Points ledger"
     },
     {
       "name": "Calendar"

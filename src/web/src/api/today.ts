@@ -35,7 +35,6 @@ export interface TodayBoard {
   selectedChildId: string | null;
   jobs: TodayJob[];
   pointsBalance: number | null;
-  pointEarnings: PointEarning[];
   pendingApprovalCount: number;
   whoseTurns: WhoseTurn[];
 }
@@ -53,16 +52,6 @@ export interface HouseholdMember {
   nickname: string | null;
   displayName: string;
   isAdult: boolean;
-}
-
-export interface PointEarning {
-  id: string;
-  source: "job" | "goodBehaviour" | "manualAdjustment";
-  name: string;
-  jobId: string | null;
-  points: number;
-  awardedAtUtc: string;
-  loggedByDisplayName: string | null;
 }
 
 export interface JobApproval {
@@ -118,15 +107,6 @@ export async function getToday(
     jobs: data.jobs.map(mapJob),
     pointsBalance:
       data.pointsBalance === null ? null : Number(data.pointsBalance),
-    pointEarnings: data.pointEarnings.map((earning) => ({
-      id: earning.id,
-      source: earningSource(earning.source),
-      name: earning.name,
-      jobId: earning.jobId,
-      points: Number(earning.points),
-      awardedAtUtc: earning.awardedAtUtc,
-      loggedByDisplayName: earning.loggedByDisplayName,
-    })),
     pendingApprovalCount: Number(data.pendingApprovalCount),
     whoseTurns: data.whoseTurns ?? [],
   };
@@ -338,12 +318,6 @@ function apiClient() {
     baseUrl: window.location.origin,
     fetch: authenticatedFetch,
   });
-}
-
-function earningSource(value: string): PointEarning["source"] {
-  return value === "goodBehaviour" || value === "manualAdjustment"
-    ? value
-    : "job";
 }
 
 export function mapJob(job: {

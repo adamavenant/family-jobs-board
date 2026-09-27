@@ -8,7 +8,6 @@ public sealed record TodayResponse(
     Guid? SelectedChildId,
     IReadOnlyList<JobResponse> Jobs,
     int? PointsBalance,
-    IReadOnlyList<PointEarningResponse> PointEarnings,
     int PendingApprovalCount,
     IReadOnlyList<WhoseTurnResponse> WhoseTurns);
 
@@ -119,12 +118,3 @@ public sealed record JobRejectionResponse(
     DateTimeOffset RejectedAtUtc);
 
 public sealed record JobApprovalResponse(JobResponse Job, int PointsBalance);
-
-public sealed record PointEarningResponse(
-    Guid Id,
-    string Source,
-    string Name,
-    Guid? JobId,
-    int Points,
-    DateTimeOffset AwardedAtUtc,
-    string? LoggedByDisplayName);

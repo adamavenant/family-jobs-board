@@ -8,7 +8,6 @@ public sealed record TodayBoard(
     Guid? SelectedChildId,
     IReadOnlyList<TodayJob> Jobs,
     int? PointsBalance,
-    IReadOnlyList<TodayPointEarning> PointEarnings,
     int PendingApprovalCount,
     IReadOnlyList<TodayWhoseTurn> WhoseTurns);
 
@@ -49,23 +48,3 @@ public sealed record TodayJobRejection(
     DateTimeOffset RejectedAtUtc);
 
 public sealed record TodayJobApproval(TodayJob Job, int PointsBalance);
-
-public sealed record TodayPointsSummary(
-    int Balance,
-    IReadOnlyList<TodayPointEarning> Earnings);
-
-public static class PointEarningSource
-{
-    public const string Job = "job";
-    public const string GoodBehaviour = "goodBehaviour";
-    public const string ManualAdjustment = "manualAdjustment";
-}
-
-public sealed record TodayPointEarning(
-    Guid Id,
-    string Source,
-    string Name,
-    Guid? JobId,
-    int Points,
-    DateTimeOffset AwardedAtUtc,
-    string? LoggedByDisplayName);

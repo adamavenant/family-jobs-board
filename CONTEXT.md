@@ -99,7 +99,9 @@ redemption is planned and not yet implemented.
 
 #### Properties
 - Accumulated total per Child
-- Trackable history of point assignments
+- Trackable history of point assignments, read as a newest-first points
+  ledger with a running balance: each Child sees only their own, and Adults
+  see every Child's, filterable by Child
 - Manual adjustments by Adults are signed, need a reason, and may take a balance
   negative only after explicit confirmation; mistakes are corrected with a new
   opposite entry, never by editing history

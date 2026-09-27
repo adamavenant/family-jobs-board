@@ -501,6 +501,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/points-ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the points ledger, newest first.
+         * @description Children always receive their own ledger; any other childId returns 403. Adults receive every child's ledger, or one child's with childId; an unknown or adult ID returns 400. Each page holds up to 20 entries with the name, signed points, award time, and the child's balance after the entry. Pass nextCursor as 'before' to read older entries.
+         */
+        get: operations["GetPointsLedger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/calendar": {
         parameters: {
             query?: never;
@@ -829,18 +849,34 @@ export interface components {
             /** Format: date-time */
             adjustedAtUtc: string;
         };
-        PointEarningResponse: {
+        PointsLedgerChildResponse: {
             /** Format: uuid */
             id: string;
-            source: string;
-            name: string;
+            displayName: string;
+            isActive: boolean;
+            /** Format: int32 */
+            balance: number | string;
+        };
+        PointsLedgerEntryResponse: {
             /** Format: uuid */
-            jobId: null | string;
+            id: string;
+            /** Format: uuid */
+            childId: string;
+            childDisplayName: string;
+            name: string;
             /** Format: int32 */
             points: number | string;
+            /** Format: int32 */
+            balanceAfter: number | string;
             /** Format: date-time */
             awardedAtUtc: string;
-            loggedByDisplayName: null | string;
+        };
+        PointsLedgerResponse: {
+            /** Format: uuid */
+            selectedChildId: null | string;
+            children: components["schemas"]["PointsLedgerChildResponse"][];
+            entries: components["schemas"]["PointsLedgerEntryResponse"][];
+            nextCursor: null | string;
         };
         ProblemDetails: {
             type?: null | string;
@@ -944,7 +980,6 @@ export interface components {
             jobs: components["schemas"]["JobResponse"][];
             /** Format: int32 */
             pointsBalance: null | number | string;
-            pointEarnings: components["schemas"]["PointEarningResponse"][];
             /** Format: int32 */
             pendingApprovalCount: number | string;
             whoseTurns: components["schemas"]["WhoseTurnResponse"][];
@@ -2193,6 +2228,45 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProblemDetails"];
                 };
+            };
+        };
+    };
+    GetPointsLedger: {
+        parameters: {
+            query?: {
+                childId?: string;
+                before?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PointsLedgerResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

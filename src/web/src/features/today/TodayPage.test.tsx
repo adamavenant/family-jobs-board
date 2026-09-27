@@ -45,7 +45,6 @@ const board = {
   selectedChildId: null,
   pointsBalance: null,
   pendingApprovalCount: 1,
-  pointEarnings: [],
   jobs: [
     {
       id: "7009b529-733c-4770-ae56-1f6fa69f6363",
@@ -972,17 +971,6 @@ describe("Today page", () => {
       ...board,
       jobs: [board.jobs[0], board.jobs[1], approvedJob],
       pendingApprovalCount: 0,
-      pointEarnings: [
-        {
-          id: "63fd708b-1296-409d-9ae4-7cd6fc501af7",
-          source: "job",
-          name: pendingJob.name,
-          jobId: pendingJob.id,
-          points: 5,
-          awardedAtUtc: "2026-08-29T10:30:00Z",
-          loggedByDisplayName: null,
-        },
-      ],
     };
     vi.stubGlobal(
       "fetch",
@@ -1014,7 +1002,6 @@ describe("Today page", () => {
     expect(
       await screen.findByText("Approved — 5 points awarded"),
     ).toBeInTheDocument();
-    expect(screen.queryByText("How Addie earned them")).not.toBeInTheDocument();
   });
 
   it("rejects a pending job with feedback and allows another try", async () => {
