@@ -647,7 +647,7 @@ public sealed class RecurringJobChangeService
             errors[nameof(input.ScheduledDate)] = ["Choose a scheduled date."];
         }
 
-        if (!TryAgendaPeriod(input.AgendaPeriod, out var agendaPeriod))
+        if (!TodayJobMapping.TryParseAgendaPeriod(input.AgendaPeriod, out var agendaPeriod))
         {
             errors[nameof(input.AgendaPeriod)] =
                 ["Choose morning, arrivingHome, evening, or unscheduled."];
@@ -922,19 +922,6 @@ public sealed class RecurringJobChangeService
             _ => default,
         };
         return value is "daily" or "weekly" or "monthly";
-    }
-
-    private static bool TryAgendaPeriod(string? value, out AgendaPeriod period)
-    {
-        period = value switch
-        {
-            "morning" => AgendaPeriod.Morning,
-            "arrivingHome" => AgendaPeriod.ArrivingHome,
-            "evening" => AgendaPeriod.Evening,
-            "unscheduled" => AgendaPeriod.Unscheduled,
-            _ => default,
-        };
-        return value is "morning" or "arrivingHome" or "evening" or "unscheduled";
     }
 
     private static InvalidRecurringJobChangeException Invalid(string field, string message) =>

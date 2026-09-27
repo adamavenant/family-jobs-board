@@ -82,6 +82,19 @@ internal static class TodayJobMapping
         };
     }
 
+    public static bool TryParseAgendaPeriod(string? value, out AgendaPeriod agendaPeriod)
+    {
+        agendaPeriod = value switch
+        {
+            "morning" => AgendaPeriod.Morning,
+            "arrivingHome" => AgendaPeriod.ArrivingHome,
+            "evening" => AgendaPeriod.Evening,
+            "unscheduled" => AgendaPeriod.Unscheduled,
+            _ => AgendaPeriod.Unscheduled,
+        };
+        return value is "morning" or "arrivingHome" or "evening" or "unscheduled";
+    }
+
     public static string MapRecurrenceFrequency(RecurrenceFrequency frequency)
     {
         return frequency switch

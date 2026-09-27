@@ -178,7 +178,7 @@ public sealed class TodayBoardService
                 ["The scheduled date cannot be in the past."];
         }
 
-        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        if (!TodayJobMapping.TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
         {
             errors[nameof(AddTodayJob.AgendaPeriod)] =
                 ["Choose morning, arrivingHome, evening, or unscheduled."];
@@ -230,7 +230,7 @@ public sealed class TodayBoardService
             errors[nameof(UpdateTodayJob.ScheduledDate)] = ["Choose a scheduled date."];
         }
 
-        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        if (!TodayJobMapping.TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
         {
             errors[nameof(UpdateTodayJob.AgendaPeriod)] =
                 ["Choose morning, arrivingHome, evening, or unscheduled."];
@@ -311,7 +311,7 @@ public sealed class TodayBoardService
             nameof(CreateDailyRecurringJob.AssignmentMode),
             nameof(CreateDailyRecurringJob.ChildIds));
 
-        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        if (!TodayJobMapping.TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
         {
             errors[nameof(CreateDailyRecurringJob.AgendaPeriod)] =
                 ["Choose morning, arrivingHome, evening, or unscheduled."];
@@ -424,7 +424,7 @@ public sealed class TodayBoardService
             nameof(CreateWeeklyRecurringJob.AssignmentMode),
             nameof(CreateWeeklyRecurringJob.ChildIds));
 
-        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        if (!TodayJobMapping.TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
         {
             errors[nameof(CreateWeeklyRecurringJob.AgendaPeriod)] =
                 ["Choose morning, arrivingHome, evening, or unscheduled."];
@@ -545,7 +545,7 @@ public sealed class TodayBoardService
             nameof(CreateMonthlyRecurringJob.AssignmentMode),
             nameof(CreateMonthlyRecurringJob.ChildIds));
 
-        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        if (!TodayJobMapping.TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
         {
             errors[nameof(CreateMonthlyRecurringJob.AgendaPeriod)] =
                 ["Choose morning, arrivingHome, evening, or unscheduled."];
@@ -872,19 +872,6 @@ public sealed class TodayBoardService
         }
 
         return errors;
-    }
-
-    private static bool TryParseAgendaPeriod(string? value, out AgendaPeriod agendaPeriod)
-    {
-        agendaPeriod = value switch
-        {
-            "morning" => AgendaPeriod.Morning,
-            "arrivingHome" => AgendaPeriod.ArrivingHome,
-            "evening" => AgendaPeriod.Evening,
-            "unscheduled" => AgendaPeriod.Unscheduled,
-            _ => AgendaPeriod.Unscheduled,
-        };
-        return value is "morning" or "arrivingHome" or "evening" or "unscheduled";
     }
 
     private static bool TryParseWeekdays(
