@@ -1,31 +1,30 @@
 import createClient from "openapi-fetch";
 
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
 import { authenticatedFetch } from "./auth";
 
-export interface PointsLedger {
-  selectedChildId: string | null;
-  children: PointsLedgerChild[];
-  entries: PointsLedgerEntry[];
-  nextCursor: string | null;
-}
+type GeneratedLedger = components["schemas"]["PointsLedgerResponse"];
+type GeneratedLedgerChild = components["schemas"]["PointsLedgerChildResponse"];
+type GeneratedLedgerEntry = components["schemas"]["PointsLedgerEntryResponse"];
 
-export interface PointsLedgerChild {
-  id: string;
-  displayName: string;
-  isActive: boolean;
+// The UI model is the generated contract with its whole-number fields, which
+// the contract allows as numeric strings, normalized to numbers.
+export type PointsLedgerChild = Omit<GeneratedLedgerChild, "balance"> & {
   balance: number;
-}
+};
 
-export interface PointsLedgerEntry {
-  id: string;
-  childId: string;
-  childDisplayName: string;
-  name: string;
+export type PointsLedgerEntry = Omit<
+  GeneratedLedgerEntry,
+  "points" | "balanceAfter"
+> & {
   points: number;
   balanceAfter: number;
-  awardedAtUtc: string;
-}
+};
+
+export type PointsLedger = Omit<GeneratedLedger, "children" | "entries"> & {
+  children: PointsLedgerChild[];
+  entries: PointsLedgerEntry[];
+};
 
 export class PointsLedgerApiError extends Error {
   public constructor(message: string) {
@@ -58,24 +57,26 @@ export async function getPointsLedger(options: {
     );
   }
 
+  return mapLedger(data);
+}
+
+function mapLedger(value: GeneratedLedger): PointsLedger {
   return {
-    selectedChildId: data.selectedChildId,
-    children: data.children.map((child) => ({
-      id: child.id,
-      displayName: child.displayName,
-      isActive: child.isActive,
-      balance: Number(child.balance),
-    })),
-    entries: data.entries.map((entry) => ({
-      id: entry.id,
-      childId: entry.childId,
-      childDisplayName: entry.childDisplayName,
-      name: entry.name,
-      points: Number(entry.points),
-      balanceAfter: Number(entry.balanceAfter),
-      awardedAtUtc: entry.awardedAtUtc,
-    })),
-    nextCursor: data.nextCursor,
+    ...value,
+    children: value.children.map(mapChild),
+    entries: value.entries.map(mapEntry),
+  };
+}
+
+function mapChild(value: GeneratedLedgerChild): PointsLedgerChild {
+  return { ...value, balance: Number(value.balance) };
+}
+
+function mapEntry(value: GeneratedLedgerEntry): PointsLedgerEntry {
+  return {
+    ...value,
+    points: Number(value.points),
+    balanceAfter: Number(value.balanceAfter),
   };
 }
 
