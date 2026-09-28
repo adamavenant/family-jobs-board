@@ -8,7 +8,8 @@ Retrospective specification of the delivered Phase 2 slices.
 
 An adult can schedule a dated once-off job for one or more active children. A
 family member can browse a household-local day; children see only their own
-jobs and can submit open work for adult review.
+jobs and can submit open work for adult review, while adults can complete and
+approve open work on a child's behalf in one action.
 
 ## Actors and authorization
 
@@ -40,11 +41,12 @@ points are a non-negative whole number. Scheduled dates cannot be in the past.
 Agenda period is `morning`, `arrivingHome`, `evening`, or `unscheduled`, with
 an optional time.
 
-Jobs start `Open`. Their child, or an adult acting on the child's behalf, may
-transition them once to `PendingApproval`, capturing a UTC completion instant.
-Another child receives `403`; a missing job receives `404`; and an invalid
-repeat transition receives `409`. Adult-submitted completion is not approval
-and does not award points.
+Jobs start `Open`. Their child may transition them once to `PendingApproval`,
+capturing a UTC completion instant. An adult acting on the child's behalf
+completes and approves the job atomically, capturing completion and approval
+instants and awarding the configured points exactly once. Another child
+receives `403`; a missing job receives `404`; and an invalid repeat transition
+receives `409`.
 
 An adult may edit all job details while a job is `Open` or `PendingApproval`.
 Editing retains its workflow state, completion and review history, recurring
@@ -74,7 +76,8 @@ commit atomically. Existing migrations are forward-only.
   `scheduledDate`, agenda period, and optional time; it returns the created
   child-specific jobs.
 - `POST /api/jobs/{id}/complete` transitions the authenticated child's own job,
-  or lets an authenticated adult transition a child's job on their behalf.
+  or lets an authenticated adult complete and approve a child's job on their
+  behalf, awarding its points in the same transaction.
 - `PUT /api/jobs/{id}` lets an adult replace the editable details of one open
   or pending-approval occurrence.
 - `POST /api/jobs/{id}/cancel` lets an adult terminally cancel one open or
@@ -119,9 +122,8 @@ its persistence dependency.
   unknown, inactive, and adult member selections return field validation.
 - Given a child completes an open owned job, then it becomes pending approval
   with one completion instant; a repeat does not create another submission.
-- Given an adult completes an open child job, then only that job becomes pending
-  approval with one completion instant and no points are awarded until a
-  separate approval.
+- Given an adult completes an open child job, then only that job becomes
+  approved with completion and approval instants and exactly one points award.
 - Given an adult edits an open or pending-approval job, then its details update
   without changing workflow/review state or creating a ledger entry.
 - Given an adult cancels an open or pending-approval job, then it is retained as

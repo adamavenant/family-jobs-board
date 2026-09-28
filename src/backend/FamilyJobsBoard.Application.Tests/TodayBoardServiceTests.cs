@@ -116,7 +116,7 @@ public sealed class TodayBoardServiceTests
     }
 
     [Fact]
-    public async Task Adult_can_complete_a_childs_open_job_without_awarding_points()
+    public async Task Adult_completion_approves_a_childs_open_job_and_awards_points()
     {
         var repository = new RecordingRepository([Adult, FirstChild]);
         var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
@@ -128,8 +128,14 @@ public sealed class TodayBoardServiceTests
             Adult.Id,
             CancellationToken.None);
 
-        Assert.Equal("pendingApproval", completed.Status);
+        Assert.Equal("approved", completed.Status);
         Assert.Equal(new FixedClock().UtcNow, completed.CompletedAtUtc);
+        Assert.Equal(new FixedClock().UtcNow, completed.ApprovedAtUtc);
+        var award = Assert.Single(repository.PointsAwards);
+        Assert.Equal(job.Id, award.JobId);
+        Assert.Equal(job.Points, award.Amount);
+        var decision = Assert.Single(repository.ReviewDecisions);
+        Assert.Equal(JobReviewOutcome.Approved, decision.Outcome);
         Assert.Equal(1, repository.SaveCount);
     }
 
@@ -161,7 +167,7 @@ public sealed class TodayBoardServiceTests
 
         await service.CompleteAsync(selected.Id, Adult.Id, CancellationToken.None);
 
-        Assert.Equal(JobStatus.PendingApproval, selected.Status);
+        Assert.Equal(JobStatus.Approved, selected.Status);
         Assert.Equal(JobStatus.Open, next.Status);
         Assert.Single(repository.Series);
         Assert.Equal(series.Id, repository.Series[0].Id);
@@ -557,6 +563,10 @@ public sealed class TodayBoardServiceTests
 
         public List<RecurringJobSeries> Series { get; } = [];
 
+        public List<PointsLedgerEntry> PointsAwards { get; } = [];
+
+        public List<JobReviewDecision> ReviewDecisions { get; } = [];
+
         public int SaveCount { get; private set; }
 
         public DateOnly? LastGenerationHorizon { get; private set; }
@@ -641,8 +651,17 @@ public sealed class TodayBoardServiceTests
                 Series.Where(item => seriesIds.Contains(item.Id)).ToArray());
         public Task<TodayPointsSummary> GetPointsSummaryAsync(Guid childId, CancellationToken cancellationToken) =>
             Task.FromResult(new TodayPointsSummary(0, []));
-        public Task AddPointsAwardAsync(PointsLedgerEntry entry, CancellationToken cancellationToken) => throw Unused();
-        public Task AddReviewDecisionAsync(JobReviewDecision decision, CancellationToken cancellationToken) => throw Unused();
+        public Task AddPointsAwardAsync(PointsLedgerEntry entry, CancellationToken cancellationToken)
+        {
+            PointsAwards.Add(entry);
+            return Task.CompletedTask;
+        }
+
+        public Task AddReviewDecisionAsync(JobReviewDecision decision, CancellationToken cancellationToken)
+        {
+            ReviewDecisions.Add(decision);
+            return Task.CompletedTask;
+        }
 
         private static NotSupportedException Unused() => new("This operation is not used by the test.");
     }

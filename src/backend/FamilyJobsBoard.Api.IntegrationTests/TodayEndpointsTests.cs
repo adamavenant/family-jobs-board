@@ -94,7 +94,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Adult_can_submit_a_childs_job_before_separate_approval_awards_points()
+    public async Task Adult_completion_approves_a_childs_job_and_awards_points_atomically()
     {
         using var completionRequest = new HttpRequestMessage(
             HttpMethod.Post,
@@ -105,22 +105,34 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.OK, completionResponse.StatusCode);
         Assert.NotNull(completed);
-        Assert.Equal("pendingApproval", completed.Status);
+        Assert.Equal("approved", completed.Status);
         Assert.NotNull(completed.CompletedAtUtc);
+        Assert.NotNull(completed.ApprovedAtUtc);
 
         await using (var scope = (_factory
             ?? throw new InvalidOperationException("Test API was not initialised."))
             .Services.CreateAsyncScope())
         {
             var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            Assert.False(await database.PointsLedgerEntries
-                .AnyAsync(entry => entry.JobId == DemoDataIds.FeedDog));
+            var award = await database.PointsLedgerEntries
+                .SingleAsync(entry => entry.JobId == DemoDataIds.FeedDog);
+            Assert.Equal(5, award.Amount);
+            var decision = await database.JobReviewDecisions
+                .SingleAsync(decision => decision.JobId == DemoDataIds.FeedDog);
+            Assert.Equal(JobReviewOutcome.Approved, decision.Outcome);
         }
+
+        using var repeatRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/jobs/{DemoDataIds.FeedDog}/complete");
+        repeatRequest.Headers.Add("X-Test-Member-Id", DemoDataIds.Addie.ToString());
+        using var repeatResponse = await Client.SendAsync(repeatRequest);
+        Assert.Equal(HttpStatusCode.Conflict, repeatResponse.StatusCode);
 
         using var approvalResponse = await Client.PostAsync(
             $"/api/jobs/{DemoDataIds.FeedDog}/approve",
             null);
-        Assert.Equal(HttpStatusCode.OK, approvalResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, approvalResponse.StatusCode);
 
         await using var verificationScope = (_factory
             ?? throw new InvalidOperationException("Test API was not initialised."))

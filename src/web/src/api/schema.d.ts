@@ -243,8 +243,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Mark an open job complete and pending approval.
-         * @description A child may complete their own job and an adult may complete a child's job on their behalf. Returns 409 when the job is not open.
+         * Complete an open job.
+         * @description A child may submit their own job for approval. An adult completing a child's job on their behalf approves it and awards its points atomically. Returns 409 when the job is not open or its points were already awarded.
          */
         post: operations["CompleteJob"];
         delete?: never;

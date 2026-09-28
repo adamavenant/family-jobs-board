@@ -21,9 +21,9 @@ internal static class TodayEndpoints
 
         group.MapPost("/jobs/{id:guid}/complete", CompleteJobAsync)
             .WithName("CompleteJob")
-            .WithSummary("Mark an open job complete and pending approval.")
+            .WithSummary("Complete an open job.")
             .WithDescription(
-                "A child may complete their own job and an adult may complete a child's job on their behalf. Returns 409 when the job is not open.");
+                "A child may submit their own job for approval. An adult completing a child's job on their behalf approves it and awards its points atomically. Returns 409 when the job is not open or its points were already awarded.");
 
         group.MapPost("/today/jobs", AddJobAsync)
             .RequireAuthorization("Adult")
@@ -595,7 +595,8 @@ internal static class TodayEndpoints
                 Status = StatusCodes.Status404NotFound,
             });
         }
-        catch (JobCompletionRejectedException exception)
+        catch (Exception exception) when (
+            exception is JobCompletionRejectedException or DuplicateJobPointsAwardException)
         {
             return TypedResults.Conflict(new ProblemDetails
             {

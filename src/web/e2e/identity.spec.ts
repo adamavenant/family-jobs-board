@@ -13,7 +13,7 @@ test("fresh household creates its first grown-up on a phone", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   let bootstrapped = false;
   let submittedPin = "";
-  let jobStatus: "open" | "pendingApproval" = "open";
+  let jobStatus: "open" | "approved" = "open";
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -32,7 +32,7 @@ test("fresh household creates its first grown-up on a phone", async ({
       return json(route, auth(addieId, "Addie", "adult"), 201);
     }
     if (path.endsWith("/complete")) {
-      jobStatus = "pendingApproval";
+      jobStatus = "approved";
       return json(route, job(jobStatus));
     }
     if (path === "/api/today" && bootstrapped) {
@@ -54,9 +54,7 @@ test("fresh household creates its first grown-up on a phone", async ({
     page.getByRole("heading", { name: "Good day, Addie!" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Mark as done for Fredster" }).click();
-  await expect(
-    page.getByRole("button", { name: "Approve +3 points" }),
-  ).toBeVisible();
+  await expect(page.getByText("Approved — 3 points awarded")).toBeVisible();
   expect(submittedPin).toBe("012345");
   expect(await page.evaluate(() => Object.keys(localStorage))).not.toContain(
     "family-jobs-board-member",

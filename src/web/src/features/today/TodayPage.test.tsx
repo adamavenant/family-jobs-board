@@ -135,26 +135,26 @@ describe("Today page", () => {
     ).toHaveLength(2);
   });
 
-  it("lets an adult mark a child's job done and refreshes to review controls", async () => {
+  it("lets an adult mark a child's job done and refreshes to approved state", async () => {
     const openJob = board.jobs[0];
     if (!openJob) {
       throw new Error("The open-job fixture was missing.");
     }
     const initialBoard = { ...board, pendingApprovalCount: 0, jobs: [openJob] };
-    const pendingJob = {
+    const approvedJob = {
       ...openJob,
-      status: "pendingApproval",
+      status: "approved",
       completedAtUtc: "2026-08-29T09:00:00Z",
+      approvedAtUtc: "2026-08-29T09:00:00Z",
     };
     const fetch = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(initialBoard))
-      .mockResolvedValueOnce(jsonResponse(pendingJob))
+      .mockResolvedValueOnce(jsonResponse(approvedJob))
       .mockResolvedValueOnce(
         jsonResponse({
           ...initialBoard,
-          pendingApprovalCount: 1,
-          jobs: [pendingJob],
+          jobs: [approvedJob],
         }),
       );
     vi.stubGlobal("fetch", fetch);
@@ -167,8 +167,11 @@ describe("Today page", () => {
     await user.click(button);
 
     expect(
-      await screen.findByRole("button", { name: "Approve +5 points" }),
+      await screen.findByText("Approved — 5 points awarded"),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Approve +5 points" }),
+    ).not.toBeInTheDocument();
     const completionRequest = fetch.mock.calls[1]?.[0];
     expect(completionRequest).toBeInstanceOf(Request);
     expect((completionRequest as Request).method).toBe("POST");

@@ -156,7 +156,29 @@ public sealed class TodayBoardService
 
         var child = await GetChildAsync(job.ChildId, cancellationToken);
 
-        job.MarkComplete(_clock.UtcNow);
+        var completedAtUtc = _clock.UtcNow;
+        job.MarkComplete(completedAtUtc);
+        if (actor.IsAdult)
+        {
+            job.Approve(completedAtUtc);
+            await _repository.AddReviewDecisionAsync(
+                new JobReviewDecision(
+                    Guid.NewGuid(),
+                    job.Id,
+                    JobReviewOutcome.Approved,
+                    null,
+                    completedAtUtc),
+                cancellationToken);
+            await _repository.AddPointsAwardAsync(
+                new PointsLedgerEntry(
+                    Guid.NewGuid(),
+                    job.ChildId,
+                    job.Id,
+                    job.Points,
+                    completedAtUtc),
+                cancellationToken);
+        }
+
         await _repository.SaveChangesAsync(cancellationToken);
 
         return MapJob(job, child, null);

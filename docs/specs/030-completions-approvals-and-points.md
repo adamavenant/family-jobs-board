@@ -7,10 +7,10 @@ attribution and approval-time point override remain planned.
 
 ## Outcome and user value
 
-Adults can approve or reject child-submitted work. Approval awards the job's
-configured points exactly once; children see a running balance and job-based
-earning history. Rejection returns the job for another attempt and may include
-feedback.
+Adults can complete and approve work on a child's behalf in one action, or
+approve or reject child-submitted work. Approval awards the job's configured
+points exactly once; children see a running balance and job-based earning
+history. Rejection returns the job for another attempt and may include feedback.
 
 ## Actors and authorization
 
@@ -37,10 +37,12 @@ to `Approved`, records a UTC instant, persists an approved decision, and adds a
 positive ledger award equal to the job points in one transaction. A unique
 database constraint on job ID prevents duplicate awards.
 
-An open job may be submitted by its assigned child or by an adult acting on the
-child's behalf. Both paths use the same `Open` to `PendingApproval` transition
-and UTC completion instant. Adult submission is deliberately separate from
-approval and creates no ledger entry by itself.
+An open job may be submitted by its assigned child or completed by an adult
+acting on the child's behalf. Child submission uses the `Open` to
+`PendingApproval` transition. Adult completion atomically performs completion
+and approval, records both UTC instants and an approved review decision, and
+creates the job's single points-ledger award. The adult does not need to perform
+a second approval action.
 
 Rejection records a decision with optional trimmed feedback of at most 500
 characters, returns the job to `Open`, and clears its completion instant. It
@@ -88,8 +90,8 @@ stable conflict responses, and the standard readiness check covers PostgreSQL.
 
 - Given a pending job, when an adult approves it, then the job, decision, and
   one ledger award commit together and the child's balance increases once.
-- Given an adult submits an open job on behalf of its child, then it becomes
-  pending approval without awarding points and can be approved separately.
+- Given an adult completes an open job on behalf of its child, then completion,
+  approval, the review decision, and one ledger award commit atomically.
 - Given two approval attempts race, then at most one award exists for the job.
 - Given a pending job is rejected, then it becomes open, no points are awarded,
   and optional feedback is visible to the child.
@@ -101,7 +103,8 @@ stable conflict responses, and the standard readiness check covers PostgreSQL.
 Domain tests cover approve/reject state guards and decision validation.
 Application and integration tests cover atomic awards, duplicate prevention,
 rejection/retry, authorization, balance, and history. Component and Playwright
-tests cover the child-to-adult approval loop and rejection errors.
+tests cover the child-to-adult approval loop, adult-on-behalf completion, and
+rejection errors.
 
 ## Compose demonstration
 
