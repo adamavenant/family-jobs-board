@@ -24,7 +24,6 @@ const baseBoard = {
   selectedChildId: null,
   pointsBalance: null,
   pendingApprovalCount: 0,
-  pointEarnings: [],
   jobs: [],
 };
 

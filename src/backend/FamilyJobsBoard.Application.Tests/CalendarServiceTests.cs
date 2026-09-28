@@ -364,7 +364,7 @@ public sealed class CalendarServiceTests
             Guid seriesId,
             CancellationToken cancellationToken) => throw Unused();
 
-        public Task<TodayPointsSummary> GetPointsSummaryAsync(
+        public Task<int> GetPointsBalanceAsync(
             Guid childId,
             CancellationToken cancellationToken) => throw Unused();
 

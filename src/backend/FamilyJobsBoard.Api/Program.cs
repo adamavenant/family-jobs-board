@@ -4,6 +4,7 @@ using FamilyJobsBoard.Api.Features.Health;
 using FamilyJobsBoard.Api.Features.Calendar;
 using FamilyJobsBoard.Api.Features.Identity;
 using FamilyJobsBoard.Api.Features.PointAdjustments;
+using FamilyJobsBoard.Api.Features.Points;
 using FamilyJobsBoard.Api.Features.GoodBehaviours;
 using FamilyJobsBoard.Api.Features.Today;
 using FamilyJobsBoard.Api.Features.TurnRotations;
@@ -39,6 +40,7 @@ app.MapIdentityEndpoints();
 app.MapTodayEndpoints();
 app.MapGoodBehaviourEndpoints();
 app.MapPointAdjustmentEndpoints();
+app.MapPointsLedgerEndpoints();
 app.MapCalendarEndpoints();
 app.MapTurnRotationEndpoints();
 

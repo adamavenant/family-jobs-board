@@ -64,9 +64,7 @@ public interface ITodayBoardRepository
         Guid seriesId,
         CancellationToken cancellationToken);
 
-    Task<TodayPointsSummary> GetPointsSummaryAsync(
-        Guid childId,
-        CancellationToken cancellationToken);
+    Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken);
 
     Task AddPointsAwardAsync(PointsLedgerEntry entry, CancellationToken cancellationToken);
 

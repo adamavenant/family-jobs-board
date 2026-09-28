@@ -23,7 +23,6 @@ const adultBoard = {
   selectedChildId: null,
   pointsBalance: null,
   pendingApprovalCount: 0,
-  pointEarnings: [],
   jobs: [],
 };
 
@@ -224,49 +223,13 @@ describe("Point adjustments", () => {
     expect(next?.requestId).not.toBe(retried?.requestId);
   });
 
-  it("shows children their adjustments with amount, reason, time, and the adult, without tools", async () => {
-    fakeApi(
-      {
-        ...adultBoard,
-        viewer: fredster,
-        pointsBalance: 4,
-        pointEarnings: [
-          {
-            id: "0a6f4a52-5b1e-4f0e-9d3a-6f1c2f7d8e01",
-            source: "manualAdjustment",
-            name: "Broke a plate",
-            jobId: null,
-            points: -3,
-            awardedAtUtc: "2026-09-21T09:00:00Z",
-            loggedByDisplayName: "Addie",
-          },
-          {
-            id: "3b8d1f77-2c4a-4b6e-8f10-9e2d5a7c1b02",
-            source: "manualAdjustment",
-            name: "Bonus for reading",
-            jobId: null,
-            points: 7,
-            awardedAtUtc: "2026-09-21T08:00:00Z",
-            loggedByDisplayName: "Addie",
-          },
-        ],
-      },
-      (body) => recorded(body, 0),
+  it("does not show children the adjustment tools", async () => {
+    fakeApi({ ...adultBoard, viewer: fredster, pointsBalance: 4 }, (body) =>
+      recorded(body, 0),
     );
     renderApp(fredster);
 
     await screen.findByRole("heading", { name: "Good day, Fredster!" });
-    const history = screen
-      .getByRole("heading", { name: "How Fredster earned them" })
-      .closest("section") as HTMLElement;
-    expect(within(history).getByText("−3")).toBeInTheDocument();
-    expect(within(history).getByText("Broke a plate")).toBeInTheDocument();
-    expect(within(history).getByText("+7")).toBeInTheDocument();
-    expect(within(history).getByText("Bonus for reading")).toBeInTheDocument();
-    expect(within(history).getAllByText("Adjustment · by Addie")).toHaveLength(
-      2,
-    );
-    expect(history.querySelectorAll("time")).toHaveLength(2);
     expect(
       screen.queryByRole("form", { name: "Adjust points" }),
     ).not.toBeInTheDocument();

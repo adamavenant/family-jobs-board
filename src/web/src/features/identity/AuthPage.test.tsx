@@ -278,7 +278,6 @@ function board(displayName: string, isAdult: boolean) {
     date: "2026-09-06",
     jobs: [],
     pointsBalance: isAdult ? null : 0,
-    pointEarnings: [],
     pendingApprovalCount: 0,
   };
 }

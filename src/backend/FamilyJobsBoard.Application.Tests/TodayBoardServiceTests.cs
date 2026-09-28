@@ -572,8 +572,8 @@ public sealed class TodayBoardServiceTests
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<RecurringJobSeries>>(
                 Series.Where(item => seriesIds.Contains(item.Id)).ToArray());
-        public Task<TodayPointsSummary> GetPointsSummaryAsync(Guid childId, CancellationToken cancellationToken) =>
-            Task.FromResult(new TodayPointsSummary(0, []));
+        public Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken) =>
+            Task.FromResult(0);
         public Task AddPointsAwardAsync(PointsLedgerEntry entry, CancellationToken cancellationToken) => throw Unused();
         public Task AddReviewDecisionAsync(JobReviewDecision decision, CancellationToken cancellationToken) => throw Unused();
 

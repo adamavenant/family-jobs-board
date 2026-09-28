@@ -18,7 +18,7 @@ feedback.
 | --- | --- | --- | --- |
 | Submit owned work | No | Yes | No |
 | Approve or reject pending work | No | No | Yes |
-| Read points balance/history | No | Own | Not exposed as an adult points view |
+| Read points balance/history | No | Own | Any child, via the points ledger view (issue #77) |
 
 ## Scope
 
@@ -54,8 +54,10 @@ not record the reviewing adult.
 - `POST /api/jobs/{id}/approve` returns the approved job and updated balance.
 - `POST /api/jobs/{id}/reject` accepts an optional reason and returns the open
   job with its latest rejection.
-- `GET /api/today` exposes pending count to adults and balance/earning history
-  to the authenticated child.
+- `GET /api/today` exposes pending count to adults and the balance to the
+  authenticated child. Earning history moved to `GET /api/points-ledger` with
+  issue #77; see the points ledger view in
+  `060-redemptions-adjustments-and-audit.md`.
 
 Missing jobs return `404`; invalid or already-decided transitions and duplicate
 awards return `409`; an overlong rejection reason returns validation errors.
@@ -64,8 +66,9 @@ awards return `409`; an overlong rejection reason returns validation errors.
 
 Adults see pending jobs and approve/reject controls in the daily agenda.
 Rejection feedback remains in the form if submission fails. Children see
-pending, rejected-for-retry, and approved states, plus balance and newest-first
-earnings. Loading, empty, submitting, success, and error states are covered.
+pending, rejected-for-retry, and approved states, plus their balance, which
+opens their newest-first points ledger. Loading, empty, submitting, success,
+and error states are covered.
 
 ## Audit and security
 

@@ -31,6 +31,9 @@ internal sealed class PointsLedgerEntryConfiguration : IEntityTypeConfiguration<
         builder.Property(entry => entry.PointAdjustmentId).HasColumnName("point_adjustment_id");
         builder.Property(entry => entry.Amount).HasColumnName("amount");
         builder.Property(entry => entry.AwardedAtUtc).HasColumnName("awarded_at_utc");
+        // Serves the newest-first ledger, keyset paging, and per-child balances.
+        builder.HasIndex(entry => new { entry.ChildId, entry.AwardedAtUtc, entry.Id })
+            .HasDatabaseName("ix_points_ledger_entries_child_timeline");
         builder.HasIndex(entry => entry.JobId)
             .IsUnique()
             .HasDatabaseName("ux_points_ledger_entries_job_id");

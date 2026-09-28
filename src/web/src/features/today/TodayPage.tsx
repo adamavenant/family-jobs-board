@@ -1,11 +1,6 @@
 import { Link, useFetcher } from "react-router";
 
-import type {
-  HouseholdMember,
-  PointEarning,
-  TodayBoard,
-  TodayJob,
-} from "../../api/today";
+import type { HouseholdMember, TodayBoard, TodayJob } from "../../api/today";
 import type { AppActionResult, TodayActionResult } from "../../app/routes";
 import { AddJobForm } from "./AddJobForm";
 import { RecurringJobForm } from "./RecurringJobForm";
@@ -25,6 +20,7 @@ import { GoodBehaviourTypesList } from "../goodBehaviours/GoodBehaviourTypesList
 import { PointAdjustmentsPanel } from "../pointAdjustments/PointAdjustmentsPanel";
 import { WhoseTurnCard } from "../whoseTurn/WhoseTurnCard";
 import { WhoseTurnPanel } from "../whoseTurn/WhoseTurnPanel";
+import { formatBalance } from "../points/pointsFormatting";
 import {
   ScopedRecurringJobCancelForm,
   ScopedRecurringJobEditForm,
@@ -49,9 +45,14 @@ export function TodayPage({ board }: { board: TodayBoard }) {
           <p className="eyebrow">Family Jobs Board</p>
           <div className="hero__actions">
             {board.viewer.isAdult ? (
-              <Link className="calendar-link" to="/calendar">
-                Calendar
-              </Link>
+              <>
+                <Link className="calendar-link" to="/calendar">
+                  Calendar
+                </Link>
+                <Link className="points-link" to="/points">
+                  Points
+                </Link>
+              </>
             ) : null}
             <IdentityControls viewer={board.viewer} />
             <ThemeToggle />
@@ -66,23 +67,24 @@ export function TodayPage({ board }: { board: TodayBoard }) {
             </p>
           </div>
           <div className="hero__stats">
-            <div
-              className="hero__balance"
-              aria-label={
-                board.viewer.isAdult
-                  ? `${board.pendingApprovalCount} jobs awaiting review`
-                  : `${board.pointsBalance ?? 0} points earned`
-              }
-            >
-              <strong>
-                {board.viewer.isAdult
-                  ? board.pendingApprovalCount
-                  : (board.pointsBalance ?? 0)}
-              </strong>
-              <span>
-                {board.viewer.isAdult ? "awaiting review" : "points earned"}
-              </span>
-            </div>
+            {board.viewer.isAdult ? (
+              <div
+                className="hero__balance"
+                aria-label={`${board.pendingApprovalCount} jobs awaiting review`}
+              >
+                <strong>{board.pendingApprovalCount}</strong>
+                <span>awaiting review</span>
+              </div>
+            ) : (
+              <Link
+                className="hero__balance"
+                to="/points"
+                aria-label={`${formatBalance(board.pointsBalance ?? 0)} points earned. See how you earned them`}
+              >
+                <strong>{formatBalance(board.pointsBalance ?? 0)}</strong>
+                <span>points earned</span>
+              </Link>
+            )}
             <div
               className="hero__count"
               aria-label={`${board.jobs.length} jobs on this day`}
@@ -218,15 +220,9 @@ export function TodayPage({ board }: { board: TodayBoard }) {
       </section>
 
       {!board.viewer.isAdult ? (
-        <>
-          <div className="grown-up-toolbox">
-            <GoodBehaviourTypesList />
-          </div>
-          <PointsHistory
-            childName={board.viewer.displayName}
-            earnings={board.pointEarnings}
-          />
-        </>
+        <div className="grown-up-toolbox">
+          <GoodBehaviourTypesList />
+        </div>
       ) : null}
     </main>
   );
@@ -270,7 +266,11 @@ function Agenda({ jobs, isAdult }: { jobs: TodayJob[]; isAdult: boolean }) {
   );
 }
 
-export function IdentityControls({ viewer }: { viewer: HouseholdMember }) {
+export function IdentityControls({
+  viewer,
+}: {
+  viewer: Pick<HouseholdMember, "displayName">;
+}) {
   const fetcher = useFetcher<AppActionResult>();
   const submitting = fetcher.state !== "idle";
 
@@ -281,7 +281,8 @@ export function IdentityControls({ viewer }: { viewer: HouseholdMember }) {
         <p>
           Signed in as <strong>{viewer.displayName}</strong>
         </p>
-        <fetcher.Form method="post">
+        {/* Sign out through the board's action, so it works from every page. */}
+        <fetcher.Form method="post" action="/">
           <button
             type="submit"
             name="intent"
@@ -295,87 +296,6 @@ export function IdentityControls({ viewer }: { viewer: HouseholdMember }) {
       </div>
     </details>
   );
-}
-
-function PointsHistory({
-  childName,
-  earnings,
-}: {
-  childName: string;
-  earnings: PointEarning[];
-}) {
-  return (
-    <section
-      className="points-history"
-      aria-labelledby="points-history-heading"
-    >
-      <div className="points-history__heading">
-        <div>
-          <p className="eyebrow">Points</p>
-          <h2 id="points-history-heading">How {childName} earned them</h2>
-        </div>
-        <p>
-          Approved jobs, good behaviours, and adjustments appear here, newest
-          first.
-        </p>
-      </div>
-
-      {earnings.length === 0 ? (
-        <p className="points-history__empty">
-          No points earned yet. Complete and approve a job, or show a good
-          behaviour, to start the list.
-        </p>
-      ) : (
-        <ol className="earning-list">
-          {earnings.map((earning) => (
-            <li key={earning.id}>
-              <span
-                className={
-                  earning.points < 0
-                    ? "earning-list__points earning-list__points--negative"
-                    : "earning-list__points"
-                }
-              >
-                {formatPoints(earning.points)}
-              </span>
-              <span>
-                <strong>{earning.name}</strong>
-                <span className="earning-list__source">
-                  {earningSourceLabel(earning)}
-                </span>
-                <time dateTime={earning.awardedAtUtc}>
-                  {formatAwardTime(earning.awardedAtUtc)}
-                </time>
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
-  );
-}
-
-function formatPoints(points: number): string {
-  return points < 0 ? `−${Math.abs(points)}` : `+${points}`;
-}
-
-function earningSourceLabel(earning: PointEarning): string {
-  const adult = earning.loggedByDisplayName;
-  if (earning.source === "goodBehaviour") {
-    return adult ? `Good behaviour · logged by ${adult}` : "Good behaviour";
-  }
-  if (earning.source === "manualAdjustment") {
-    return adult ? `Adjustment · by ${adult}` : "Adjustment";
-  }
-
-  return "Job";
-}
-
-function formatAwardTime(value: string) {
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
 }
 
 function JobCard({
