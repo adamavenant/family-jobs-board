@@ -79,8 +79,162 @@ internal static class TodayEndpoints
             .WithDescription(
                 "Records an optional reason, hides the occurrence from daily agendas, and leaves its recurring series and review history unchanged.");
 
+        group.MapPost("/jobs/{id:guid}/recurring-change/preview", PreviewRecurringJobChangeAsync)
+            .RequireAuthorization("Adult")
+            .WithName("PreviewRecurringJobChange")
+            .WithSummary("Preview a This Only, All Future, or All recurring-job change.")
+            .WithDescription(
+                "Calculates updated, created, cancelled, and immutable occurrence counts without changing data.");
+
+        group.MapPost("/jobs/{id:guid}/recurring-change", ApplyRecurringJobChangeAsync)
+            .RequireAuthorization("Adult")
+            .WithName("ApplyRecurringJobChange")
+            .WithSummary("Atomically apply a scoped recurring-job edit or cancellation.")
+            .WithDescription(
+                "Recalculates the impact, preserves approved/cancelled history and ledger entries, and is request-ID idempotent.");
+
         return endpoints;
     }
+
+    private static async Task<Results<
+        Ok<RecurringJobChangePreviewResponse>,
+        ValidationProblem,
+        NotFound<ProblemDetails>,
+        Conflict<ProblemDetails>,
+        ForbidHttpResult>> PreviewRecurringJobChangeAsync(
+        Guid id,
+        RecurringJobChangeRequest request,
+        HttpContext context,
+        RecurringJobChangeService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var preview = await service.PreviewAsync(
+                id,
+                IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
+                MapChange(request),
+                cancellationToken);
+            return TypedResults.Ok(new RecurringJobChangePreviewResponse(
+                preview.SeriesVersion,
+                MapScopePreview(preview.ThisOnly),
+                MapScopePreview(preview.AllFuture),
+                MapScopePreview(preview.All)));
+        }
+        catch (InvalidRecurringJobChangeException exception)
+        {
+            return TypedResults.ValidationProblem(exception.Errors, title: "Invalid recurring job change");
+        }
+        catch (JobNotFoundException exception)
+        {
+            return TypedResults.NotFound(NotFoundProblem(exception.Message));
+        }
+        catch (RecurringJobSeriesNotFoundException)
+        {
+            return TypedResults.NotFound(NotFoundProblem("Recurring job series not found."));
+        }
+        catch (RecurringJobChangeConflictException exception)
+        {
+            return TypedResults.Conflict(ConflictProblem(exception.Message));
+        }
+        catch (RecurringJobChangeForbiddenException)
+        {
+            return TypedResults.Forbid();
+        }
+    }
+
+    private static async Task<Results<
+        Ok<RecurringJobChangeResultResponse>,
+        ValidationProblem,
+        NotFound<ProblemDetails>,
+        Conflict<ProblemDetails>,
+        ForbidHttpResult>> ApplyRecurringJobChangeAsync(
+        Guid id,
+        ApplyRecurringJobChangeRequest request,
+        HttpContext context,
+        RecurringJobChangeService service,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await service.ApplyAsync(
+                id,
+                IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
+                new ApplyRecurringJobChange(request.RequestId, MapChange(request.Change)),
+                cancellationToken);
+            return TypedResults.Ok(new RecurringJobChangeResultResponse(
+                result.RequestId,
+                result.SeriesId,
+                result.SeriesVersion,
+                result.Operation,
+                result.Scope,
+                MapImpact(result.Impact)));
+        }
+        catch (InvalidRecurringJobChangeException exception)
+        {
+            return TypedResults.ValidationProblem(exception.Errors, title: "Invalid recurring job change");
+        }
+        catch (JobNotFoundException exception)
+        {
+            return TypedResults.NotFound(NotFoundProblem(exception.Message));
+        }
+        catch (RecurringJobSeriesNotFoundException)
+        {
+            return TypedResults.NotFound(NotFoundProblem("Recurring job series not found."));
+        }
+        catch (RecurringJobChangeConflictException exception)
+        {
+            return TypedResults.Conflict(ConflictProblem(exception.Message));
+        }
+        catch (RecurringJobChangeForbiddenException)
+        {
+            return TypedResults.Forbid();
+        }
+    }
+
+    private static RecurringJobChangeInput MapChange(RecurringJobChangeRequest request) => new(
+        request.Operation,
+        request.Scope,
+        request.Reason,
+        request.ExpectedSeriesVersion,
+        request.Name,
+        request.Description,
+        request.Points,
+        request.ScheduledDate,
+        request.AgendaPeriod,
+        request.ScheduledTime,
+        request.Frequency,
+        request.Weekdays,
+        request.DayOfMonth,
+        request.EndDate);
+
+    private static RecurringJobChangeImpactResponse MapImpact(RecurringJobChangeImpact impact) => new(
+        impact.UpdatedCount,
+        impact.CreatedCount,
+        impact.CancelledCount,
+        impact.ApprovedSkippedCount,
+        impact.CancelledSkippedCount,
+        impact.RetrospectivePointIncreaseSkippedCount,
+        impact.Warnings);
+
+    private static RecurringJobScopePreviewResponse MapScopePreview(
+        RecurringJobScopePreview preview) => new(
+            preview.Impact is null ? null : MapImpact(preview.Impact),
+            preview.Error);
+
+    private static ProblemDetails NotFoundProblem(string detail) => new()
+    {
+        Title = "Recurring job not found",
+        Detail = detail,
+        Status = StatusCodes.Status404NotFound,
+    };
+
+    private static ProblemDetails ConflictProblem(string detail) => new()
+    {
+        Title = "Recurring job changed",
+        Detail = detail,
+        Status = StatusCodes.Status409Conflict,
+    };
 
     private static async Task<Results<
         Ok<JobResponse>,

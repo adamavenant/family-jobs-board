@@ -96,6 +96,63 @@ public sealed record UpdateJobRequest(
 
 public sealed record CancelJobRequest(string? Reason);
 
+public sealed record RecurringJobChangeRequest(
+    string? Operation,
+    string? Scope,
+    string? Reason,
+    int ExpectedSeriesVersion,
+    string? Name,
+    string? Description,
+    int Points,
+    DateOnly? ScheduledDate,
+    string? AgendaPeriod,
+    TimeOnly? ScheduledTime,
+    string? Frequency,
+    IReadOnlyList<string>? Weekdays,
+    int? DayOfMonth,
+    DateOnly? EndDate);
+
+public sealed record ApplyRecurringJobChangeRequest(
+    Guid RequestId,
+    RecurringJobChangeRequest Change);
+
+public sealed record RecurringJobSeriesDetailsResponse(
+    Guid SeriesId,
+    int Version,
+    string Frequency,
+    IReadOnlyList<string> Weekdays,
+    int? DayOfMonth,
+    DateOnly StartDate,
+    DateOnly? EndDate,
+    bool TakesTurns);
+
+public sealed record RecurringJobChangeImpactResponse(
+    int UpdatedCount,
+    int CreatedCount,
+    int CancelledCount,
+    int ApprovedSkippedCount,
+    int CancelledSkippedCount,
+    int RetrospectivePointIncreaseSkippedCount,
+    IReadOnlyList<string> Warnings);
+
+public sealed record RecurringJobScopePreviewResponse(
+    RecurringJobChangeImpactResponse? Impact,
+    string? Error);
+
+public sealed record RecurringJobChangePreviewResponse(
+    int SeriesVersion,
+    RecurringJobScopePreviewResponse ThisOnly,
+    RecurringJobScopePreviewResponse AllFuture,
+    RecurringJobScopePreviewResponse All);
+
+public sealed record RecurringJobChangeResultResponse(
+    Guid RequestId,
+    Guid SeriesId,
+    int SeriesVersion,
+    string Operation,
+    string Scope,
+    RecurringJobChangeImpactResponse Impact);
+
 public sealed record JobResponse(
     Guid Id,
     Guid ChildId,
@@ -111,7 +168,8 @@ public sealed record JobResponse(
     string Status,
     DateTimeOffset? CompletedAtUtc,
     DateTimeOffset? ApprovedAtUtc,
-    JobRejectionResponse? LatestRejection);
+    JobRejectionResponse? LatestRejection,
+    RecurringJobSeriesDetailsResponse? Recurrence);
 
 public sealed record JobRejectionResponse(
     Guid DecisionId,

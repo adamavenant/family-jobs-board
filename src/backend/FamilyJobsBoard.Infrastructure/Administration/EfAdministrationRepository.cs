@@ -28,6 +28,8 @@ public sealed class EfAdministrationRepository : IAdministrationRepository
         await _database.PointAdjustments.ExecuteDeleteAsync(cancellationToken);
         var deletedReviewDecisionCount = await _database.JobReviewDecisions
             .ExecuteDeleteAsync(cancellationToken);
+        await _database.RecurringJobSeriesRevisions.ExecuteDeleteAsync(cancellationToken);
+        await _database.RecurringJobChanges.ExecuteDeleteAsync(cancellationToken);
         var deletedJobCount = await _database.Jobs.ExecuteDeleteAsync(cancellationToken);
         var deletedRecurringSeriesCount = await _database.RecurringJobSeries
             .ExecuteDeleteAsync(cancellationToken);

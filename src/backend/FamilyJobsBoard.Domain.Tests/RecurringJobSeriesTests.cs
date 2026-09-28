@@ -193,6 +193,17 @@ public sealed class RecurringJobSeriesTests
     }
 
     [Fact]
+    public void Generating_occurrences_does_not_change_the_edit_version()
+    {
+        var series = CreateDailySeries(new DateOnly(2026, 9, 1), null);
+        var version = series.Version;
+
+        series.GenerateOccurrencesThrough(new DateOnly(2026, 9, 3));
+
+        Assert.Equal(version, series.Version);
+    }
+
+    [Fact]
     public void Recurring_series_rejects_an_empty_assignment_request_id()
     {
         Assert.Throws<ArgumentException>(() => RecurringJobSeries.Daily(

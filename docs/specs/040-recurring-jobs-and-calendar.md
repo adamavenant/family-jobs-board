@@ -3,9 +3,9 @@
 ## Status
 
 Retrospective specification of delivered recurrence-creation slices, extended
-by issue #85 for adult calendar views. Phase 4 remains in progress:
-recurring-series lifecycle (pause/end/edit) is not implemented; see issues #107
-and #108.
+by issue #85 for adult calendar views and issue #108 for scoped recurring-job
+edits and cancellations. Phase 4 remains in progress: pause/resume and broader
+series administration remain; see issue #107.
 
 ## Outcome and user value
 
@@ -28,8 +28,10 @@ day-of-month selection, optional end date, atomic multi-child creation,
 take-turns (round-robin) schedules,
 idempotent request IDs, an eight-week rolling materialization horizon, and
 on-demand extension when a later date is browsed, and adult day/week/month
-calendar views (issue #85). Pause/end/edit, scoped edits, and weekend templates
-are not implemented (issues #107, #108).
+calendar views (issue #85), plus scoped edits and terminal cancellation from an
+occurrence (issue #108). Pause/resume and weekend-specific authoring templates
+are not implemented (issue #107); weekdays can already be expressed by selecting
+Monday through Friday in a weekly schedule.
 
 ## Domain rules and state
 
@@ -53,21 +55,46 @@ a date beyond that advances active series through the requested date. A series'
 prevent duplicates. Reusing a request ID with identical data returns the prior
 result; different data returns `409`.
 
+An adult editing or cancelling a recurring occurrence chooses `This Only`, `All
+Future`, or `All`. `This Only` changes only the selected occurrence. `All Future`
+uses that occurrence's original scheduled date as an inclusive boundary. `All`
+reconciles every stored occurrence in the series and applies the new pattern to
+future generation. `Open` and `PendingApproval` occurrences are eligible;
+`Approved` and `Cancelled` occurrences are immutable. Reconciliation can update,
+cancel, or create occurrences, but it never creates a newly scheduled occurrence
+before household today and never changes a points-ledger entry.
+
+Point increases are not applied retrospectively to occurrences before household
+today; those occurrences retain their existing points and the preview reports
+the skip. Point reductions may apply to eligible past occurrences. An occurrence
+may be moved to a date after its recorded completion time, with a warning shown
+before confirmation. Pattern changes may remove an existing eligible occurrence,
+which terminally cancels it. Series changes use a version supplied by the preview
+so stale confirmations fail with `409` rather than overwriting a newer change.
+
 ## Data and migration
 
 `recurring_job_series` stores child, creator adult, shared request ID, details,
-frequency, weekday mask or monthly day, start/end, generated-through date, and
+frequency, weekday mask or monthly day, start/end, generated-through date, a
+concurrency version, and
 for take-turns schedules an ordered `rotation_child_ids` array and
 `next_turn_index` (empty and 0 otherwise; a check constraint keeps them
 consistent with `child_id`).
-Generated jobs reference their series and recurrence frequency. Series and all
+Generated jobs reference their series and recurrence frequency and retain their
+original recurrence-slot date when a single occurrence is moved. Series and all
 initial child assignments commit atomically. Migrations are forward-only.
+`recurring_job_series_revisions` records the effective schedule snapshot for each
+broad change. `recurring_job_changes` records the request ID, scope, operation,
+input fingerprint, actor, outcome counts, warnings, and resulting series version,
+providing idempotent retries and an audit trail.
 
 ## HTTP contract
 
 - `POST /api/recurring-jobs/daily`
 - `POST /api/recurring-jobs/weekly`
 - `POST /api/recurring-jobs/monthly`
+- `POST /api/jobs/{jobId}/recurring-change/preview`
+- `POST /api/jobs/{jobId}/recurring-change`
 
 Each request includes `requestId`, `childIds`, shared job details, start and
 optional end. Weekly requests include `weekdays`; monthly requests include
@@ -77,6 +104,16 @@ response holds one assignment whose `rotationChildIds` echoes it. New requests
 return `201`; identical retries return `200` with
 the existing assignments; conflicting retries return `409`; invalid data
 returns validation Problem Details.
+
+The recurring-change routes are adult-only. One preview request returns the
+series version and the impact for each valid scope, including the number of jobs
+that would be updated, cancelled, created, or skipped and any warnings. A scope
+that is invalid for the proposed values carries its own explanation without
+blocking the other choices. Apply requires a request ID and the previewed
+version, executes the full change atomically, and returns the selected impact.
+Reusing the request ID with the same request returns the stored result; reusing
+it with different data, using a stale version, or moving a single occurrence
+onto an occupied date returns `409`. A child caller receives `403`.
 
 - `GET /api/calendar?view={day|week|month}&date={yyyy-MM-dd}&childId={guid}` —
   adult-only. `view` and `date` default to the week containing household today
@@ -110,11 +147,18 @@ A job whose scheduled date has passed while it is still `Open` is marked
 its originally assigned date rather than silently disappearing or moving.
 No series-management UI exists yet.
 
+On the daily agenda, editing or cancelling a recurring occurrence first collects
+the requested change and then presents three clearly described choices: `This
+Only`, `All Future`, and `All`. Each choice shows the server-calculated impact
+and warnings before confirmation. Once confirmed, the agenda refreshes and shows
+the applied counts. Once-off jobs retain their existing edit/cancel experience.
+
 ## Audit and security
 
 Adult authorization is enforced by the API and the creator adult ID is stored
-on each series. There is no general audit event or edit/pause history because
-those operations are not implemented.
+on each series. Every applied recurring change stores its adult actor, stable
+request ID, input fingerprint, scope, operation, outcome, and time; every broad
+edit stores the resulting schedule revision. Approved history remains immutable.
 
 ## Observability and health
 
@@ -142,6 +186,22 @@ no background scheduler or additional service is introduced.
 - Given a job on a past date that was never completed, when it appears on the
   calendar, then it still shows on its assigned date, marked overdue.
 - Given a child, when they request the calendar, then the API returns `403`.
+- Given an adult changes a daily series to weekdays, when they choose `All
+  Future`, then eligible generated weekend occurrences on or after the selected
+  date are cancelled and missing weekday occurrences are created only for today
+  or later.
+- Given an approved or already cancelled occurrence is in scope, when a broad
+  edit or cancellation is applied, then it is skipped and its history and ledger
+  remain unchanged.
+- Given a point increase covers an eligible past occurrence, when the edit is
+  applied, then its points remain unchanged and the result reports the skip.
+- Given the same change request is retried, then the stored result is returned
+  without applying the change twice; a stale series version returns `409`.
+- Given a single occurrence is moved beyond the generated horizon, when later
+  browsing extends generation past that date, then neither its original slot nor
+  its moved date is recreated.
+- Given a child, when they preview or apply a recurring change, then the API
+  returns `403`.
 
 ## Automated tests
 
@@ -167,6 +227,13 @@ component, so it is unaffected by DST regardless of household time zone.
 Component and Playwright tests cover each creation form, errors, phone/tablet
 layouts, and agenda display.
 
+Scoped-change application tests cover weekday reconciliation, immutable history,
+non-retrospective point increases, take-turn cursor recalculation, idempotency,
+and terminal cancellation. PostgreSQL integration tests cover preview and apply,
+the persisted revision/change audit, retry stability, and preservation of an
+approved ledger award. Vitest tests cover the three choices and edit/cancel
+confirmation flow.
+
 ## Compose demonstration
 
 Start <http://localhost:3000>, sign in as an adult, create each recurrence type,
@@ -175,9 +242,8 @@ restart the stack to confirm no duplicate occurrences.
 
 ## Unresolved decisions
 
-Future issues must define pause/end/edit scope, effects on generated and
-approved history, and weekend-specific authoring before those capabilities are
-implemented (issues #107, #108). The calendar itself is read-only by design;
+Pause/resume, changing the take-turn rotation membership, and dedicated weekend
+authoring remain future work (issue #107). The calendar itself is read-only by design;
 adding actions directly on it (rather than linking to the daily agenda) is not
 planned but could be revisited if that link-out proves inconvenient in
 practice.

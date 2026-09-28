@@ -21,4 +21,10 @@ public sealed class SystemHouseholdClock : IHouseholdClock
             return DateOnly.FromDateTime(householdNow.DateTime);
         }
     }
+
+    public DateTimeOffset ToUtc(DateOnly date, TimeOnly time)
+    {
+        var local = date.ToDateTime(time, DateTimeKind.Unspecified);
+        return new DateTimeOffset(local, _timeZone.GetUtcOffset(local)).ToUniversalTime();
+    }
 }

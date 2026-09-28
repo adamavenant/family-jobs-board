@@ -48,6 +48,14 @@ public interface ITodayBoardRepository
         DateOnly horizon,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<RecurringJobSlot>> GetRecurringJobSlotsAsync(
+        IReadOnlyCollection<Guid> seriesIds,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesAsync(
+        IReadOnlyCollection<Guid> seriesIds,
+        CancellationToken cancellationToken);
+
     Task AddRecurringJobSeriesAsync(
         IReadOnlyCollection<RecurringJobSeries> series,
         CancellationToken cancellationToken);

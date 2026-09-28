@@ -100,6 +100,17 @@ public sealed class TodayBoardService
             cancellationToken);
         var rejectionByJobId = latestRejections.ToDictionary(rejection => rejection.JobId);
         var childById = children.ToDictionary(child => child.Id);
+        var recurringSeriesIds = jobs
+            .Select(job => job.RecurringJobSeriesId)
+            .OfType<Guid>()
+            .Distinct()
+            .ToArray();
+        var seriesById = recurringSeriesIds.Length == 0
+            ? new Dictionary<Guid, RecurringJobSeries>()
+            : (await _repository.GetRecurringJobSeriesAsync(
+                    recurringSeriesIds,
+                    cancellationToken))
+                .ToDictionary(series => series.Id);
         TodayPointsSummary? points = null;
         if (!viewer.IsAdult)
         {
@@ -121,7 +132,10 @@ public sealed class TodayBoardService
             jobs.Select(job => MapJob(
                 job,
                 childById[job.ChildId],
-                rejectionByJobId.GetValueOrDefault(job.Id))).ToArray(),
+                rejectionByJobId.GetValueOrDefault(job.Id),
+                job.RecurringJobSeriesId is { } seriesId
+                    ? seriesById.GetValueOrDefault(seriesId)
+                    : null)).ToArray(),
             points?.Balance,
             points?.Earnings ?? [],
             householdVisibleJobs.Count(job => job.Status == JobStatus.PendingApproval),
@@ -164,7 +178,7 @@ public sealed class TodayBoardService
                 ["The scheduled date cannot be in the past."];
         }
 
-        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        if (!TodayJobMapping.TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
         {
             errors[nameof(AddTodayJob.AgendaPeriod)] =
                 ["Choose morning, arrivingHome, evening, or unscheduled."];
@@ -216,7 +230,7 @@ public sealed class TodayBoardService
             errors[nameof(UpdateTodayJob.ScheduledDate)] = ["Choose a scheduled date."];
         }
 
-        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        if (!TodayJobMapping.TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
         {
             errors[nameof(UpdateTodayJob.AgendaPeriod)] =
                 ["Choose morning, arrivingHome, evening, or unscheduled."];
@@ -297,7 +311,7 @@ public sealed class TodayBoardService
             nameof(CreateDailyRecurringJob.AssignmentMode),
             nameof(CreateDailyRecurringJob.ChildIds));
 
-        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        if (!TodayJobMapping.TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
         {
             errors[nameof(CreateDailyRecurringJob.AgendaPeriod)] =
                 ["Choose morning, arrivingHome, evening, or unscheduled."];
@@ -410,7 +424,7 @@ public sealed class TodayBoardService
             nameof(CreateWeeklyRecurringJob.AssignmentMode),
             nameof(CreateWeeklyRecurringJob.ChildIds));
 
-        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        if (!TodayJobMapping.TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
         {
             errors[nameof(CreateWeeklyRecurringJob.AgendaPeriod)] =
                 ["Choose morning, arrivingHome, evening, or unscheduled."];
@@ -531,7 +545,7 @@ public sealed class TodayBoardService
             nameof(CreateMonthlyRecurringJob.AssignmentMode),
             nameof(CreateMonthlyRecurringJob.ChildIds));
 
-        if (!TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
+        if (!TodayJobMapping.TryParseAgendaPeriod(request.AgendaPeriod, out var agendaPeriod))
         {
             errors[nameof(CreateMonthlyRecurringJob.AgendaPeriod)] =
                 ["Choose morning, arrivingHome, evening, or unscheduled."];
@@ -860,19 +874,6 @@ public sealed class TodayBoardService
         return errors;
     }
 
-    private static bool TryParseAgendaPeriod(string? value, out AgendaPeriod agendaPeriod)
-    {
-        agendaPeriod = value switch
-        {
-            "morning" => AgendaPeriod.Morning,
-            "arrivingHome" => AgendaPeriod.ArrivingHome,
-            "evening" => AgendaPeriod.Evening,
-            "unscheduled" => AgendaPeriod.Unscheduled,
-            _ => AgendaPeriod.Unscheduled,
-        };
-        return value is "morning" or "arrivingHome" or "evening" or "unscheduled";
-    }
-
     private static bool TryParseWeekdays(
         IReadOnlyCollection<string>? values,
         out IReadOnlyCollection<DayOfWeek> weekdays)
@@ -905,8 +906,9 @@ public sealed class TodayBoardService
     private static TodayJob MapJob(
         Job job,
         HouseholdMember child,
-        TodayJobRejection? latestRejection) =>
-        TodayJobMapping.MapJob(job, child, latestRejection);
+        TodayJobRejection? latestRejection,
+        RecurringJobSeries? series = null) =>
+        TodayJobMapping.MapJob(job, child, latestRejection, series);
 
     private static string MapAgendaPeriod(AgendaPeriod agendaPeriod) =>
         TodayJobMapping.MapAgendaPeriod(agendaPeriod);

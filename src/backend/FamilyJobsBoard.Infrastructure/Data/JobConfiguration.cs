@@ -30,6 +30,7 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
             .HasColumnName("recurrence_frequency")
             .HasConversion<string>()
             .HasMaxLength(16);
+        builder.Property(job => job.OriginalScheduledDate).HasColumnName("original_scheduled_date");
         builder.Property(job => job.Status)
             .HasColumnName("status")
             .HasConversion<string>()

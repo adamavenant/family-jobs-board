@@ -547,6 +547,96 @@ test("a grown-up assigns a recurring schedule to one child on a phone", async ({
   ).toBeVisible();
 });
 
+test("a grown-up changes a daily schedule to weekdays for all future jobs", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const seriesId = "5cd1028f-ea52-4f02-a088-23c6b9cb794c";
+  const currentJob = assignmentJob(
+    "0a315edc-0a6a-403a-a41e-d95c69476070",
+    fredsterId,
+    "Fredster",
+    "Empty school bags",
+    seriesId,
+  );
+  let appliedChange: Record<string, unknown> | null = null;
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (!path.startsWith("/api/")) {
+      return route.continue();
+    }
+    if (path === "/api/auth/refresh") {
+      return json(route, auth(addieId, "Addie", "adult"));
+    }
+    if (path.endsWith("/recurring-change/preview")) {
+      const scopePreview = (updatedCount: number, cancelledCount: number) => ({
+        impact: {
+          updatedCount,
+          createdCount: 0,
+          cancelledCount,
+          approvedSkippedCount: 0,
+          cancelledSkippedCount: 0,
+          retrospectivePointIncreaseSkippedCount: 0,
+          warnings: [],
+        },
+        error: null,
+      });
+      return json(route, {
+        seriesVersion: 4,
+        thisOnly: scopePreview(1, 0),
+        allFuture: scopePreview(12, 4),
+        all: scopePreview(20, 8),
+      });
+    }
+    if (path.endsWith("/recurring-change") && request.method() === "POST") {
+      const body = request.postDataJSON();
+      appliedChange = body.change;
+      return json(route, {
+        requestId: body.requestId,
+        seriesId,
+        seriesVersion: 5,
+        operation: "edit",
+        scope: body.change.scope,
+        impact: {
+          updatedCount: 12,
+          createdCount: 0,
+          cancelledCount: 4,
+          approvedSkippedCount: 0,
+          cancelledSkippedCount: 0,
+          retrospectivePointIncreaseSkippedCount: 0,
+          warnings: [],
+        },
+      });
+    }
+    if (path === "/api/today") {
+      return json(route, assignmentBoard([currentJob]));
+    }
+    return problem(route, 404);
+  });
+
+  await page.goto("/");
+  const card = page
+    .getByRole("heading", { name: "Empty school bags" })
+    .locator("..")
+    .locator("..");
+  await card.getByText("Edit job", { exact: true }).click();
+  await card.getByLabel("Repeats").selectOption("weekly");
+  for (const weekday of ["Mon", "Tue", "Wed", "Thu", "Fri"]) {
+    await card.getByLabel(weekday).check();
+  }
+  await card.getByRole("button", { name: "Review changes" }).click();
+  await card.getByLabel(/All Future/).check();
+  await card.getByRole("button", { name: "Confirm changes" }).click();
+
+  await expect(card.getByText("Saved. 12 updated · 4 cancelled")).toBeVisible();
+  expect(appliedChange).toMatchObject({
+    scope: "allFuture",
+    frequency: "weekly",
+    weekdays: ["monday", "tuesday", "wednesday", "thursday", "friday"],
+  });
+});
+
 for (const viewport of [
   { name: "phone", width: 390, height: 844 },
   { name: "tablet", width: 820, height: 1180 },
@@ -1013,6 +1103,18 @@ function assignmentJob(
     scheduledTime: null,
     recurringJobSeriesId,
     recurrenceFrequency: recurringJobSeriesId ? "daily" : null,
+    recurrence: recurringJobSeriesId
+      ? {
+          seriesId: recurringJobSeriesId,
+          version: 4,
+          frequency: "daily",
+          weekdays: [],
+          dayOfMonth: null,
+          startDate: "2026-09-07",
+          endDate: null,
+          takesTurns: false,
+        }
+      : null,
     status: "open",
     completedAtUtc: null,
     approvedAtUtc: null,
