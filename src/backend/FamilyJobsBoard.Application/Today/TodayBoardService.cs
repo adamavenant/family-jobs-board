@@ -111,11 +111,9 @@ public sealed class TodayBoardService
                     recurringSeriesIds,
                     cancellationToken))
                 .ToDictionary(series => series.Id);
-        TodayPointsSummary? points = null;
-        if (!viewer.IsAdult)
-        {
-            points = await _repository.GetPointsSummaryAsync(viewer.Id, cancellationToken);
-        }
+        int? pointsBalance = viewer.IsAdult
+            ? null
+            : await _repository.GetPointsBalanceAsync(viewer.Id, cancellationToken);
 
         var turns = await _turnRotationService.GetTurnsAsync(date, cancellationToken);
         var whoseTurns = turns
@@ -136,8 +134,7 @@ public sealed class TodayBoardService
                 job.RecurringJobSeriesId is { } seriesId
                     ? seriesById.GetValueOrDefault(seriesId)
                     : null)).ToArray(),
-            points?.Balance,
-            points?.Earnings ?? [],
+            pointsBalance,
             householdVisibleJobs.Count(job => job.Status == JobStatus.PendingApproval),
             whoseTurns);
     }
@@ -798,11 +795,11 @@ public sealed class TodayBoardService
         await _repository.AddReviewDecisionAsync(decision, cancellationToken);
         await _repository.AddPointsAwardAsync(award, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
-        var points = await _repository.GetPointsSummaryAsync(
+        var pointsBalance = await _repository.GetPointsBalanceAsync(
             job.ChildId,
             cancellationToken);
 
-        return new TodayJobApproval(MapJob(job, child, null), points.Balance);
+        return new TodayJobApproval(MapJob(job, child, null), pointsBalance);
     }
 
     public async Task<TodayJob> RejectAsync(

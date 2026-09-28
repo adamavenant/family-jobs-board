@@ -245,82 +245,12 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
             cancellationToken);
     }
 
-    public async Task<TodayPointsSummary> GetPointsSummaryAsync(
-        Guid childId,
-        CancellationToken cancellationToken)
+    public Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken)
     {
-        var entries = await _database.PointsLedgerEntries
+        return _database.PointsLedgerEntries
             .AsNoTracking()
             .Where(entry => entry.ChildId == childId)
-            .OrderByDescending(entry => entry.AwardedAtUtc)
-            .ThenByDescending(entry => entry.Id)
-            .ToListAsync(cancellationToken);
-
-        var jobIds = entries.Where(entry => entry.JobId is not null)
-            .Select(entry => entry.JobId!.Value)
-            .ToArray();
-        var jobNames = await _database.Jobs
-            .AsNoTracking()
-            .Where(job => jobIds.Contains(job.Id))
-            .ToDictionaryAsync(job => job.Id, job => job.Name, cancellationToken);
-
-        var behaviourIds = entries.Where(entry => entry.GoodBehaviourId is not null)
-            .Select(entry => entry.GoodBehaviourId!.Value)
-            .ToArray();
-        var behaviours = await _database.GoodBehaviours
-            .AsNoTracking()
-            .Where(behaviour => behaviourIds.Contains(behaviour.Id))
-            .ToDictionaryAsync(behaviour => behaviour.Id, cancellationToken);
-        var adjustmentIds = entries.Where(entry => entry.PointAdjustmentId is not null)
-            .Select(entry => entry.PointAdjustmentId!.Value)
-            .ToArray();
-        var adjustments = await _database.PointAdjustments
-            .AsNoTracking()
-            .Where(adjustment => adjustmentIds.Contains(adjustment.Id))
-            .ToDictionaryAsync(adjustment => adjustment.Id, cancellationToken);
-        var adultIds = behaviours.Values
-            .Select(behaviour => behaviour.LoggedByMemberId)
-            .Concat(adjustments.Values.Select(adjustment => adjustment.AdjustedByMemberId))
-            .Distinct()
-            .ToArray();
-        var adults = await _database.HouseholdMembers
-            .AsNoTracking()
-            .Where(member => adultIds.Contains(member.Id))
-            .ToDictionaryAsync(member => member.Id, member => member.DisplayName, cancellationToken);
-
-        var earnings = entries
-            .Select(entry => entry switch
-            {
-                { GoodBehaviourId: { } behaviourId } => new TodayPointEarning(
-                    entry.Id,
-                    PointEarningSource.GoodBehaviour,
-                    behaviours[behaviourId].TypeName,
-                    null,
-                    entry.Amount,
-                    entry.AwardedAtUtc,
-                    adults.GetValueOrDefault(behaviours[behaviourId].LoggedByMemberId)),
-                { PointAdjustmentId: { } adjustmentId } => new TodayPointEarning(
-                    entry.Id,
-                    PointEarningSource.ManualAdjustment,
-                    adjustments[adjustmentId].Reason,
-                    null,
-                    entry.Amount,
-                    entry.AwardedAtUtc,
-                    adults.GetValueOrDefault(adjustments[adjustmentId].AdjustedByMemberId)),
-                _ => new TodayPointEarning(
-                    entry.Id,
-                    PointEarningSource.Job,
-                    jobNames[entry.JobId!.Value],
-                    entry.JobId,
-                    entry.Amount,
-                    entry.AwardedAtUtc,
-                    null),
-            })
-            .ToArray();
-
-        return new TodayPointsSummary(
-            earnings.Sum(earning => earning.Points),
-            earnings);
+            .SumAsync(entry => entry.Amount, cancellationToken);
     }
 
     public async Task AddPointsAwardAsync(

@@ -693,7 +693,6 @@ internal static class TodayEndpoints
             board.SelectedChildId,
             board.Jobs.Select(MapJob).ToArray(),
             board.PointsBalance,
-            board.PointEarnings.Select(MapPointEarning).ToArray(),
             board.PendingApprovalCount,
             board.WhoseTurns
                 .Select(turn => new WhoseTurnResponse(
@@ -714,18 +713,6 @@ internal static class TodayEndpoints
     }
 
     private static MemberResponse MapMember(TodayMember member) => TodayResponseMapping.MapMember(member);
-
-    private static PointEarningResponse MapPointEarning(TodayPointEarning earning)
-    {
-        return new PointEarningResponse(
-            earning.Id,
-            earning.Source,
-            earning.Name,
-            earning.JobId,
-            earning.Points,
-            earning.AwardedAtUtc,
-            earning.LoggedByDisplayName);
-    }
 
     private static JobResponse MapJob(TodayJob job) => TodayResponseMapping.MapJob(job);
 }

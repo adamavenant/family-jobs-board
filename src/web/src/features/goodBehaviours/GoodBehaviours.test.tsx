@@ -36,7 +36,6 @@ const adultBoard = {
   selectedChildId: null,
   pointsBalance: null,
   pendingApprovalCount: 0,
-  pointEarnings: [],
   jobs: [],
 };
 
@@ -210,49 +209,15 @@ describe("Good behaviours", () => {
     expect(api.types.map((type) => type.name)).toEqual(["Being Brave"]);
   });
 
-  it("shows children the available behaviours read-only, with logging history", async () => {
-    fakeApi(
-      {
-        ...adultBoard,
-        viewer: fredster,
-        pointsBalance: 15,
-        pointEarnings: [
-          {
-            id: "0a6f4a52-5b1e-4f0e-9d3a-6f1c2f7d8e01",
-            source: "goodBehaviour",
-            name: "Being Brave",
-            jobId: null,
-            points: 12,
-            awardedAtUtc: "2026-09-21T08:00:00Z",
-            loggedByDisplayName: "Addie",
-          },
-          {
-            id: "3b8d1f77-2c4a-4b6e-8f10-9e2d5a7c1b02",
-            source: "job",
-            name: "Feed the dog",
-            jobId: "cf41c6dc-dc4c-4bda-9c23-6b3671a93b81",
-            points: 3,
-            awardedAtUtc: "2026-09-20T08:00:00Z",
-            loggedByDisplayName: null,
-          },
-        ],
-      },
-      [brave, helpful],
-    );
+  it("shows children the available behaviours read-only", async () => {
+    fakeApi({ ...adultBoard, viewer: fredster, pointsBalance: 15 }, [
+      brave,
+      helpful,
+    ]);
     const user = userEvent.setup();
     renderApp(fredster);
 
     await screen.findByRole("heading", { name: "Good day, Fredster!" });
-    const history = screen
-      .getByRole("heading", { name: "How Fredster earned them" })
-      .closest("section") as HTMLElement;
-    expect(within(history).getByText("+12")).toBeInTheDocument();
-    expect(within(history).getByText("Being Brave")).toBeInTheDocument();
-    expect(
-      within(history).getByText("Good behaviour · logged by Addie"),
-    ).toBeInTheDocument();
-    expect(within(history).getByText("Feed the dog")).toBeInTheDocument();
-
     await user.click(screen.getByText("Ways to earn points"));
     const list = await screen.findByRole("list", { name: "Good behaviours" });
     expect(within(list).getByText("Being Brave")).toBeInTheDocument();

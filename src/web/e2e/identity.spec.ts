@@ -1023,7 +1023,6 @@ function board(
     selectedChildId: null,
     jobs: [job(status)],
     pointsBalance: isAdult ? null : status === "approved" ? 3 : 0,
-    pointEarnings: [],
     pendingApprovalCount: status === "pendingApproval" ? 1 : 0,
   };
 }
@@ -1088,7 +1087,6 @@ function assignmentBoard(
     selectedChildId: null,
     jobs,
     pointsBalance: null,
-    pointEarnings: [],
     pendingApprovalCount: 0,
   };
 }

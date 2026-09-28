@@ -68,6 +68,8 @@ import {
 } from "../features/whoseTurn/whoseTurnRoute";
 import { calendarLoader } from "../features/calendar/calendarRoute";
 import { CalendarPage } from "../features/calendar/CalendarPage";
+import { pointsLedgerLoader } from "../features/points/pointsLedgerRoute";
+import { PointsLedgerPage } from "../features/points/PointsLedgerPage";
 
 export interface CompleteActionResult {
   intent: "complete";
@@ -1221,6 +1223,12 @@ export const routes: RouteObject[] = [
     path: "/calendar",
     loader: calendarLoader,
     Component: CalendarPage,
+  },
+  {
+    path: "/points",
+    loader: pointsLedgerLoader,
+    Component: PointsLedgerPage,
+    HydrateFallback: LoadingPage,
   },
 ];
 

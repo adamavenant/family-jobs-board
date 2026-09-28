@@ -219,7 +219,6 @@ function stubFetch(options: {
       selectedChildId: null,
       jobs: [],
       pointsBalance: todayViewer.isAdult ? null : 0,
-      pointEarnings: [],
       pendingApprovalCount: 0,
     });
   });

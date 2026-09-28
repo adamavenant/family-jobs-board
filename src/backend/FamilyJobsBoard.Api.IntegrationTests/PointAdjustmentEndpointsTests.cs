@@ -60,12 +60,10 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
 
         var board = await GetTodayAsync(DemoDataIds.Fredster);
         Assert.Equal(12, board.PointsBalance);
-        var earning = Assert.Single(board.PointEarnings);
-        Assert.Equal("manualAdjustment", earning.Source);
+        var earning = Assert.Single((await GetLedgerAsync(DemoDataIds.Fredster)).Entries);
         Assert.Equal("Great effort at swimming", earning.Name);
         Assert.Equal(12, earning.Points);
-        Assert.Equal("Addie", earning.LoggedByDisplayName);
-        Assert.Null(earning.JobId);
+        Assert.Equal(12, earning.BalanceAfter);
         Assert.Equal(0, (await GetTodayAsync(DemoDataIds.Harrie)).PointsBalance);
     }
 
@@ -79,7 +77,9 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var board = await GetTodayAsync(DemoDataIds.Harrie);
         Assert.Equal(6, board.PointsBalance);
-        Assert.Equal([-4, 10], board.PointEarnings.Select(entry => entry.Points));
+        Assert.Equal(
+            [(-4, 6), (10, 10)],
+            (await GetLedgerAsync(DemoDataIds.Harrie)).Entries.Select(entry => (entry.Points, entry.BalanceAfter)));
     }
 
     [Fact]
@@ -106,11 +106,12 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
         (await AdjustAsync(DemoDataIds.Fredster, -3, "Left the gate open", confirm: true)).Dispose();
 
         var board = await GetTodayAsync(DemoDataIds.Fredster);
+        var ledger = await GetLedgerAsync(DemoDataIds.Fredster);
 
         Assert.Equal(7, board.PointsBalance);
         Assert.Equal(
-            ["manualAdjustment", "goodBehaviour", "job"],
-            board.PointEarnings.Select(entry => entry.Source));
+            [("Left the gate open", 7), ("Being Helpful", 10), ("Feed the dog", 5)],
+            ledger.Entries.Select(entry => (entry.Name, entry.BalanceAfter)));
     }
 
     [Fact]
@@ -155,7 +156,8 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
         Assert.Equal(-2, body!.PointsBalance);
         var board = await GetTodayAsync(DemoDataIds.Fredster);
         Assert.Equal(-2, board.PointsBalance);
-        Assert.Equal(-5, board.PointEarnings[0].Points);
+        var newest = (await GetLedgerAsync(DemoDataIds.Fredster)).Entries[0];
+        Assert.Equal((-5, -2), (newest.Points, newest.BalanceAfter));
     }
 
     [Fact]
@@ -240,7 +242,7 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Created, correction.StatusCode);
         var board = await GetTodayAsync(DemoDataIds.Fredster);
         Assert.Equal(0, board.PointsBalance);
-        Assert.Equal(2, board.PointEarnings.Count);
+        Assert.Equal(2, (await GetLedgerAsync(DemoDataIds.Fredster)).Entries.Count);
         await using var scope = _factory!.Services.CreateAsyncScope();
         var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var original = await database.PointAdjustments.SingleAsync(
@@ -343,6 +345,9 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
         return (await response.Content.ReadFromJsonAsync<BoardResponse>())!;
     }
 
+    private Task<PointsLedgerEndpointsTests.LedgerResponse> GetLedgerAsync(Guid memberId) =>
+        PointsLedgerEndpointsTests.GetLedgerAsync(_client!, memberId);
+
     private Task<HttpResponseMessage> AdjustAsync(
         Guid childId,
         int amount,
@@ -389,15 +394,5 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
 
     private sealed record AdjustmentResponse(AdjustmentRecord Adjustment, int PointsBalance);
 
-    private sealed record EarningResponse(
-        Guid Id,
-        string Source,
-        string Name,
-        Guid? JobId,
-        int Points,
-        string? LoggedByDisplayName);
-
-    private sealed record BoardResponse(
-        int? PointsBalance,
-        IReadOnlyList<EarningResponse> PointEarnings);
+    private sealed record BoardResponse(int? PointsBalance);
 }

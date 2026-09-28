@@ -71,7 +71,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.Equal(4, initial.Members.Count);
         Assert.Equal(0, initial.PointsBalance);
         Assert.Equal(3, initial.Jobs.Count);
-        Assert.Empty(initial.PointEarnings);
+        Assert.Empty((await PointsLedgerEndpointsTests.GetLedgerAsync(client, DemoDataIds.Fredster)).Entries);
         Assert.All(initial.Jobs, job => Assert.Equal("open", job.Status));
 
         var target = initial.Jobs.Single(job => job.Id == DemoDataIds.FeedDog);
@@ -462,7 +462,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.NotNull(childBoard);
         Assert.Empty(childBoard.Jobs);
         Assert.Equal(0, childBoard.PointsBalance);
-        Assert.Empty(childBoard.PointEarnings);
+        Assert.Empty((await PointsLedgerEndpointsTests.GetLedgerAsync(client, DemoDataIds.Fredster)).Entries);
 
         using var repeatedResponse = await client.PostAsJsonAsync(
             "/api/admin/jobs-and-points/reset",
@@ -1009,9 +1009,10 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             null);
         Assert.Equal(HttpStatusCode.OK, approveResponse.StatusCode);
 
-        var awarded = await Client.GetFromJsonAsync<TodayResponse>(
-            $"/api/today?memberId={DemoDataIds.Fredster}");
-        Assert.Contains(awarded!.PointEarnings, earning => earning.JobId == persistedOccurrence.Id);
+        var ledger = await PointsLedgerEndpointsTests.GetLedgerAsync(Client, DemoDataIds.Fredster);
+        Assert.Contains(
+            ledger.Entries,
+            entry => entry.Name == persistedOccurrence.Name && entry.Points == persistedOccurrence.Points);
     }
 
     [Theory]
@@ -1896,7 +1897,6 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.NotNull(adult);
         Assert.True(adult.Viewer.IsAdult);
         Assert.Null(adult.PointsBalance);
-        Assert.Empty(adult.PointEarnings);
         Assert.Contains(adult.Jobs, job => job.ChildId == DemoDataIds.Fredster);
         Assert.Contains(adult.Jobs, job => job.ChildId == DemoDataIds.Harrie);
 
@@ -1981,11 +1981,12 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var persisted = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
         Assert.NotNull(persisted);
         Assert.Equal(target.Points, persisted.PointsBalance);
-        var earning = Assert.Single(persisted.PointEarnings);
+        var ledger = await PointsLedgerEndpointsTests.GetLedgerAsync(Client, DemoDataIds.Fredster);
+        var earning = Assert.Single(ledger.Entries);
         Assert.NotEqual(Guid.Empty, earning.Id);
-        Assert.Equal(target.Id, earning.JobId);
         Assert.Equal(target.Name, earning.Name);
         Assert.Equal(target.Points, earning.Points);
+        Assert.Equal(target.Points, earning.BalanceAfter);
         Assert.NotEqual(default, earning.AwardedAtUtc);
         Assert.Equal(
             "approved",
@@ -2033,7 +2034,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var persisted = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
         Assert.NotNull(persisted);
         Assert.Equal(0, persisted.PointsBalance);
-        Assert.Empty(persisted.PointEarnings);
+        Assert.Empty((await PointsLedgerEndpointsTests.GetLedgerAsync(Client, DemoDataIds.Fredster)).Entries);
         var reopened = persisted.Jobs.Single(job => job.Id == target.Id);
         Assert.Equal("open", reopened.Status);
         Assert.Equal(
@@ -2056,7 +2057,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var finalBoard = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
         Assert.NotNull(finalBoard);
         Assert.Equal(target.Points, finalBoard.PointsBalance);
-        Assert.Single(finalBoard.PointEarnings);
+        Assert.Single((await PointsLedgerEndpointsTests.GetLedgerAsync(Client, DemoDataIds.Fredster)).Entries);
 
         var factory = _factory ?? throw new InvalidOperationException("Test API was not initialised.");
         await using var scope = factory.Services.CreateAsyncScope();
@@ -2149,7 +2150,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Point_earnings_are_newest_first_and_sum_to_the_balance()
+    public async Task Ledger_entries_are_newest_first_and_sum_to_the_balance()
     {
         var initial = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
         Assert.NotNull(initial);
@@ -2162,19 +2163,20 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var board = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
 
         Assert.NotNull(board);
+        var ledger = await PointsLedgerEndpointsTests.GetLedgerAsync(Client, DemoDataIds.Fredster);
         Assert.Equal(first.Points + second.Points, board.PointsBalance);
-        Assert.Equal(board.PointsBalance, board.PointEarnings.Sum(earning => earning.Points));
+        Assert.Equal(board.PointsBalance, ledger.Entries.Sum(earning => earning.Points));
         Assert.Collection(
-            board.PointEarnings,
+            ledger.Entries,
             earning =>
             {
-                Assert.Equal(second.Id, earning.JobId);
                 Assert.Equal(second.Name, earning.Name);
+                Assert.Equal(board.PointsBalance, earning.BalanceAfter);
             },
             earning =>
             {
-                Assert.Equal(first.Id, earning.JobId);
                 Assert.Equal(first.Name, earning.Name);
+                Assert.Equal(first.Points, earning.BalanceAfter);
             });
     }
 
@@ -2283,7 +2285,6 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Guid? SelectedChildId,
         IReadOnlyList<JobResponse> Jobs,
         int? PointsBalance,
-        IReadOnlyList<PointEarningResponse> PointEarnings,
         int PendingApprovalCount);
 
     internal sealed record MemberResponse(
@@ -2366,15 +2367,6 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         DateOnly GeneratedThrough,
         int OccurrenceCount,
         IReadOnlyList<Guid> RotationChildIds);
-
-    internal sealed record PointEarningResponse(
-        Guid Id,
-        string Source,
-        string Name,
-        Guid? JobId,
-        int Points,
-        DateTimeOffset AwardedAtUtc,
-        string? LoggedByDisplayName);
 
     private sealed record ResetJobsAndPointsResponse(
         Guid ResetId,

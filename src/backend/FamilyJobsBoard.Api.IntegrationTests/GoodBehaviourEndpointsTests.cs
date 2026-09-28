@@ -73,12 +73,10 @@ public sealed class GoodBehaviourEndpointsTests : IAsyncLifetime
 
         var board = await GetTodayAsync(DemoDataIds.Fredster);
         Assert.Equal(12, board.PointsBalance);
-        var earning = Assert.Single(board.PointEarnings);
-        Assert.Equal("goodBehaviour", earning.Source);
+        var earning = Assert.Single((await GetLedgerAsync(DemoDataIds.Fredster)).Entries);
         Assert.Equal("Being Brave", earning.Name);
         Assert.Equal(12, earning.Points);
-        Assert.Equal("Addie", earning.LoggedByDisplayName);
-        Assert.Null(earning.JobId);
+        Assert.Equal(12, earning.BalanceAfter);
     }
 
     [Fact]
@@ -97,11 +95,12 @@ public sealed class GoodBehaviourEndpointsTests : IAsyncLifetime
         approve.EnsureSuccessStatusCode();
 
         var board = await GetTodayAsync(DemoDataIds.Fredster);
+        var ledger = await GetLedgerAsync(DemoDataIds.Fredster);
 
         Assert.Equal(10, board.PointsBalance);
         Assert.Equal(
-            ["job", "goodBehaviour"],
-            board.PointEarnings.Select(entry => entry.Source));
+            ["Feed the dog", "Being Helpful"],
+            ledger.Entries.Select(entry => entry.Name));
     }
 
     [Fact]
@@ -177,7 +176,7 @@ public sealed class GoodBehaviourEndpointsTests : IAsyncLifetime
         {
             var board = await GetTodayAsync(child);
             Assert.Equal(7, board.PointsBalance);
-            Assert.Equal("goodBehaviour", Assert.Single(board.PointEarnings).Source);
+            Assert.Equal("Being Brave", Assert.Single((await GetLedgerAsync(child)).Entries).Name);
         }
     }
 
@@ -297,7 +296,7 @@ public sealed class GoodBehaviourEndpointsTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
 
         var board = await GetTodayAsync(DemoDataIds.Harrie);
-        var earning = Assert.Single(board.PointEarnings);
+        var earning = Assert.Single((await GetLedgerAsync(DemoDataIds.Harrie)).Entries);
         Assert.Equal("Sharing", earning.Name);
         Assert.Equal(9, earning.Points);
         Assert.Equal(9, board.PointsBalance);
@@ -438,6 +437,9 @@ public sealed class GoodBehaviourEndpointsTests : IAsyncLifetime
         return (await response.Content.ReadFromJsonAsync<BoardResponse>())!;
     }
 
+    private Task<PointsLedgerEndpointsTests.LedgerResponse> GetLedgerAsync(Guid memberId) =>
+        PointsLedgerEndpointsTests.GetLedgerAsync(_client!, memberId);
+
     private Task<HttpResponseMessage> LogAsync(
         Guid typeId,
         Guid childId,
@@ -489,15 +491,5 @@ public sealed class GoodBehaviourEndpointsTests : IAsyncLifetime
 
     private sealed record LogResponse(IReadOnlyList<AwardResponse> Awards);
 
-    private sealed record EarningResponse(
-        Guid Id,
-        string Source,
-        string Name,
-        Guid? JobId,
-        int Points,
-        string? LoggedByDisplayName);
-
-    private sealed record BoardResponse(
-        int? PointsBalance,
-        IReadOnlyList<EarningResponse> PointEarnings);
+    private sealed record BoardResponse(int? PointsBalance);
 }
