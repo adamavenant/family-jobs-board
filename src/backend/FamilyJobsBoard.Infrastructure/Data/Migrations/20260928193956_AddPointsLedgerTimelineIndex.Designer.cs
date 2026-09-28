@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260927111520_AddPointsLedgerTimelineIndex")]
+    [Migration("20260928193956_AddPointsLedgerTimelineIndex")]
     partial class AddPointsLedgerTimelineIndex
     {
         /// <inheritdoc />
@@ -480,6 +480,10 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(160)")
                         .HasColumnName("name");
 
+                    b.Property<DateOnly?>("OriginalScheduledDate")
+                        .HasColumnType("date")
+                        .HasColumnName("original_scheduled_date");
+
                     b.Property<int>("Points")
                         .HasColumnType("integer")
                         .HasColumnName("points");
@@ -557,6 +561,90 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                     b.ToTable("job_review_decisions", (string)null);
                 });
 
+            modelBuilder.Entity("FamilyJobsBoard.Domain.Jobs.RecurringJobChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ActorMemberId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_member_id");
+
+                    b.Property<Guid>("AnchorJobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("anchor_job_id");
+
+                    b.Property<DateTimeOffset>("AppliedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("applied_at_utc");
+
+                    b.Property<int>("ApprovedSkippedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("approved_skipped_count");
+
+                    b.Property<int>("CancelledCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("cancelled_count");
+
+                    b.Property<int>("CancelledSkippedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("cancelled_skipped_count");
+
+                    b.Property<int>("CreatedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("created_count");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("fingerprint");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("operation");
+
+                    b.Property<int>("RetrospectivePointIncreaseSkippedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("retrospective_point_increase_skipped_count");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("scope");
+
+                    b.Property<Guid>("SeriesId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("series_id");
+
+                    b.Property<int>("SeriesVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("series_version");
+
+                    b.Property<int>("UpdatedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("updated_count");
+
+                    b.PrimitiveCollection<string[]>("Warnings")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("warnings");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorMemberId");
+
+                    b.HasIndex("AnchorJobId");
+
+                    b.HasIndex("SeriesId");
+
+                    b.ToTable("recurring_job_changes", (string)null);
+                });
+
             modelBuilder.Entity("FamilyJobsBoard.Domain.Jobs.RecurringJobSeries", b =>
                 {
                     b.Property<Guid>("Id")
@@ -632,6 +720,11 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasColumnType("date")
                         .HasColumnName("start_date");
 
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
                     b.Property<int>("WeekdayMask")
                         .HasColumnType("integer")
                         .HasColumnName("weekday_mask");
@@ -652,6 +745,92 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 
                             t.HasCheckConstraint("ck_recurring_job_series_schedule", "(frequency = 'Daily' AND weekday_mask = 0 AND monthly_day IS NULL) OR (frequency = 'Weekly' AND weekday_mask BETWEEN 1 AND 127 AND monthly_day IS NULL) OR (frequency = 'Monthly' AND weekday_mask = 0 AND monthly_day BETWEEN 1 AND 31)");
                         });
+                });
+
+            modelBuilder.Entity("FamilyJobsBoard.Domain.Jobs.RecurringJobSeriesRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AgendaPeriod")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("agenda_period");
+
+                    b.Property<Guid>("ChangeRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("change_request_id");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("CreatedByAdultId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_adult_id");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("description");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("end_date");
+
+                    b.Property<bool>("Ended")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ended");
+
+                    b.Property<string>("Frequency")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("frequency");
+
+                    b.Property<int?>("MonthlyDay")
+                        .HasColumnType("integer")
+                        .HasColumnName("monthly_day");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("Points")
+                        .HasColumnType("integer")
+                        .HasColumnName("points");
+
+                    b.Property<TimeOnly?>("ScheduledTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("scheduled_time");
+
+                    b.Property<Guid>("SeriesId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("series_id");
+
+                    b.Property<int>("WeekdayMask")
+                        .HasColumnType("integer")
+                        .HasColumnName("weekday_mask");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChangeRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("CreatedByAdultId");
+
+                    b.HasIndex("SeriesId", "EffectiveFrom");
+
+                    b.ToTable("recurring_job_series_revisions", (string)null);
                 });
 
             modelBuilder.Entity("FamilyJobsBoard.Domain.PointAdjustments.PointAdjustment", b =>
@@ -940,6 +1119,27 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("FamilyJobsBoard.Domain.Jobs.RecurringJobChange", b =>
+                {
+                    b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
+                        .WithMany()
+                        .HasForeignKey("ActorMemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FamilyJobsBoard.Domain.Jobs.Job", null)
+                        .WithMany()
+                        .HasForeignKey("AnchorJobId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FamilyJobsBoard.Domain.Jobs.RecurringJobSeries", null)
+                        .WithMany()
+                        .HasForeignKey("SeriesId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("FamilyJobsBoard.Domain.Jobs.RecurringJobSeries", b =>
                 {
                     b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
@@ -951,6 +1151,27 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                     b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
                         .WithMany()
                         .HasForeignKey("CreatedByAdultId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("FamilyJobsBoard.Domain.Jobs.RecurringJobSeriesRevision", b =>
+                {
+                    b.HasOne("FamilyJobsBoard.Domain.Jobs.RecurringJobChange", null)
+                        .WithMany()
+                        .HasForeignKey("ChangeRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdultId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FamilyJobsBoard.Domain.Jobs.RecurringJobSeries", null)
+                        .WithMany()
+                        .HasForeignKey("SeriesId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

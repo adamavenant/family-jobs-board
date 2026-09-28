@@ -3,6 +3,7 @@ using System;
 using FamilyJobsBoard.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260927171147_AddScopedRecurringJobChanges")]
+    partial class AddScopedRecurringJobChanges
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -914,6 +917,8 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ChildId");
+
                     b.HasIndex("GoodBehaviourId")
                         .IsUnique()
                         .HasDatabaseName("ux_points_ledger_entries_good_behaviour_id");
@@ -925,9 +930,6 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                     b.HasIndex("PointAdjustmentId")
                         .IsUnique()
                         .HasDatabaseName("ux_points_ledger_entries_point_adjustment_id");
-
-                    b.HasIndex("ChildId", "AwardedAtUtc", "Id")
-                        .HasDatabaseName("ix_points_ledger_entries_child_timeline");
 
                     b.ToTable("points_ledger_entries", null, t =>
                         {

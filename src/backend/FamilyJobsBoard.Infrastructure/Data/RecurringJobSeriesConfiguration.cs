@@ -55,6 +55,9 @@ internal sealed class RecurringJobSeriesConfiguration : IEntityTypeConfiguration
         builder.Property(series => series.RotationChildIds)
             .HasColumnName("rotation_child_ids");
         builder.Property(series => series.NextTurnIndex).HasColumnName("next_turn_index");
+        builder.Property(series => series.Version)
+            .HasColumnName("version")
+            .IsConcurrencyToken();
         builder.Ignore(series => series.TakesTurns);
         builder.HasIndex(series => new { series.AssignmentRequestId, series.ChildId })
             .IsUnique()

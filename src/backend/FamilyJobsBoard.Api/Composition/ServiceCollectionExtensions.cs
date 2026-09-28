@@ -35,6 +35,7 @@ internal static class ServiceCollectionExtensions
     {
         services.AddScoped<AdministrationService>();
         services.AddScoped<TodayBoardService>();
+        services.AddScoped<RecurringJobChangeService>();
         services.AddScoped<GoodBehaviourService>();
         services.AddScoped<PointAdjustmentService>();
         services.AddScoped<PointsLedgerService>();
@@ -55,6 +56,7 @@ internal static class ServiceCollectionExtensions
         services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
         services.AddScoped<IAdministrationRepository, EfAdministrationRepository>();
         services.AddScoped<ITodayBoardRepository, EfTodayBoardRepository>();
+        services.AddScoped<IRecurringJobChangeRepository, EfRecurringJobChangeRepository>();
         services.AddScoped<IGoodBehaviourRepository, EfGoodBehaviourRepository>();
         services.AddScoped<IPointAdjustmentRepository, EfPointAdjustmentRepository>();
         services.AddScoped<IPointsLedgerRepository, EfPointsLedgerRepository>();

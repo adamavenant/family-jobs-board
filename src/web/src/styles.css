@@ -1480,6 +1480,57 @@ a.hero__balance:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
+.scope-review,
+.scope-picker {
+  display: grid;
+  gap: 10px;
+}
+.scope-picker {
+  padding: 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+}
+.scope-picker > label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  background: var(--input);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.scope-picker > label input {
+  width: 20px;
+  min-height: 20px;
+  margin-top: 2px;
+}
+.scope-picker > label span,
+.scope-picker > label small {
+  display: grid;
+  gap: 3px;
+}
+.scope-picker > label small {
+  color: var(--muted);
+  font-weight: 500;
+}
+.job-management__form .weekday-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+}
+.job-management__form .weekday-picker label {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.job-management__form .weekday-picker input {
+  width: 20px;
+  min-height: 20px;
+}
 .job-card .job-management__form .button--danger {
   color: #fff;
   background: var(--error-text);

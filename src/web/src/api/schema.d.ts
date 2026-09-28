@@ -413,6 +413,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{id}/recurring-change/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a This Only, All Future, or All recurring-job change.
+         * @description Calculates updated, created, cancelled, and immutable occurrence counts without changing data.
+         */
+        post: operations["PreviewRecurringJobChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{id}/recurring-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Atomically apply a scoped recurring-job edit or cancellation.
+         * @description Recalculates the impact, preserves approved/cancelled history and ledger entries, and is request-ID idempotent.
+         */
+        post: operations["ApplyRecurringJobChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/good-behaviour-types": {
         parameters: {
             query?: never;
@@ -607,6 +647,11 @@ export interface components {
         };
         AddJobsResponse: {
             jobs: components["schemas"]["JobResponse"][];
+        };
+        ApplyRecurringJobChangeRequest: {
+            /** Format: uuid */
+            requestId: string;
+            change: components["schemas"]["RecurringJobChangeRequest"];
         };
         AuthMemberResponse: {
             /** Format: uuid */
@@ -808,6 +853,7 @@ export interface components {
             /** Format: date-time */
             approvedAtUtc: null | string;
             latestRejection: null | components["schemas"]["JobRejectionResponse"];
+            recurrence: null | components["schemas"]["RecurringJobSeriesDetailsResponse"];
         };
         LogGoodBehaviourRequest: {
             /** Format: uuid */
@@ -912,8 +958,82 @@ export interface components {
             occurrenceCount: number | string;
             rotationChildIds: string[];
         };
+        RecurringJobChangeImpactResponse: {
+            /** Format: int32 */
+            updatedCount: number | string;
+            /** Format: int32 */
+            createdCount: number | string;
+            /** Format: int32 */
+            cancelledCount: number | string;
+            /** Format: int32 */
+            approvedSkippedCount: number | string;
+            /** Format: int32 */
+            cancelledSkippedCount: number | string;
+            /** Format: int32 */
+            retrospectivePointIncreaseSkippedCount: number | string;
+            warnings: string[];
+        };
+        RecurringJobChangePreviewResponse: {
+            /** Format: int32 */
+            seriesVersion: number | string;
+            thisOnly: components["schemas"]["RecurringJobScopePreviewResponse"];
+            allFuture: components["schemas"]["RecurringJobScopePreviewResponse"];
+            all: components["schemas"]["RecurringJobScopePreviewResponse"];
+        };
+        RecurringJobChangeRequest: {
+            operation: null | string;
+            scope: null | string;
+            reason: null | string;
+            /** Format: int32 */
+            expectedSeriesVersion: number | string;
+            name: null | string;
+            description: null | string;
+            /** Format: int32 */
+            points: number | string;
+            /** Format: date */
+            scheduledDate: null | string;
+            agendaPeriod: null | string;
+            /** Format: time */
+            scheduledTime: null | string;
+            frequency: null | string;
+            weekdays: null | string[];
+            /** Format: int32 */
+            dayOfMonth: null | number | string;
+            /** Format: date */
+            endDate: null | string;
+        };
+        RecurringJobChangeResultResponse: {
+            /** Format: uuid */
+            requestId: string;
+            /** Format: uuid */
+            seriesId: string;
+            /** Format: int32 */
+            seriesVersion: number | string;
+            operation: string;
+            scope: string;
+            impact: components["schemas"]["RecurringJobChangeImpactResponse"];
+        };
         RecurringJobResponse: {
             assignments: components["schemas"]["RecurringJobAssignmentResponse"][];
+        };
+        RecurringJobScopePreviewResponse: {
+            impact: null | components["schemas"]["RecurringJobChangeImpactResponse"];
+            error: null | string;
+        };
+        RecurringJobSeriesDetailsResponse: {
+            /** Format: uuid */
+            seriesId: string;
+            /** Format: int32 */
+            version: number | string;
+            frequency: string;
+            weekdays: string[];
+            /** Format: int32 */
+            dayOfMonth: null | number | string;
+            /** Format: date */
+            startDate: string;
+            /** Format: date */
+            endDate: null | string;
+            takesTurns: boolean;
         };
         RejectJobRequest: {
             reason: null | string;
@@ -1963,6 +2083,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    PreviewRecurringJobChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecurringJobChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringJobChangePreviewResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    ApplyRecurringJobChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyRecurringJobChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringJobChangeResultResponse"];
                 };
             };
             /** @description Bad Request */

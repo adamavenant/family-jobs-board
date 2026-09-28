@@ -41,6 +41,17 @@ internal static class TodayResponseMapping
                 : new JobRejectionResponse(
                     job.LatestRejection.DecisionId,
                     job.LatestRejection.Reason,
-                    job.LatestRejection.RejectedAtUtc));
+                    job.LatestRejection.RejectedAtUtc),
+            job.Recurrence is null
+                ? null
+                : new RecurringJobSeriesDetailsResponse(
+                    job.Recurrence.SeriesId,
+                    job.Recurrence.Version,
+                    job.Recurrence.Frequency,
+                    job.Recurrence.Weekdays,
+                    job.Recurrence.DayOfMonth,
+                    job.Recurrence.StartDate,
+                    job.Recurrence.EndDate,
+                    job.Recurrence.TakesTurns));
     }
 }

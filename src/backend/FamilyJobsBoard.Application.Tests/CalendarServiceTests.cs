@@ -346,6 +346,16 @@ public sealed class CalendarServiceTests
             return Task.FromResult<IReadOnlyList<RecurringJobSeries>>([]);
         }
 
+        public Task<IReadOnlyList<RecurringJobSlot>> GetRecurringJobSlotsAsync(
+            IReadOnlyCollection<Guid> seriesIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<RecurringJobSlot>>([]);
+
+        public Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesAsync(
+            IReadOnlyCollection<Guid> seriesIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<RecurringJobSeries>>([]);
+
         public Task AddRecurringJobSeriesAsync(
             IReadOnlyCollection<RecurringJobSeries> series,
             CancellationToken cancellationToken) => throw Unused();

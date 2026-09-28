@@ -20,6 +20,7 @@ import type { AuthStart, PendingPinSetup } from "../api/auth";
 import {
   ApiError,
   addJob,
+  applyRecurringJobChange,
   approveJob,
   cancelJob,
   completeJob,
@@ -27,8 +28,15 @@ import {
   createMonthlyRecurringJob,
   createWeeklyRecurringJob,
   getToday,
+  previewRecurringJobChange,
   rejectJob,
   updateJob,
+} from "../api/today";
+import type {
+  RecurringJobChangeImpact,
+  RecurringJobChangeInput,
+  RecurringJobChangeScope,
+  RecurringJobScopePreview,
 } from "../api/today";
 import { LoadingPage } from "./LoadingPage";
 import { createRequestId } from "./requestId";
@@ -110,6 +118,24 @@ export interface CancelJobActionResult {
   error?: string;
 }
 
+export interface PreviewRecurringJobChangeActionResult {
+  intent: "previewRecurringJobChange";
+  jobId: string;
+  operation: "edit" | "cancel";
+  seriesVersion?: number;
+  previews?: Record<RecurringJobChangeScope, RecurringJobScopePreview>;
+  error?: string;
+}
+
+export interface ApplyRecurringJobChangeActionResult {
+  intent: "applyRecurringJobChange";
+  jobId: string;
+  operation: "edit" | "cancel";
+  success?: boolean;
+  impact?: RecurringJobChangeImpact;
+  error?: string;
+}
+
 export interface ResetJobsAndPointsActionResult {
   intent: "resetJobsAndPoints";
   success?: boolean;
@@ -125,6 +151,8 @@ export type TodayActionResult =
   | ApproveActionResult
   | EditJobActionResult
   | CancelJobActionResult
+  | PreviewRecurringJobChangeActionResult
+  | ApplyRecurringJobChangeActionResult
   | RejectActionResult
   | ResetJobsAndPointsActionResult;
 
@@ -226,11 +254,171 @@ async function todayAction({
   if (form.get("intent") === "cancelJob") {
     return cancelJobAction(form);
   }
+  if (form.get("intent") === "previewRecurringJobChange") {
+    return previewRecurringJobChangeAction(form);
+  }
+  if (form.get("intent") === "applyRecurringJobChange") {
+    return applyRecurringJobChangeAction(form);
+  }
   if (form.get("intent") === "resetJobsAndPoints") {
     return resetJobsAndPointsAction(form);
   }
 
   return completeAction(form);
+}
+
+async function previewRecurringJobChangeAction(
+  form: FormData,
+): Promise<PreviewRecurringJobChangeActionResult> {
+  const jobId = form.get("jobId");
+  const operation = form.get("operation");
+  if (
+    typeof jobId !== "string" ||
+    (operation !== "edit" && operation !== "cancel")
+  ) {
+    return {
+      intent: "previewRecurringJobChange",
+      jobId: typeof jobId === "string" ? jobId : "",
+      operation: operation === "cancel" ? "cancel" : "edit",
+      error: "The recurring job details were incomplete.",
+    };
+  }
+
+  try {
+    const preview = await previewRecurringJobChange(
+      jobId,
+      recurringChangeFromForm(form, operation, "thisOnly"),
+    );
+    return {
+      intent: "previewRecurringJobChange",
+      jobId,
+      operation,
+      seriesVersion: preview.seriesVersion,
+      previews: preview.previews,
+    };
+  } catch (error) {
+    return {
+      intent: "previewRecurringJobChange",
+      jobId,
+      operation,
+      error:
+        error instanceof ApiError
+          ? error.message
+          : "That recurring change couldn't be previewed.",
+    };
+  }
+}
+
+async function applyRecurringJobChangeAction(
+  form: FormData,
+): Promise<ApplyRecurringJobChangeActionResult> {
+  const jobId = form.get("jobId");
+  const requestId = form.get("requestId");
+  const operation = form.get("operation");
+  const scope = form.get("scope");
+  if (
+    typeof jobId !== "string" ||
+    typeof requestId !== "string" ||
+    (operation !== "edit" && operation !== "cancel") ||
+    (scope !== "thisOnly" && scope !== "allFuture" && scope !== "all")
+  ) {
+    return {
+      intent: "applyRecurringJobChange",
+      jobId: typeof jobId === "string" ? jobId : "",
+      operation: operation === "cancel" ? "cancel" : "edit",
+      error: "Choose how widely this change should apply.",
+    };
+  }
+
+  try {
+    const result = await applyRecurringJobChange(
+      jobId,
+      requestId,
+      recurringChangeFromForm(form, operation, scope),
+    );
+    return {
+      intent: "applyRecurringJobChange",
+      jobId,
+      operation,
+      success: true,
+      impact: result.impact,
+    };
+  } catch (error) {
+    return {
+      intent: "applyRecurringJobChange",
+      jobId,
+      operation,
+      error:
+        error instanceof ApiError
+          ? error.message
+          : "That recurring change couldn't be applied.",
+    };
+  }
+}
+
+function recurringChangeFromForm(
+  form: FormData,
+  operation: "edit" | "cancel",
+  scope: RecurringJobChangeScope,
+): RecurringJobChangeInput {
+  const expectedSeriesVersion = Number(form.get("expectedSeriesVersion"));
+  const points = Number(form.get("points"));
+  const name = form.get("name");
+  const description = form.get("description");
+  const scheduledDate = form.get("scheduledDate");
+  const anchorScheduledDate = form.get("anchorScheduledDate");
+  const agendaPeriod = form.get("agendaPeriod");
+  const scheduledTime = form.get("scheduledTime");
+  const frequency = form.get("frequency");
+  const dayOfMonthValue = form.get("dayOfMonth");
+  const endDate = form.get("endDate");
+  const reason = form.get("reason");
+  if (
+    !Number.isInteger(expectedSeriesVersion) ||
+    expectedSeriesVersion < 0 ||
+    !Number.isInteger(points) ||
+    points < 0 ||
+    typeof name !== "string" ||
+    typeof description !== "string" ||
+    typeof scheduledDate !== "string" ||
+    typeof anchorScheduledDate !== "string" ||
+    (agendaPeriod !== "morning" &&
+      agendaPeriod !== "arrivingHome" &&
+      agendaPeriod !== "evening" &&
+      agendaPeriod !== "unscheduled") ||
+    (frequency !== "daily" && frequency !== "weekly" && frequency !== "monthly")
+  ) {
+    throw new ApiError("Check the recurring job details and try again.");
+  }
+
+  const parsedDay = Number(dayOfMonthValue);
+  return {
+    operation,
+    scope,
+    reason:
+      typeof reason === "string" && reason.trim().length > 0 ? reason : null,
+    expectedSeriesVersion,
+    name,
+    description,
+    points,
+    scheduledDate: scope === "thisOnly" ? scheduledDate : anchorScheduledDate,
+    agendaPeriod,
+    scheduledTime:
+      typeof scheduledTime === "string" && scheduledTime.length > 0
+        ? scheduledTime
+        : null,
+    frequency,
+    weekdays: form
+      .getAll("weekdays")
+      .filter((value): value is string => typeof value === "string"),
+    dayOfMonth:
+      typeof dayOfMonthValue === "string" &&
+      dayOfMonthValue.length > 0 &&
+      Number.isInteger(parsedDay)
+        ? parsedDay
+        : null,
+    endDate: typeof endDate === "string" && endDate.length > 0 ? endDate : null,
+  };
 }
 
 async function resetJobsAndPointsAction(

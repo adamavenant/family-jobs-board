@@ -556,6 +556,22 @@ public sealed class TodayBoardServiceTests
             LastGenerationHorizon = horizon;
             return Task.FromResult<IReadOnlyList<RecurringJobSeries>>([]);
         }
+        public Task<IReadOnlyList<RecurringJobSlot>> GetRecurringJobSlotsAsync(
+            IReadOnlyCollection<Guid> seriesIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<RecurringJobSlot>>(Jobs
+                .Where(job => job.RecurringJobSeriesId is { } seriesId
+                    && seriesIds.Contains(seriesId))
+                .Select(job => new RecurringJobSlot(
+                    job.RecurringJobSeriesId!.Value,
+                    job.ScheduledDate,
+                    job.OriginalScheduledDate ?? job.ScheduledDate))
+                .ToArray());
+        public Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesAsync(
+            IReadOnlyCollection<Guid> seriesIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<RecurringJobSeries>>(
+                Series.Where(item => seriesIds.Contains(item.Id)).ToArray());
         public Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken) =>
             Task.FromResult(0);
         public Task AddPointsAwardAsync(PointsLedgerEntry entry, CancellationToken cancellationToken) => throw Unused();

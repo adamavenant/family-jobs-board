@@ -287,7 +287,7 @@ Delivery status on `main` as of 2026-09-13:
 - [x] Phase 1: household bootstrap, PIN sign-in/session security, and the implemented family-member administration lifecycle.
 - [x] Phase 2: once-off creation, editing, terminal cancellation, daily navigation, adult child filtering, multi-child assignment, and completion submission are delivered.
 - [ ] Phase 3: the submit/approve-or-reject/ledger loop and child balance/history are delivered; approval-time point override remains.
-- [x] Phase 4: daily, weekly, and monthly recurrence creation and adult day/week/month calendar views are delivered; series lifecycle (pause/end/edit) remains (issues #107, #108).
+- [ ] Phase 4: daily, weekly, and monthly recurrence creation, adult day/week/month calendar views, and scoped edit/cancel are delivered; pause/resume and remaining series administration remain (issue #107).
 - [x] Phase 5: adult-defined good-behaviour types, logging with an editable point value, atomic idempotent ledger awards, and child history/read-only listing are delivered.
 - [ ] Phase 6: signed manual point adjustments with a required reason are delivered; redemptions, searchable audit, and administration completeness remain.
 - [ ] Phase 7: image publication and home-server deployment automation are delivered; the full production-readiness exit gate remains.
@@ -401,14 +401,14 @@ Deliver from `docs/specs/040-recurring-jobs-and-calendar.md`:
 - daily, weekly, and monthly recurrence definitions;
 - deterministic occurrence generation with uniqueness protection and a documented horizon;
 - weekend-specific schedules or an explicit rule for expressing them;
-- pause/end recurrence and scoped edits;
+- scoped recurrence edits and terminal cancellation (`This Only`, `All Future`, or `All`), with pause/resume still outstanding;
 - adult day/week/month calendar views; and
 - recurrence tests across month ends, leap years, daylight-saving boundaries, edits, cancellation, and restart.
 
 Exit gate:
 
 - Re-running generation or restarting containers creates no duplicates.
-- Agenda and calendar read the same occurrences and workflow state (delivered by issue #85; series pause/end/edit remain).
+- Agenda and calendar read the same occurrences and workflow state (delivered by issue #85; scoped edit/cancel by issue #108; pause/resume remains).
 - Editing a series never rewrites already approved history.
 - Dates remain correct in the configured household time zone.
 - Compose and all tests remain green.
