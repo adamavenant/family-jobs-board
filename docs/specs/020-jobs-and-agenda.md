@@ -18,7 +18,7 @@ jobs and can submit open work for adult review.
 | Create once-off jobs | No | No | Yes |
 | Edit open or pending-approval jobs | No | No | Yes |
 | Cancel open or pending-approval jobs | No | No | Yes |
-| Submit completion | No | Own open job only | No |
+| Submit completion | No | Own open job only | Any open child job visible on the adult board |
 
 The authenticated session supplies the viewer identity. Clients cannot select
 another viewer through request data.
@@ -40,9 +40,11 @@ points are a non-negative whole number. Scheduled dates cannot be in the past.
 Agenda period is `morning`, `arrivingHome`, `evening`, or `unscheduled`, with
 an optional time.
 
-Jobs start `Open`. Their child may transition them once to `PendingApproval`,
-capturing a UTC completion instant. Another child receives `403`; a missing job
-receives `404`; and an invalid repeat transition receives `409`.
+Jobs start `Open`. Their child, or an adult acting on the child's behalf, may
+transition them once to `PendingApproval`, capturing a UTC completion instant.
+Another child receives `403`; a missing job receives `404`; and an invalid
+repeat transition receives `409`. Adult-submitted completion is not approval
+and does not award points.
 
 An adult may edit all job details while a job is `Open` or `PendingApproval`.
 Editing retains its workflow state, completion and review history, recurring
@@ -71,7 +73,8 @@ commit atomically. Existing migrations are forward-only.
 - `POST /api/today/jobs` accepts `childIds`, name, description, points,
   `scheduledDate`, agenda period, and optional time; it returns the created
   child-specific jobs.
-- `POST /api/jobs/{id}/complete` transitions the authenticated child's job.
+- `POST /api/jobs/{id}/complete` transitions the authenticated child's own job,
+  or lets an authenticated adult transition a child's job on their behalf.
 - `PUT /api/jobs/{id}` lets an adult replace the editable details of one open
   or pending-approval occurrence.
 - `POST /api/jobs/{id}/cancel` lets an adult terminally cancel one open or
@@ -90,7 +93,8 @@ next day, and Today controls preserve the filter in the URL while updating the
 date. The heading, count, jobs, and empty state reflect the selected child.
 Jobs are grouped by agenda period. Phone and tablet journeys use native,
 labelled controls and touch-sized actions. Each eligible adult job card exposes
-on-demand edit and cancellation forms; children never receive those controls.
+an assignee-specific completion action plus on-demand edit and cancellation
+forms; children never receive the management controls.
 
 ## Audit and security
 
@@ -115,6 +119,9 @@ its persistence dependency.
   unknown, inactive, and adult member selections return field validation.
 - Given a child completes an open owned job, then it becomes pending approval
   with one completion instant; a repeat does not create another submission.
+- Given an adult completes an open child job, then only that job becomes pending
+  approval with one completion instant and no points are awarded until a
+  separate approval.
 - Given an adult edits an open or pending-approval job, then its details update
   without changing workflow/review state or creating a ledger entry.
 - Given an adult cancels an open or pending-approval job, then it is retained as

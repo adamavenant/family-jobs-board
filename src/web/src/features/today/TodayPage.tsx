@@ -590,8 +590,16 @@ function JobCard({
           Sent to a grown-up for approval
         </div>
       ) : isAdult ? (
-        <div className="complete-state" role="status">
-          Ready for {job.childDisplayName}
+        <div className="open-job-actions">
+          <fetcher.Form method="post">
+            <input type="hidden" name="intent" value="complete" />
+            <input type="hidden" name="jobId" value={job.id} />
+            <button type="submit" disabled={isSubmitting}>
+              {isSubmitting && submittingIntent === "complete"
+                ? "Sending…"
+                : `Mark as done for ${job.childDisplayName}`}
+            </button>
+          </fetcher.Form>
         </div>
       ) : (
         <div className="open-job-actions">

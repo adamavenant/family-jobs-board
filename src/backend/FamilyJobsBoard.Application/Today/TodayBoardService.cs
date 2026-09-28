@@ -144,11 +144,12 @@ public sealed class TodayBoardService
 
     public async Task<TodayJob> CompleteAsync(
         Guid jobId,
-        Guid childId,
+        Guid actorMemberId,
         CancellationToken cancellationToken)
     {
         var job = await GetJobAsync(jobId, cancellationToken);
-        if (job.ChildId != childId)
+        var actor = await _repository.GetMemberAsync(actorMemberId, cancellationToken);
+        if (actor is null || (!actor.IsAdult && job.ChildId != actor.Id))
         {
             throw new JobOwnershipRejectedException();
         }

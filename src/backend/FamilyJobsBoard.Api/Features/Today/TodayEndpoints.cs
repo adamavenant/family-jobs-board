@@ -20,10 +20,10 @@ internal static class TodayEndpoints
                 "Returns the child-owned or adult household view for the optional household-local date and adult-only child filter.");
 
         group.MapPost("/jobs/{id:guid}/complete", CompleteJobAsync)
-            .RequireAuthorization("Child")
             .WithName("CompleteJob")
             .WithSummary("Mark an open job complete and pending approval.")
-            .WithDescription("Returns 409 when the job has already been completed.");
+            .WithDescription(
+                "A child may complete their own job and an adult may complete a child's job on their behalf. Returns 409 when the job is not open.");
 
         group.MapPost("/today/jobs", AddJobAsync)
             .RequireAuthorization("Adult")

@@ -130,6 +130,51 @@ describe("Today page", () => {
       screen.getByRole("button", { name: "Approve +5 points" }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("For Fredster")[0]).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: "Mark as done for Fredster" }),
+    ).toHaveLength(2);
+  });
+
+  it("lets an adult mark a child's job done and refreshes to review controls", async () => {
+    const openJob = board.jobs[0];
+    if (!openJob) {
+      throw new Error("The open-job fixture was missing.");
+    }
+    const initialBoard = { ...board, pendingApprovalCount: 0, jobs: [openJob] };
+    const pendingJob = {
+      ...openJob,
+      status: "pendingApproval",
+      completedAtUtc: "2026-08-29T09:00:00Z",
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(initialBoard))
+      .mockResolvedValueOnce(jsonResponse(pendingJob))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          ...initialBoard,
+          pendingApprovalCount: 1,
+          jobs: [pendingJob],
+        }),
+      );
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    const button = await screen.findByRole("button", {
+      name: "Mark as done for Fredster",
+    });
+    await user.click(button);
+
+    expect(
+      await screen.findByRole("button", { name: "Approve +5 points" }),
+    ).toBeInTheDocument();
+    const completionRequest = fetch.mock.calls[1]?.[0];
+    expect(completionRequest).toBeInstanceOf(Request);
+    expect((completionRequest as Request).method).toBe("POST");
+    expect((completionRequest as Request).url).toContain(
+      `/api/jobs/${openJob.id}/complete`,
+    );
   });
 
   it("lets an adult edit an open job and refreshes the agenda", async () => {
@@ -371,7 +416,9 @@ describe("Today page", () => {
     const addedCard = addedHeading.closest("article");
     expect(addedCard).not.toBeNull();
     expect(
-      within(addedCard as HTMLElement).getByText("Ready for Fredster"),
+      within(addedCard as HTMLElement).getByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
     ).toBeInTheDocument();
     expect(
       within(addedCard as HTMLElement).getByText("Arriving home · 15:45"),
@@ -544,8 +591,12 @@ describe("Today page", () => {
     expect(
       await screen.findAllByRole("heading", { name: "Make the beds" }),
     ).toHaveLength(2);
-    expect(screen.getAllByText("Ready for Fredster").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Ready for Harrie")).toHaveLength(1);
+    expect(
+      screen.getAllByRole("button", { name: "Mark as done for Fredster" }),
+    ).toHaveLength(3);
+    expect(
+      screen.getAllByRole("button", { name: "Mark as done for Harrie" }),
+    ).toHaveLength(1);
   });
 
   it.each(["native", "fallback"])(
@@ -1061,7 +1112,9 @@ describe("Today page", () => {
     );
 
     expect(
-      await within(card as HTMLElement).findByText("Ready for Fredster"),
+      await within(card as HTMLElement).findByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
     ).toBeInTheDocument();
   });
 

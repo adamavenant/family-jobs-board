@@ -94,6 +94,44 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Adult_can_submit_a_childs_job_before_separate_approval_awards_points()
+    {
+        using var completionRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/jobs/{DemoDataIds.FeedDog}/complete");
+        completionRequest.Headers.Add("X-Test-Member-Id", DemoDataIds.Addie.ToString());
+        using var completionResponse = await Client.SendAsync(completionRequest);
+        var completed = await completionResponse.Content.ReadFromJsonAsync<JobResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, completionResponse.StatusCode);
+        Assert.NotNull(completed);
+        Assert.Equal("pendingApproval", completed.Status);
+        Assert.NotNull(completed.CompletedAtUtc);
+
+        await using (var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.False(await database.PointsLedgerEntries
+                .AnyAsync(entry => entry.JobId == DemoDataIds.FeedDog));
+        }
+
+        using var approvalResponse = await Client.PostAsync(
+            $"/api/jobs/{DemoDataIds.FeedDog}/approve",
+            null);
+        Assert.Equal(HttpStatusCode.OK, approvalResponse.StatusCode);
+
+        await using var verificationScope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var verificationDatabase = verificationScope.ServiceProvider
+            .GetRequiredService<AppDbContext>();
+        Assert.Equal(1, await verificationDatabase.PointsLedgerEntries
+            .CountAsync(entry => entry.JobId == DemoDataIds.FeedDog));
+    }
+
+    [Fact]
     public async Task Adult_edit_is_persisted_without_creating_a_ledger_entry()
     {
         var jobId = DemoDataIds.FeedDog;

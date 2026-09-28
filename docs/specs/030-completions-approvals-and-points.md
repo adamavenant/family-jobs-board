@@ -16,13 +16,14 @@ feedback.
 
 | Capability | Anonymous | Child | Adult |
 | --- | --- | --- | --- |
-| Submit owned work | No | Yes | No |
+| Submit work for approval | No | Own open jobs | Any open child job |
 | Approve or reject pending work | No | No | Yes |
 | Read points balance/history | No | Own | Not exposed as an adult points view |
 
 ## Scope
 
-Delivered scope includes pending state, adult controls on the daily board,
+Delivered scope includes child and adult-on-behalf completion submission,
+pending state, adult controls on the daily board,
 approve/reject decisions, optional rejection feedback, one job-sourced ledger
 award per approval, balance calculation, and child earning history. A separate
 queue, reviewer identity, approval reason, point override, redemptions,
@@ -35,6 +36,11 @@ Only `PendingApproval` jobs can be approved or rejected. Approval moves the job
 to `Approved`, records a UTC instant, persists an approved decision, and adds a
 positive ledger award equal to the job points in one transaction. A unique
 database constraint on job ID prevents duplicate awards.
+
+An open job may be submitted by its assigned child or by an adult acting on the
+child's behalf. Both paths use the same `Open` to `PendingApproval` transition
+and UTC completion instant. Adult submission is deliberately separate from
+approval and creates no ledger entry by itself.
 
 Rejection records a decision with optional trimmed feedback of at most 500
 characters, returns the job to `Open`, and clears its completion instant. It
@@ -82,6 +88,8 @@ stable conflict responses, and the standard readiness check covers PostgreSQL.
 
 - Given a pending job, when an adult approves it, then the job, decision, and
   one ledger award commit together and the child's balance increases once.
+- Given an adult submits an open job on behalf of its child, then it becomes
+  pending approval without awarding points and can be approved separately.
 - Given two approval attempts race, then at most one award exists for the job.
 - Given a pending job is rejected, then it becomes open, no points are awarded,
   and optional feedback is visible to the child.
