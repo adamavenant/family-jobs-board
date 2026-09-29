@@ -314,39 +314,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             await database.SaveChangesAsync();
         }
 
-        var method = action == "edit" ? HttpMethod.Put : HttpMethod.Post;
-        var path = action switch
-        {
-            "complete" => $"/api/jobs/{DemoDataIds.FeedDog}/complete?expectedPoints=5",
-            "approve" => $"/api/jobs/{DemoDataIds.FeedDog}/approve",
-            "reject" => $"/api/jobs/{DemoDataIds.FeedDog}/reject",
-            "edit" => $"/api/jobs/{DemoDataIds.FeedDog}",
-            "cancel" => $"/api/jobs/{DemoDataIds.FeedDog}/cancel",
-            _ => throw new ArgumentOutOfRangeException(nameof(action)),
-        };
-        using var request = new HttpRequestMessage(method, path);
-        if (action == "reject")
-        {
-            request.Content = JsonContent.Create(new { reason = "Try again." });
-        }
-        else if (action == "edit")
-        {
-            request.Content = JsonContent.Create(new
-            {
-                name = "Feed the dog",
-                description = "One scoop.",
-                points = 5,
-                scheduledDate = CurrentDate,
-                agendaPeriod = "morning",
-                scheduledTime = (string?)null,
-            });
-        }
-        else if (action == "cancel")
-        {
-            request.Content = JsonContent.Create(new { reason = "Not today." });
-        }
-
-        request.Headers.Add("X-Test-Member-Id", DemoDataIds.Addie.ToString());
+        using var request = CreateAdultJobActionRequest(action);
         using var response = await Client.SendAsync(request);
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
 
@@ -379,39 +347,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             _postgres.GetConnectionString(),
             forceJobStateConflict: true);
         using var client = conflictFactory.CreateClient();
-        var method = action == "edit" ? HttpMethod.Put : HttpMethod.Post;
-        var path = action switch
-        {
-            "complete" => $"/api/jobs/{DemoDataIds.FeedDog}/complete?expectedPoints=5",
-            "approve" => $"/api/jobs/{DemoDataIds.FeedDog}/approve",
-            "reject" => $"/api/jobs/{DemoDataIds.FeedDog}/reject",
-            "edit" => $"/api/jobs/{DemoDataIds.FeedDog}",
-            "cancel" => $"/api/jobs/{DemoDataIds.FeedDog}/cancel",
-            _ => throw new ArgumentOutOfRangeException(nameof(action)),
-        };
-        using var request = new HttpRequestMessage(method, path);
-        if (action == "reject")
-        {
-            request.Content = JsonContent.Create(new { reason = "Try again." });
-        }
-        else if (action == "edit")
-        {
-            request.Content = JsonContent.Create(new
-            {
-                name = "Feed the dog",
-                description = "One scoop.",
-                points = 5,
-                scheduledDate = CurrentDate,
-                agendaPeriod = "morning",
-                scheduledTime = (string?)null,
-            });
-        }
-        else if (action == "cancel")
-        {
-            request.Content = JsonContent.Create(new { reason = "Not today." });
-        }
-
-        request.Headers.Add("X-Test-Member-Id", DemoDataIds.Addie.ToString());
+        using var request = CreateAdultJobActionRequest(action);
         using var response = await client.SendAsync(request);
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
 
@@ -2526,6 +2462,40 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         ?? throw new InvalidOperationException("Test API was not initialised."))
         .Services.GetRequiredService<IHouseholdClock>()
         .Today;
+
+    private HttpRequestMessage CreateAdultJobActionRequest(string action)
+    {
+        var request = new HttpRequestMessage(
+            action == "edit" ? HttpMethod.Put : HttpMethod.Post,
+            action switch
+            {
+                "complete" => $"/api/jobs/{DemoDataIds.FeedDog}/complete?expectedPoints=5",
+                "approve" => $"/api/jobs/{DemoDataIds.FeedDog}/approve",
+                "reject" => $"/api/jobs/{DemoDataIds.FeedDog}/reject",
+                "edit" => $"/api/jobs/{DemoDataIds.FeedDog}",
+                "cancel" => $"/api/jobs/{DemoDataIds.FeedDog}/cancel",
+                _ => throw new ArgumentOutOfRangeException(nameof(action)),
+            })
+        {
+            Content = action switch
+            {
+                "reject" => JsonContent.Create(new { reason = "Try again." }),
+                "edit" => JsonContent.Create(new
+                {
+                    name = "Feed the dog",
+                    description = "One scoop.",
+                    points = 5,
+                    scheduledDate = CurrentDate,
+                    agendaPeriod = "morning",
+                    scheduledTime = (string?)null,
+                }),
+                "cancel" => JsonContent.Create(new { reason = "Not today." }),
+                _ => null,
+            },
+        };
+        request.Headers.Add("X-Test-Member-Id", DemoDataIds.Addie.ToString());
+        return request;
+    }
 
     private async Task CompleteAndApproveAsync(Guid jobId)
     {
