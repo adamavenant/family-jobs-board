@@ -23,7 +23,7 @@ internal static class TodayEndpoints
             .WithName("CompleteJob")
             .WithSummary("Complete an open job.")
             .WithDescription(
-                "A child may submit their own job for approval. An adult completing a child's job on their behalf approves it and awards its points atomically. Returns 409 when the job is not open or its points were already awarded.");
+                "A child may submit their own job for approval. An adult supplies expectedPoints and, when it still matches, completes, approves, and awards atomically. Returns 404 when the job or its active child is unavailable, and 409 when the job is not open, changed after confirmation, changed concurrently, or its points were already awarded.");
 
         group.MapPost("/today/jobs", AddJobAsync)
             .RequireAuthorization("Adult")
@@ -57,27 +57,29 @@ internal static class TodayEndpoints
             .RequireAuthorization("Adult")
             .WithName("ApproveJob")
             .WithSummary("Approve a pending job and award its points.")
-            .WithDescription("Returns 409 unless the job is pending approval or its points were already awarded.");
+            .WithDescription(
+                "Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when it changed concurrently, or when its points were already awarded.");
 
         group.MapPost("/jobs/{id:guid}/reject", RejectJobAsync)
             .RequireAuthorization("Adult")
             .WithName("RejectJob")
             .WithSummary("Reject a pending job and return it for another try.")
-            .WithDescription("Records optional feedback and returns 409 unless the job is pending approval.");
+            .WithDescription(
+                "Records optional feedback. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval or when it changed concurrently.");
 
         group.MapPut("/jobs/{id:guid}", UpdateJobAsync)
             .RequireAuthorization("Adult")
             .WithName("UpdateJob")
             .WithSummary("Edit an open or pending-approval job occurrence.")
             .WithDescription(
-                "Updates only this job occurrence without changing its recurring series or points ledger; approved and cancelled jobs return 409.");
+                "Updates only this job occurrence without changing its recurring series or points ledger. Returns 404 when the job or its active child is unavailable, and 409 when it is approved, cancelled, or changed concurrently.");
 
         group.MapPost("/jobs/{id:guid}/cancel", CancelJobAsync)
             .RequireAuthorization("Adult")
             .WithName("CancelJob")
             .WithSummary("Cancel an open or pending-approval job occurrence.")
             .WithDescription(
-                "Records an optional reason, hides the occurrence from daily agendas, and leaves its recurring series and review history unchanged.");
+                "Records an optional reason, hides the occurrence from daily agendas, and leaves its recurring series and review history unchanged. Returns 404 when the job or its active child is unavailable, and 409 when the job cannot be cancelled or changed concurrently.");
 
         group.MapPost("/jobs/{id:guid}/recurring-change/preview", PreviewRecurringJobChangeAsync)
             .RequireAuthorization("Adult")
@@ -578,6 +580,7 @@ internal static class TodayEndpoints
     private static async Task<Results<Ok<JobResponse>, NotFound<ProblemDetails>, Conflict<ProblemDetails>, ForbidHttpResult>>
         CompleteJobAsync(
             Guid id,
+            [FromQuery] int? expectedPoints,
             HttpContext context,
             TodayBoardService service,
             CancellationToken cancellationToken)
@@ -585,7 +588,11 @@ internal static class TodayEndpoints
         try
         {
             var memberId = IdentityEndpoints.PrincipalMemberId(context.User)!.Value;
-            var job = await service.CompleteAsync(id, memberId, cancellationToken);
+            var job = await service.CompleteAsync(
+                id,
+                memberId,
+                expectedPoints,
+                cancellationToken);
             return TypedResults.Ok(MapJob(job));
         }
         catch (JobNotFoundException exception)
@@ -597,17 +604,9 @@ internal static class TodayEndpoints
                 Status = StatusCodes.Status404NotFound,
             });
         }
-        catch (HouseholdMemberNotFoundException exception)
-        {
-            return TypedResults.NotFound(new ProblemDetails
-            {
-                Title = "Child not found",
-                Detail = exception.Message,
-                Status = StatusCodes.Status404NotFound,
-            });
-        }
         catch (Exception exception) when (
             exception is JobCompletionRejectedException
+                or JobCompletionConfirmationConflictException
                 or DuplicateJobPointsAwardException
                 or JobStateConflictException)
         {

@@ -42,7 +42,9 @@ acting on the child's behalf. Child submission uses the `Open` to
 `PendingApproval` transition. Adult completion atomically performs completion
 and approval, records both UTC instants and an approved review decision, and
 creates the job's single points-ledger award. The adult does not need to perform
-a second approval action.
+a second approval action. The adult request includes the points value shown in
+its confirmation; if the job's points changed meanwhile, the server rejects
+the stale confirmation without changing the job or ledger.
 
 Rejection records a decision with optional trimmed feedback of at most 500
 characters, returns the job to `Open`, and clears its completion instant. It
@@ -67,8 +69,10 @@ not record the reviewing adult.
   issue #77; see the points ledger view in
   `060-redemptions-adjustments-and-audit.md`.
 
-Missing jobs return `404`; invalid or already-decided transitions and duplicate
-awards return `409`; an overlong rejection reason returns validation errors.
+Missing jobs and jobs whose assigned child is unavailable return `404` across
+complete, approve, reject, edit, and cancel. Invalid, concurrently changed, or
+already-decided transitions and duplicate awards return `409`; an overlong
+rejection reason returns validation errors.
 
 ## UI states
 
@@ -98,6 +102,8 @@ stable conflict responses, and the standard readiness check covers PostgreSQL.
   one ledger award commit together and the child's balance increases once.
 - Given an adult completes an open job on behalf of its child, then completion,
   approval, the review decision, and one ledger award commit atomically.
+- Given the job's points change after the adult opens confirmation, then the
+  stale completion is rejected and no decision or award is written.
 - Given two approval attempts race, then at most one award exists for the job.
 - Given a pending job is rejected, then it becomes open, no points are awarded,
   and optional feedback is visible to the child.

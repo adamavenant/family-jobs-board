@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
@@ -168,7 +168,11 @@ describe("Today page", () => {
       screen.getByText("Mark done and award 5 points to Fredster?"),
     ).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(1);
-    await user.click(screen.getByRole("button", { name: "Yes, mark done" }));
+    const confirmButton = screen.getByRole("button", {
+      name: "Yes, mark done",
+    });
+    expect(confirmButton).toHaveFocus();
+    await user.click(confirmButton);
 
     expect(
       await screen.findByText("Approved — 5 points awarded"),
@@ -182,6 +186,11 @@ describe("Today page", () => {
     expect((completionRequest as Request).url).toContain(
       `/api/jobs/${openJob.id}/complete`,
     );
+    expect(
+      new URL((completionRequest as Request).url).searchParams.get(
+        "expectedPoints",
+      ),
+    ).toBe("5");
   });
 
   it("lets an adult keep an open job after opening completion confirmation", async () => {
@@ -196,17 +205,94 @@ describe("Today page", () => {
     const user = userEvent.setup();
     renderApp();
 
+    const trigger = await screen.findByRole("button", {
+      name: "Mark as done for Fredster",
+    });
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "Keep open" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Mark as done for Fredster" }),
+      ).toHaveFocus(),
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets a hidden adult confirmation when the job status changes", async () => {
+    const openJob = board.jobs[0];
+    if (!openJob) {
+      throw new Error("The open-job fixture was missing.");
+    }
+    const pendingJob = {
+      ...openJob,
+      status: "pendingApproval",
+      completedAtUtc: "2026-08-29T09:00:00Z",
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ ...board, jobs: [openJob] }))
+      .mockResolvedValueOnce(jsonResponse({ ...board, jobs: [pendingJob] }))
+      .mockResolvedValueOnce(jsonResponse({ ...board, jobs: [openJob] }));
+    vi.stubGlobal("fetch", fetch);
+    acceptSession({
+      accessToken: "test-access-token",
+      accessTokenExpiresAtUtc: "2099-01-01T00:00:00Z",
+      member: { id: addie.id, displayName: addie.displayName, role: "adult" },
+    });
+    const router = createMemoryRouter(routes, { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+    const user = userEvent.setup();
+
     await user.click(
       await screen.findByRole("button", {
         name: "Mark as done for Fredster",
       }),
     );
-    await user.click(screen.getByRole("button", { name: "Keep open" }));
+    expect(
+      screen.getByRole("group", { name: "Confirm completion for Fredster" }),
+    ).toBeInTheDocument();
+
+    router.revalidate();
+    expect(
+      await screen.findByText("Nice work — ready for a grown-up."),
+    ).toBeInTheDocument();
+    router.revalidate();
+    expect(
+      await screen.findByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Confirm completion for Fredster" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("uses singular point wording in adult completion confirmation", async () => {
+    const openJob = board.jobs[0];
+    if (!openJob) {
+      throw new Error("The open-job fixture was missing.");
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ ...board, jobs: [{ ...openJob, points: 1 }] }),
+        ),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
+    );
 
     expect(
-      screen.getByRole("button", { name: "Mark as done for Fredster" }),
+      screen.getByText("Mark done and award 1 point to Fredster?"),
     ).toBeInTheDocument();
-    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("keeps adult completion confirmation open when awarding fails", async () => {

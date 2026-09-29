@@ -254,10 +254,16 @@ function mapRecurringImpact(data: {
   };
 }
 
-export async function completeJob(id: string): Promise<TodayJob> {
+export async function completeJob(
+  id: string,
+  expectedPoints: number | null,
+): Promise<TodayJob> {
   const client = apiClient();
   const { data, error } = await client.POST("/api/jobs/{id}/complete", {
-    params: { path: { id } },
+    params: {
+      path: { id },
+      query: expectedPoints === null ? {} : { expectedPoints },
+    },
   });
   if (!data) {
     throw new ApiError(

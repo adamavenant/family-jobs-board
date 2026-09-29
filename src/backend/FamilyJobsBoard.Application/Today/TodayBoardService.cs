@@ -142,6 +142,7 @@ public sealed class TodayBoardService
     public async Task<TodayJob> CompleteAsync(
         Guid jobId,
         Guid actorMemberId,
+        int? expectedPoints,
         CancellationToken cancellationToken)
     {
         var job = await GetJobAsync(jobId, cancellationToken);
@@ -151,7 +152,12 @@ public sealed class TodayBoardService
             throw new JobOwnershipRejectedException();
         }
 
-        var child = await GetChildAsync(job.ChildId, cancellationToken);
+        var child = await GetChildAsync(job, cancellationToken);
+
+        if (actor.IsAdult && expectedPoints != job.Points)
+        {
+            throw new JobCompletionConfirmationConflictException(job.Id);
+        }
 
         var completedAtUtc = _clock.UtcNow;
         job.MarkComplete(completedAtUtc);
@@ -246,7 +252,7 @@ public sealed class TodayBoardService
         }
 
         var job = await GetJobAsync(jobId, cancellationToken);
-        var child = await GetChildAsync(job.ChildId, cancellationToken);
+        var child = await GetChildAsync(job, cancellationToken);
         job.Edit(
             name,
             description,
@@ -277,7 +283,7 @@ public sealed class TodayBoardService
         }
 
         var job = await GetJobAsync(jobId, cancellationToken);
-        var child = await GetChildAsync(job.ChildId, cancellationToken);
+        var child = await GetChildAsync(job, cancellationToken);
         job.Cancel(viewerId, _clock.UtcNow, trimmedReason);
         await _repository.SaveChangesAsync(cancellationToken);
 
@@ -759,7 +765,7 @@ public sealed class TodayBoardService
         CancellationToken cancellationToken)
     {
         var job = await GetJobAsync(jobId, cancellationToken);
-        var child = await GetChildAsync(job.ChildId, cancellationToken);
+        var child = await GetChildAsync(job, cancellationToken);
 
         var decidedAtUtc = _clock.UtcNow;
         await ApproveAndAwardAsync(job, decidedAtUtc, cancellationToken);
@@ -811,7 +817,7 @@ public sealed class TodayBoardService
         }
 
         var job = await GetJobAsync(jobId, cancellationToken);
-        var child = await GetChildAsync(job.ChildId, cancellationToken);
+        var child = await GetChildAsync(job, cancellationToken);
         var decidedAtUtc = _clock.UtcNow;
         job.Reject();
         var decision = new JobReviewDecision(
@@ -838,13 +844,13 @@ public sealed class TodayBoardService
     }
 
     private async Task<HouseholdMember> GetChildAsync(
-        Guid childId,
+        Job job,
         CancellationToken cancellationToken)
     {
-        var child = await _repository.GetMemberAsync(childId, cancellationToken);
+        var child = await _repository.GetMemberAsync(job.ChildId, cancellationToken);
         return child is { IsAdult: false }
             ? child
-            : throw new HouseholdMemberNotFoundException(childId);
+            : throw new JobNotFoundException(job.Id);
     }
 
     private async Task EnsureAdultAsync(Guid viewerId, CancellationToken cancellationToken)

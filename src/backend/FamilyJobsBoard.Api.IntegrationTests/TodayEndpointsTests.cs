@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
@@ -101,7 +102,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     {
         using var completionRequest = new HttpRequestMessage(
             HttpMethod.Post,
-            $"/api/jobs/{DemoDataIds.FeedDog}/complete");
+            $"/api/jobs/{DemoDataIds.FeedDog}/complete?expectedPoints=5");
         completionRequest.Headers.Add("X-Test-Member-Id", DemoDataIds.Addie.ToString());
         using var completionResponse = await Client.SendAsync(completionRequest);
         var completed = await completionResponse.Content.ReadFromJsonAsync<JobResponse>();
@@ -127,7 +128,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
         using var repeatRequest = new HttpRequestMessage(
             HttpMethod.Post,
-            $"/api/jobs/{DemoDataIds.FeedDog}/complete");
+            $"/api/jobs/{DemoDataIds.FeedDog}/complete?expectedPoints=5");
         repeatRequest.Headers.Add("X-Test-Member-Id", DemoDataIds.Addie.ToString());
         using var repeatResponse = await Client.SendAsync(repeatRequest);
         Assert.Equal(HttpStatusCode.Conflict, repeatResponse.StatusCode);
@@ -144,6 +145,36 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             .GetRequiredService<AppDbContext>();
         Assert.Equal(1, await verificationDatabase.PointsLedgerEntries
             .CountAsync(entry => entry.JobId == DemoDataIds.FeedDog));
+    }
+
+    [Fact]
+    public async Task Adult_completion_rejects_a_stale_points_confirmation()
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/jobs/{DemoDataIds.FeedDog}/complete?expectedPoints=4");
+        request.Headers.Add("X-Test-Member-Id", DemoDataIds.Addie.ToString());
+
+        using var response = await Client.SendAsync(request);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("Job cannot be completed", problem?.Title);
+
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var job = await database.Jobs
+            .AsNoTracking()
+            .SingleAsync(candidate => candidate.Id == DemoDataIds.FeedDog);
+        Assert.Equal(JobStatus.Open, job.Status);
+        Assert.Empty(await database.PointsLedgerEntries
+            .Where(entry => entry.JobId == job.Id)
+            .ToListAsync());
+        Assert.Empty(await database.JobReviewDecisions
+            .Where(decision => decision.JobId == job.Id)
+            .ToListAsync());
     }
 
     [Fact]
@@ -204,7 +235,71 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Adult_completion_of_an_inactive_childs_job_returns_not_found()
+    public async Task Adult_losing_a_completion_race_rolls_back_its_decision_and_award()
+    {
+        var factory = _factory
+            ?? throw new InvalidOperationException("Test API was not initialised.");
+        await using var childScope = factory.Services.CreateAsyncScope();
+        await using var adultScope = factory.Services.CreateAsyncScope();
+        var childRepository = new EfTodayBoardRepository(
+            childScope.ServiceProvider.GetRequiredService<AppDbContext>());
+        var adultRepository = new EfTodayBoardRepository(
+            adultScope.ServiceProvider.GetRequiredService<AppDbContext>());
+        var childJob = await childRepository.GetJobAsync(
+            DemoDataIds.FeedDog,
+            CancellationToken.None);
+        var adultJob = await adultRepository.GetJobAsync(
+            DemoDataIds.FeedDog,
+            CancellationToken.None);
+        Assert.NotNull(childJob);
+        Assert.NotNull(adultJob);
+        var decidedAtUtc = new DateTimeOffset(2026, 9, 7, 8, 0, 0, TimeSpan.Zero);
+
+        childJob.MarkComplete(decidedAtUtc);
+        adultJob.MarkComplete(decidedAtUtc.AddSeconds(1));
+        adultJob.Approve(decidedAtUtc.AddSeconds(1));
+        await adultRepository.AddReviewDecisionAsync(
+            new JobReviewDecision(
+                Guid.NewGuid(),
+                adultJob.Id,
+                JobReviewOutcome.Approved,
+                null,
+                decidedAtUtc.AddSeconds(1)),
+            CancellationToken.None);
+        await adultRepository.AddPointsAwardAsync(
+            new PointsLedgerEntry(
+                Guid.NewGuid(),
+                adultJob.ChildId,
+                adultJob.Id,
+                adultJob.Points,
+                decidedAtUtc.AddSeconds(1)),
+            CancellationToken.None);
+        await childRepository.SaveChangesAsync(CancellationToken.None);
+
+        await Assert.ThrowsAsync<JobStateConflictException>(() =>
+            adultRepository.SaveChangesAsync(CancellationToken.None));
+
+        await using var verificationScope = factory.Services.CreateAsyncScope();
+        var database = verificationScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var persisted = await database.Jobs
+            .AsNoTracking()
+            .SingleAsync(job => job.Id == DemoDataIds.FeedDog);
+        Assert.Equal(JobStatus.PendingApproval, persisted.Status);
+        Assert.Empty(await database.PointsLedgerEntries
+            .Where(entry => entry.JobId == DemoDataIds.FeedDog)
+            .ToListAsync());
+        Assert.Empty(await database.JobReviewDecisions
+            .Where(decision => decision.JobId == DemoDataIds.FeedDog)
+            .ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("complete")]
+    [InlineData("approve")]
+    [InlineData("reject")]
+    [InlineData("edit")]
+    [InlineData("cancel")]
+    public async Task Job_actions_for_an_inactive_child_return_not_found(string action)
     {
         var factory = _factory
             ?? throw new InvalidOperationException("Test API was not initialised.");
@@ -219,15 +314,109 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             await database.SaveChangesAsync();
         }
 
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            $"/api/jobs/{DemoDataIds.FeedDog}/complete");
+        var method = action == "edit" ? HttpMethod.Put : HttpMethod.Post;
+        var path = action switch
+        {
+            "complete" => $"/api/jobs/{DemoDataIds.FeedDog}/complete?expectedPoints=5",
+            "approve" => $"/api/jobs/{DemoDataIds.FeedDog}/approve",
+            "reject" => $"/api/jobs/{DemoDataIds.FeedDog}/reject",
+            "edit" => $"/api/jobs/{DemoDataIds.FeedDog}",
+            "cancel" => $"/api/jobs/{DemoDataIds.FeedDog}/cancel",
+            _ => throw new ArgumentOutOfRangeException(nameof(action)),
+        };
+        using var request = new HttpRequestMessage(method, path);
+        if (action == "reject")
+        {
+            request.Content = JsonContent.Create(new { reason = "Try again." });
+        }
+        else if (action == "edit")
+        {
+            request.Content = JsonContent.Create(new
+            {
+                name = "Feed the dog",
+                description = "One scoop.",
+                points = 5,
+                scheduledDate = CurrentDate,
+                agendaPeriod = "morning",
+                scheduledTime = (string?)null,
+            });
+        }
+        else if (action == "cancel")
+        {
+            request.Content = JsonContent.Create(new { reason = "Not today." });
+        }
+
         request.Headers.Add("X-Test-Member-Id", DemoDataIds.Addie.ToString());
         using var response = await Client.SendAsync(request);
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.Equal("Child not found", problem?.Title);
+        Assert.Equal("Job not found", problem?.Title);
+    }
+
+    [Theory]
+    [InlineData("complete", "Job cannot be completed")]
+    [InlineData("approve", "Job cannot be approved")]
+    [InlineData("reject", "Job cannot be rejected")]
+    [InlineData("edit", "Job cannot be edited")]
+    [InlineData("cancel", "Job cannot be cancelled")]
+    public async Task Concurrent_job_changes_return_conflict_for_every_job_action(
+        string action,
+        string expectedTitle)
+    {
+        if (action is "approve" or "reject")
+        {
+            await using var setupScope = (_factory
+                ?? throw new InvalidOperationException("Test API was not initialised."))
+                .Services.CreateAsyncScope();
+            var database = setupScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var job = await database.Jobs.SingleAsync(job => job.Id == DemoDataIds.FeedDog);
+            job.MarkComplete(new DateTimeOffset(2026, 9, 7, 8, 0, 0, TimeSpan.Zero));
+            await database.SaveChangesAsync();
+        }
+
+        await using var conflictFactory = new TestApiFactory(
+            _postgres.GetConnectionString(),
+            forceJobStateConflict: true);
+        using var client = conflictFactory.CreateClient();
+        var method = action == "edit" ? HttpMethod.Put : HttpMethod.Post;
+        var path = action switch
+        {
+            "complete" => $"/api/jobs/{DemoDataIds.FeedDog}/complete?expectedPoints=5",
+            "approve" => $"/api/jobs/{DemoDataIds.FeedDog}/approve",
+            "reject" => $"/api/jobs/{DemoDataIds.FeedDog}/reject",
+            "edit" => $"/api/jobs/{DemoDataIds.FeedDog}",
+            "cancel" => $"/api/jobs/{DemoDataIds.FeedDog}/cancel",
+            _ => throw new ArgumentOutOfRangeException(nameof(action)),
+        };
+        using var request = new HttpRequestMessage(method, path);
+        if (action == "reject")
+        {
+            request.Content = JsonContent.Create(new { reason = "Try again." });
+        }
+        else if (action == "edit")
+        {
+            request.Content = JsonContent.Create(new
+            {
+                name = "Feed the dog",
+                description = "One scoop.",
+                points = 5,
+                scheduledDate = CurrentDate,
+                agendaPeriod = "morning",
+                scheduledTime = (string?)null,
+            });
+        }
+        else if (action == "cancel")
+        {
+            request.Content = JsonContent.Create(new { reason = "Not today." });
+        }
+
+        request.Headers.Add("X-Test-Member-Id", DemoDataIds.Addie.ToString());
+        using var response = await client.SendAsync(request);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(expectedTitle, problem?.Title);
     }
 
     [Fact]
@@ -2480,10 +2669,12 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     internal sealed class TestApiFactory : WebApplicationFactory<Program>
     {
         private readonly string _connectionString;
+        private readonly bool _forceJobStateConflict;
 
-        public TestApiFactory(string connectionString)
+        public TestApiFactory(string connectionString, bool forceJobStateConflict = false)
         {
             _connectionString = connectionString;
+            _forceJobStateConflict = forceJobStateConflict;
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -2501,7 +2692,14 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             {
                 services.RemoveAll<DbContextOptions<AppDbContext>>();
                 services.RemoveAll<AppDbContext>();
-                services.AddDbContext<AppDbContext>(options => options.UseNpgsql(_connectionString));
+                services.AddDbContext<AppDbContext>(options =>
+                {
+                    options.UseNpgsql(_connectionString);
+                    if (_forceJobStateConflict)
+                    {
+                        options.AddInterceptors(new JobStateConflictInterceptor());
+                    }
+                });
             });
             builder.ConfigureTestServices(services =>
             {
@@ -2515,6 +2713,24 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                         TestAuthenticationHandler.SchemeName,
                         _ => { });
             });
+        }
+    }
+
+    private sealed class JobStateConflictInterceptor : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context?.ChangeTracker.Entries<Job>()
+                    .Any(entry => entry.State == EntityState.Modified) == true)
+            {
+                throw new JobStateConflictException(
+                    new DbUpdateConcurrencyException("Simulated concurrent job update."));
+            }
+
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
         }
     }
 }

@@ -1074,6 +1074,7 @@ async function approveAction(form: FormData): Promise<ApproveActionResult> {
 
 async function completeAction(form: FormData): Promise<CompleteActionResult> {
   const jobId = form.get("jobId");
+  const expectedPointsValue = form.get("expectedPoints");
   if (typeof jobId !== "string") {
     return {
       intent: "complete",
@@ -1082,8 +1083,23 @@ async function completeAction(form: FormData): Promise<CompleteActionResult> {
     };
   }
 
+  const expectedPoints =
+    typeof expectedPointsValue === "string"
+      ? Number(expectedPointsValue)
+      : null;
+  if (
+    expectedPoints !== null &&
+    (!Number.isInteger(expectedPoints) || expectedPoints < 0)
+  ) {
+    return {
+      intent: "complete",
+      jobId,
+      error: "The confirmed points award was invalid. Refresh and try again.",
+    };
+  }
+
   try {
-    await completeJob(jobId);
+    await completeJob(jobId, expectedPoints);
     return { intent: "complete", jobId };
   } catch (error) {
     return {

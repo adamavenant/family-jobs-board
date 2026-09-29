@@ -126,6 +126,7 @@ public sealed class TodayBoardServiceTests
         var completed = await service.CompleteAsync(
             job.Id,
             Adult.Id,
+            job.Points,
             CancellationToken.None);
 
         Assert.Equal("approved", completed.Status);
@@ -150,12 +151,30 @@ public sealed class TodayBoardServiceTests
         var completed = await service.CompleteAsync(
             job.Id,
             FirstChild.Id,
+            null,
             CancellationToken.None);
 
         Assert.Equal("pendingApproval", completed.Status);
         Assert.Empty(repository.PointsAwards);
         Assert.Empty(repository.ReviewDecisions);
         Assert.Equal(1, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Adult_completion_rejects_a_stale_points_confirmation_without_writing()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        await Assert.ThrowsAsync<JobCompletionConfirmationConflictException>(() =>
+            service.CompleteAsync(job.Id, Adult.Id, 4, CancellationToken.None));
+
+        Assert.Equal(JobStatus.Open, job.Status);
+        Assert.Empty(repository.PointsAwards);
+        Assert.Empty(repository.ReviewDecisions);
+        Assert.Equal(0, repository.SaveCount);
     }
 
     [Theory]
@@ -178,7 +197,7 @@ public sealed class TodayBoardServiceTests
         var service = CreateService(repository);
 
         await Assert.ThrowsAsync<JobCompletionRejectedException>(() =>
-            service.CompleteAsync(job.Id, Adult.Id, CancellationToken.None));
+            service.CompleteAsync(job.Id, Adult.Id, job.Points, CancellationToken.None));
 
         Assert.Equal(status, job.Status);
         Assert.Empty(repository.PointsAwards);
@@ -201,7 +220,11 @@ public sealed class TodayBoardServiceTests
         var service = CreateService(repository);
 
         await Assert.ThrowsAsync<JobOwnershipRejectedException>(() =>
-            service.CompleteAsync(job.Id, inactiveAdult.Id, CancellationToken.None));
+            service.CompleteAsync(
+                job.Id,
+                inactiveAdult.Id,
+                job.Points,
+                CancellationToken.None));
 
         Assert.Equal(JobStatus.Open, job.Status);
         Assert.Empty(repository.PointsAwards);
@@ -235,7 +258,11 @@ public sealed class TodayBoardServiceTests
         repository.Jobs.AddRange([selected, next]);
         var service = CreateService(repository);
 
-        await service.CompleteAsync(selected.Id, Adult.Id, CancellationToken.None);
+        await service.CompleteAsync(
+            selected.Id,
+            Adult.Id,
+            selected.Points,
+            CancellationToken.None);
 
         Assert.Equal(JobStatus.Approved, selected.Status);
         Assert.Equal(JobStatus.Open, next.Status);
@@ -252,7 +279,7 @@ public sealed class TodayBoardServiceTests
         var service = CreateService(repository);
 
         await Assert.ThrowsAsync<JobOwnershipRejectedException>(() =>
-            service.CompleteAsync(job.Id, SecondChild.Id, CancellationToken.None));
+            service.CompleteAsync(job.Id, SecondChild.Id, null, CancellationToken.None));
 
         Assert.Equal(JobStatus.Open, job.Status);
         Assert.Equal(0, repository.SaveCount);

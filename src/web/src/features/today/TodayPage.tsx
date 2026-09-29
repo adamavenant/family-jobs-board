@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useFetcher } from "react-router";
 
 import type { HouseholdMember, TodayBoard, TodayJob } from "../../api/today";
@@ -311,6 +311,20 @@ function JobCard({
   const fetcher = useFetcher<TodayActionResult>();
   const [confirmingAdultCompletion, setConfirmingAdultCompletion] =
     useState(false);
+  const [confirmationStatus, setConfirmationStatus] = useState(job.status);
+  const completionTriggerRef = useRef<HTMLButtonElement>(null);
+  const restoreCompletionFocus = useRef(false);
+  if (confirmationStatus !== job.status) {
+    setConfirmationStatus(job.status);
+    setConfirmingAdultCompletion(false);
+  }
+
+  useEffect(() => {
+    if (!confirmingAdultCompletion && restoreCompletionFocus.current) {
+      completionTriggerRef.current?.focus();
+      restoreCompletionFocus.current = false;
+    }
+  }, [confirmingAdultCompletion]);
   const isSubmitting = fetcher.state !== "idle";
   const submittingIntent = fetcher.formData?.get("intent");
   const error =
@@ -516,19 +530,25 @@ function JobCard({
         <div className="open-job-actions">
           {confirmingAdultCompletion ? (
             <div
-              className="deactivate-confirmation"
+              className="inline-confirmation"
               role="group"
               aria-label={`Confirm completion for ${job.childDisplayName}`}
             >
               <p>
-                Mark done and award {job.points} points to{" "}
+                Mark done and award {job.points}{" "}
+                {job.points === 1 ? "point" : "points"} to{" "}
                 {job.childDisplayName}?
               </p>
               <div>
                 <fetcher.Form method="post">
                   <input type="hidden" name="intent" value="complete" />
                   <input type="hidden" name="jobId" value={job.id} />
-                  <button type="submit" disabled={isSubmitting}>
+                  <input
+                    type="hidden"
+                    name="expectedPoints"
+                    value={job.points}
+                  />
+                  <button type="submit" disabled={isSubmitting} autoFocus>
                     {isSubmitting && submittingIntent === "complete"
                       ? "Awarding…"
                       : "Yes, mark done"}
@@ -537,7 +557,10 @@ function JobCard({
                 <button
                   type="button"
                   className="button--quiet"
-                  onClick={() => setConfirmingAdultCompletion(false)}
+                  onClick={() => {
+                    restoreCompletionFocus.current = true;
+                    setConfirmingAdultCompletion(false);
+                  }}
                   disabled={isSubmitting}
                 >
                   Keep open
@@ -546,6 +569,7 @@ function JobCard({
             </div>
           ) : (
             <button
+              ref={completionTriggerRef}
               type="button"
               onClick={() => setConfirmingAdultCompletion(true)}
             >
