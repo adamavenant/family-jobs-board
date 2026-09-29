@@ -54,6 +54,10 @@ test("fresh household creates its first grown-up on a phone", async ({
     page.getByRole("heading", { name: "Good day, Addie!" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Mark as done for Fredster" }).click();
+  await expect(
+    page.getByText("Mark done and award 3 points to Fredster?"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Yes, mark done" }).click();
   await expect(page.getByText("Approved — 3 points awarded")).toBeVisible();
   expect(submittedPin).toBe("012345");
   expect(await page.evaluate(() => Object.keys(localStorage))).not.toContain(

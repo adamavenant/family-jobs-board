@@ -161,6 +161,11 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         catch (DbUpdateConcurrencyException exception)
         {
             _database.ChangeTracker.Clear();
+            if (exception.Entries.Any(entry => entry.Entity is Job))
+            {
+                throw new JobStateConflictException(exception);
+            }
+
             throw new RecurringJobGenerationConflictException(exception);
         }
         catch (DbUpdateException exception)

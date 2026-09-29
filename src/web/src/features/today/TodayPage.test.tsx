@@ -164,6 +164,11 @@ describe("Today page", () => {
       name: "Mark as done for Fredster",
     });
     await user.click(button);
+    expect(
+      screen.getByText("Mark done and award 5 points to Fredster?"),
+    ).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "Yes, mark done" }));
 
     expect(
       await screen.findByText("Approved — 5 points awarded"),
@@ -177,6 +182,66 @@ describe("Today page", () => {
     expect((completionRequest as Request).url).toContain(
       `/api/jobs/${openJob.id}/complete`,
     );
+  });
+
+  it("lets an adult keep an open job after opening completion confirmation", async () => {
+    const openJob = board.jobs[0];
+    if (!openJob) {
+      throw new Error("The open-job fixture was missing.");
+    }
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ ...board, jobs: [openJob] }));
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Keep open" }));
+
+    expect(
+      screen.getByRole("button", { name: "Mark as done for Fredster" }),
+    ).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps adult completion confirmation open when awarding fails", async () => {
+    const openJob = board.jobs[0];
+    if (!openJob) {
+      throw new Error("The open-job fixture was missing.");
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ ...board, jobs: [openJob] }))
+        .mockResolvedValueOnce(
+          jsonResponse(
+            { detail: "This job changed. Refresh and try again." },
+            { status: 409 },
+          ),
+        ),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Yes, mark done" }));
+
+    expect(
+      await screen.findByText("This job changed. Refresh and try again."),
+    ).toHaveAttribute("role", "alert");
+    expect(
+      screen.getByRole("group", { name: "Confirm completion for Fredster" }),
+    ).toBeInTheDocument();
   });
 
   it("lets an adult edit an open job and refreshes the agenda", async () => {

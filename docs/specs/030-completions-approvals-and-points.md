@@ -16,7 +16,7 @@ history. Rejection returns the job for another attempt and may include feedback.
 
 | Capability | Anonymous | Child | Adult |
 | --- | --- | --- | --- |
-| Submit work for approval | No | Own open jobs | Any open child job |
+| Complete work | No | Own open jobs (submits for approval) | Any open child job (approves and awards) |
 | Approve or reject pending work | No | No | Yes |
 | Read points balance/history | No | Own | Any child, via the points ledger view (issue #77) |
 
@@ -73,6 +73,9 @@ awards return `409`; an overlong rejection reason returns validation errors.
 ## UI states
 
 Adults see pending jobs and approve/reject controls in the daily agenda.
+Completing on a child's behalf first shows an inline confirmation naming the
+child and points award; confirming still completes, approves, and awards in one
+server operation, while keeping the job open makes no request.
 Rejection feedback remains in the form if submission fails. Children see
 pending, rejected-for-retry, and approved states, plus their balance, which
 opens their newest-first points ledger. Loading, empty, submitting, success,

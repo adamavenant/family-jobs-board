@@ -1,10 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
 using FamilyJobsBoard.Application.Clock;
+using FamilyJobsBoard.Application.Today;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Identity;
 using FamilyJobsBoard.Domain.Jobs;
+using FamilyJobsBoard.Domain.Points;
 using FamilyJobsBoard.Infrastructure.Data;
+using FamilyJobsBoard.Infrastructure.Today;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
@@ -141,6 +144,90 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             .GetRequiredService<AppDbContext>();
         Assert.Equal(1, await verificationDatabase.PointsLedgerEntries
             .CountAsync(entry => entry.JobId == DemoDataIds.FeedDog));
+    }
+
+    [Fact]
+    public async Task Competing_job_transitions_cannot_overwrite_an_approved_job_or_its_award()
+    {
+        var factory = _factory
+            ?? throw new InvalidOperationException("Test API was not initialised.");
+        await using var adultScope = factory.Services.CreateAsyncScope();
+        await using var childScope = factory.Services.CreateAsyncScope();
+        var adultRepository = new EfTodayBoardRepository(
+            adultScope.ServiceProvider.GetRequiredService<AppDbContext>());
+        var childRepository = new EfTodayBoardRepository(
+            childScope.ServiceProvider.GetRequiredService<AppDbContext>());
+        var adultJob = await adultRepository.GetJobAsync(
+            DemoDataIds.FeedDog,
+            CancellationToken.None);
+        var childJob = await childRepository.GetJobAsync(
+            DemoDataIds.FeedDog,
+            CancellationToken.None);
+        Assert.NotNull(adultJob);
+        Assert.NotNull(childJob);
+        var decidedAtUtc = new DateTimeOffset(2026, 9, 7, 8, 0, 0, TimeSpan.Zero);
+
+        adultJob.MarkComplete(decidedAtUtc);
+        adultJob.Approve(decidedAtUtc);
+        await adultRepository.AddReviewDecisionAsync(
+            new JobReviewDecision(
+                Guid.NewGuid(),
+                adultJob.Id,
+                JobReviewOutcome.Approved,
+                null,
+                decidedAtUtc),
+            CancellationToken.None);
+        await adultRepository.AddPointsAwardAsync(
+            new PointsLedgerEntry(
+                Guid.NewGuid(),
+                adultJob.ChildId,
+                adultJob.Id,
+                adultJob.Points,
+                decidedAtUtc),
+            CancellationToken.None);
+        await adultRepository.SaveChangesAsync(CancellationToken.None);
+
+        childJob.MarkComplete(decidedAtUtc.AddSeconds(1));
+        await Assert.ThrowsAsync<JobStateConflictException>(() =>
+            childRepository.SaveChangesAsync(CancellationToken.None));
+
+        await using var verificationScope = factory.Services.CreateAsyncScope();
+        var database = verificationScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var persisted = await database.Jobs
+            .AsNoTracking()
+            .SingleAsync(job => job.Id == DemoDataIds.FeedDog);
+        Assert.Equal(JobStatus.Approved, persisted.Status);
+        Assert.Equal(1, await database.PointsLedgerEntries
+            .CountAsync(entry => entry.JobId == DemoDataIds.FeedDog));
+        Assert.Equal(1, await database.JobReviewDecisions
+            .CountAsync(decision => decision.JobId == DemoDataIds.FeedDog));
+    }
+
+    [Fact]
+    public async Task Adult_completion_of_an_inactive_childs_job_returns_not_found()
+    {
+        var factory = _factory
+            ?? throw new InvalidOperationException("Test API was not initialised.");
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var child = await database.HouseholdMembers
+                .SingleAsync(member => member.Id == DemoDataIds.Fredster);
+            child.Deactivate(
+                DemoDataIds.Addie,
+                new DateTimeOffset(2026, 9, 7, 8, 0, 0, TimeSpan.Zero));
+            await database.SaveChangesAsync();
+        }
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/jobs/{DemoDataIds.FeedDog}/complete");
+        request.Headers.Add("X-Test-Member-Id", DemoDataIds.Addie.ToString());
+        using var response = await Client.SendAsync(request);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal("Child not found", problem?.Title);
     }
 
     [Fact]

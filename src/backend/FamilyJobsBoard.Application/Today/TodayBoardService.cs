@@ -157,23 +157,7 @@ public sealed class TodayBoardService
         job.MarkComplete(completedAtUtc);
         if (actor.IsAdult)
         {
-            job.Approve(completedAtUtc);
-            await _repository.AddReviewDecisionAsync(
-                new JobReviewDecision(
-                    Guid.NewGuid(),
-                    job.Id,
-                    JobReviewOutcome.Approved,
-                    null,
-                    completedAtUtc),
-                cancellationToken);
-            await _repository.AddPointsAwardAsync(
-                new PointsLedgerEntry(
-                    Guid.NewGuid(),
-                    job.ChildId,
-                    job.Id,
-                    job.Points,
-                    completedAtUtc),
-                cancellationToken);
+            await ApproveAndAwardAsync(job, completedAtUtc, cancellationToken);
         }
 
         await _repository.SaveChangesAsync(cancellationToken);
@@ -778,28 +762,37 @@ public sealed class TodayBoardService
         var child = await GetChildAsync(job.ChildId, cancellationToken);
 
         var decidedAtUtc = _clock.UtcNow;
-        job.Approve(decidedAtUtc);
-        var decision = new JobReviewDecision(
-            Guid.NewGuid(),
-            job.Id,
-            JobReviewOutcome.Approved,
-            null,
-            decidedAtUtc);
-        var award = new PointsLedgerEntry(
-            Guid.NewGuid(),
-            job.ChildId,
-            job.Id,
-            job.Points,
-            decidedAtUtc);
-
-        await _repository.AddReviewDecisionAsync(decision, cancellationToken);
-        await _repository.AddPointsAwardAsync(award, cancellationToken);
+        await ApproveAndAwardAsync(job, decidedAtUtc, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
         var pointsBalance = await _repository.GetPointsBalanceAsync(
             job.ChildId,
             cancellationToken);
 
         return new TodayJobApproval(MapJob(job, child, null), pointsBalance);
+    }
+
+    private async Task ApproveAndAwardAsync(
+        Job job,
+        DateTimeOffset decidedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        job.Approve(decidedAtUtc);
+        await _repository.AddReviewDecisionAsync(
+            new JobReviewDecision(
+                Guid.NewGuid(),
+                job.Id,
+                JobReviewOutcome.Approved,
+                null,
+                decidedAtUtc),
+            cancellationToken);
+        await _repository.AddPointsAwardAsync(
+            new PointsLedgerEntry(
+                Guid.NewGuid(),
+                job.ChildId,
+                job.Id,
+                job.Points,
+                decidedAtUtc),
+            cancellationToken);
     }
 
     public async Task<TodayJob> RejectAsync(

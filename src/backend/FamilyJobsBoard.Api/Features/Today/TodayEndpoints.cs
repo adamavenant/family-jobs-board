@@ -278,7 +278,8 @@ internal static class TodayEndpoints
                 Status = StatusCodes.Status404NotFound,
             });
         }
-        catch (JobEditRejectedException exception)
+        catch (Exception exception) when (
+            exception is JobEditRejectedException or JobStateConflictException)
         {
             return TypedResults.Conflict(new ProblemDetails
             {
@@ -329,7 +330,8 @@ internal static class TodayEndpoints
                 Status = StatusCodes.Status404NotFound,
             });
         }
-        catch (JobCancellationRejectedException exception)
+        catch (Exception exception) when (
+            exception is JobCancellationRejectedException or JobStateConflictException)
         {
             return TypedResults.Conflict(new ProblemDetails
             {
@@ -595,8 +597,19 @@ internal static class TodayEndpoints
                 Status = StatusCodes.Status404NotFound,
             });
         }
+        catch (HouseholdMemberNotFoundException exception)
+        {
+            return TypedResults.NotFound(new ProblemDetails
+            {
+                Title = "Child not found",
+                Detail = exception.Message,
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
         catch (Exception exception) when (
-            exception is JobCompletionRejectedException or DuplicateJobPointsAwardException)
+            exception is JobCompletionRejectedException
+                or DuplicateJobPointsAwardException
+                or JobStateConflictException)
         {
             return TypedResults.Conflict(new ProblemDetails
             {
@@ -634,7 +647,9 @@ internal static class TodayEndpoints
             });
         }
         catch (Exception exception) when (
-            exception is JobApprovalRejectedException or DuplicateJobPointsAwardException)
+            exception is JobApprovalRejectedException
+                or DuplicateJobPointsAwardException
+                or JobStateConflictException)
         {
             return TypedResults.Conflict(new ProblemDetails
             {
@@ -672,7 +687,8 @@ internal static class TodayEndpoints
                 Status = StatusCodes.Status404NotFound,
             });
         }
-        catch (JobRejectionRejectedException exception)
+        catch (Exception exception) when (
+            exception is JobRejectionRejectedException or JobStateConflictException)
         {
             return TypedResults.Conflict(new ProblemDetails
             {

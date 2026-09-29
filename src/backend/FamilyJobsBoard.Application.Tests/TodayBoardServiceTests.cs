@@ -140,6 +140,76 @@ public sealed class TodayBoardServiceTests
     }
 
     [Fact]
+    public async Task Child_completion_submits_for_approval_without_awarding_points()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        var completed = await service.CompleteAsync(
+            job.Id,
+            FirstChild.Id,
+            CancellationToken.None);
+
+        Assert.Equal("pendingApproval", completed.Status);
+        Assert.Empty(repository.PointsAwards);
+        Assert.Empty(repository.ReviewDecisions);
+        Assert.Equal(1, repository.SaveCount);
+    }
+
+    [Theory]
+    [InlineData(JobStatus.PendingApproval)]
+    [InlineData(JobStatus.Cancelled)]
+    public async Task Adult_cannot_complete_a_pending_or_cancelled_job(JobStatus status)
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        if (status == JobStatus.PendingApproval)
+        {
+            job.MarkComplete(new FixedClock().UtcNow);
+        }
+        else
+        {
+            job.Cancel(Adult.Id, new FixedClock().UtcNow, null);
+        }
+
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        await Assert.ThrowsAsync<JobCompletionRejectedException>(() =>
+            service.CompleteAsync(job.Id, Adult.Id, CancellationToken.None));
+
+        Assert.Equal(status, job.Status);
+        Assert.Empty(repository.PointsAwards);
+        Assert.Empty(repository.ReviewDecisions);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Inactive_actor_cannot_complete_a_job()
+    {
+        var inactiveAdult = new HouseholdMember(
+            Guid.NewGuid(),
+            "Inactive",
+            "Adult",
+            HouseholdRole.Adult,
+            isActive: false);
+        var repository = new RecordingRepository([inactiveAdult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        await Assert.ThrowsAsync<JobOwnershipRejectedException>(() =>
+            service.CompleteAsync(job.Id, inactiveAdult.Id, CancellationToken.None));
+
+        Assert.Equal(JobStatus.Open, job.Status);
+        Assert.Empty(repository.PointsAwards);
+        Assert.Empty(repository.ReviewDecisions);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
     public async Task Adult_completion_changes_only_the_selected_recurring_occurrence()
     {
         var repository = new RecordingRepository([Adult, FirstChild]);
@@ -578,7 +648,8 @@ public sealed class TodayBoardServiceTests
         public Task<HouseholdMember?> GetMemberAsync(
             Guid memberId,
             CancellationToken cancellationToken) =>
-            Task.FromResult(_members.SingleOrDefault(member => member.Id == memberId));
+            Task.FromResult(_members.SingleOrDefault(member =>
+                member.Id == memberId && member.IsActive));
 
         public Task AddJobsAsync(
             IReadOnlyCollection<Job> jobs,

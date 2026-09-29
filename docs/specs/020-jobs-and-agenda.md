@@ -19,7 +19,7 @@ approve open work on a child's behalf in one action.
 | Create once-off jobs | No | No | Yes |
 | Edit open or pending-approval jobs | No | No | Yes |
 | Cancel open or pending-approval jobs | No | No | Yes |
-| Submit completion | No | Own open job only | Any open child job visible on the adult board |
+| Complete work | No | Own open job only (submits for approval) | Any open child job (approves and awards) |
 
 The authenticated session supplies the viewer identity. Clients cannot select
 another viewer through request data.
@@ -96,8 +96,9 @@ next day, and Today controls preserve the filter in the URL while updating the
 date. The heading, count, jobs, and empty state reflect the selected child.
 Jobs are grouped by agenda period. Phone and tablet journeys use native,
 labelled controls and touch-sized actions. Each eligible adult job card exposes
-an assignee-specific completion action plus on-demand edit and cancellation
-forms; children never receive the management controls.
+an assignee-specific completion action with an inline child-and-points
+confirmation, plus on-demand edit and cancellation forms; children never
+receive the management controls.
 
 ## Audit and security
 
