@@ -23,7 +23,7 @@ internal static class TodayEndpoints
             .WithName("CompleteJob")
             .WithSummary("Complete an open job.")
             .WithDescription(
-                "A child may submit their own job for approval. An adult supplies expectedPoints and, when it still matches, completes, approves, and awards atomically. Returns 404 when the job or its active child is unavailable, and 409 when the job is not open, changed after confirmation, changed concurrently, or its points were already awarded.");
+                "A child may submit their own job for approval. An adult must supply expectedPoints and, when it still matches, completes, approves, and awards atomically. A missing adult confirmation returns 400. Returns 404 when the job or its active child is unavailable, and 409 when the job is not open, changed after confirmation, changed concurrently, or its points were already awarded.");
 
         group.MapPost("/today/jobs", AddJobAsync)
             .RequireAuthorization("Adult")
@@ -58,7 +58,7 @@ internal static class TodayEndpoints
             .WithName("ApproveJob")
             .WithSummary("Approve a pending job and award its points.")
             .WithDescription(
-                "Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when it changed concurrently, or when its points were already awarded.");
+                "The adult supplies expectedPoints from the pending job shown to them. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.");
 
         group.MapPost("/jobs/{id:guid}/reject", RejectJobAsync)
             .RequireAuthorization("Adult")
@@ -577,7 +577,7 @@ internal static class TodayEndpoints
         }
     }
 
-    private static async Task<Results<Ok<JobResponse>, NotFound<ProblemDetails>, Conflict<ProblemDetails>, ForbidHttpResult>>
+    private static async Task<Results<Ok<JobResponse>, ValidationProblem, NotFound<ProblemDetails>, Conflict<ProblemDetails>, ForbidHttpResult>>
         CompleteJobAsync(
             Guid id,
             [FromQuery] int? expectedPoints,
@@ -595,6 +595,12 @@ internal static class TodayEndpoints
                 cancellationToken);
             return TypedResults.Ok(MapJob(job));
         }
+        catch (InvalidJobCompletionException exception)
+        {
+            return TypedResults.ValidationProblem(
+                exception.Errors,
+                title: "Invalid job completion");
+        }
         catch (JobNotFoundException exception)
         {
             return TypedResults.NotFound(new ProblemDetails
@@ -606,7 +612,7 @@ internal static class TodayEndpoints
         }
         catch (Exception exception) when (
             exception is JobCompletionRejectedException
-                or JobCompletionConfirmationConflictException
+                or JobPointsConfirmationConflictException
                 or DuplicateJobPointsAwardException
                 or JobStateConflictException)
         {
@@ -626,12 +632,13 @@ internal static class TodayEndpoints
     private static async Task<Results<Ok<JobApprovalResponse>, NotFound<ProblemDetails>, Conflict<ProblemDetails>>>
         ApproveJobAsync(
             Guid id,
+            [FromQuery] int expectedPoints,
             TodayBoardService service,
             CancellationToken cancellationToken)
     {
         try
         {
-            var approval = await service.ApproveAsync(id, cancellationToken);
+            var approval = await service.ApproveAsync(id, expectedPoints, cancellationToken);
             return TypedResults.Ok(new JobApprovalResponse(
                 MapJob(approval.Job),
                 approval.PointsBalance));
@@ -647,6 +654,7 @@ internal static class TodayEndpoints
         }
         catch (Exception exception) when (
             exception is JobApprovalRejectedException
+                or JobPointsConfirmationConflictException
                 or DuplicateJobPointsAwardException
                 or JobStateConflictException)
         {

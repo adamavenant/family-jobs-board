@@ -312,7 +312,9 @@ public sealed class PointsLedgerEndpointsTests : IAsyncLifetime
             HttpMethod.Post, $"/api/jobs/{jobId}/complete", DemoDataIds.Fredster);
         complete.EnsureSuccessStatusCode();
         using var approve = await SendAsync(
-            HttpMethod.Post, $"/api/jobs/{jobId}/approve", DemoDataIds.Addie);
+            HttpMethod.Post,
+            $"/api/jobs/{jobId}/approve?expectedPoints=5",
+            DemoDataIds.Addie);
         approve.EnsureSuccessStatusCode();
     }
 

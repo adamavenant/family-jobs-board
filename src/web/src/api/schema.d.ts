@@ -244,7 +244,7 @@ export interface paths {
         put?: never;
         /**
          * Complete an open job.
-         * @description A child may submit their own job for approval. An adult supplies expectedPoints and, when it still matches, completes, approves, and awards atomically. Returns 404 when the job or its active child is unavailable, and 409 when the job is not open, changed after confirmation, changed concurrently, or its points were already awarded.
+         * @description A child may submit their own job for approval. An adult must supply expectedPoints and, when it still matches, completes, approves, and awards atomically. A missing adult confirmation returns 400. Returns 404 when the job or its active child is unavailable, and 409 when the job is not open, changed after confirmation, changed concurrently, or its points were already awarded.
          */
         post: operations["CompleteJob"];
         delete?: never;
@@ -344,7 +344,7 @@ export interface paths {
         put?: never;
         /**
          * Approve a pending job and award its points.
-         * @description Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when it changed concurrently, or when its points were already awarded.
+         * @description The adult supplies expectedPoints from the pending job shown to them. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.
          */
         post: operations["ApproveJob"];
         delete?: never;
@@ -1711,6 +1711,15 @@ export interface operations {
                     "application/json": components["schemas"]["JobResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
             /** @description Not Found */
             404: {
                 headers: {
@@ -1919,7 +1928,9 @@ export interface operations {
     };
     ApproveJob: {
         parameters: {
-            query?: never;
+            query: {
+                expectedPoints: number | string;
+            };
             header?: never;
             path: {
                 id: string;

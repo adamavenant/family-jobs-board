@@ -46,6 +46,10 @@ a second approval action. The adult request includes the points value shown in
 its confirmation; if the job's points changed meanwhile, the server rejects
 the stale confirmation without changing the job or ledger.
 
+Both adult award paths require the points value shown to the adult. Approval
+of child-submitted work applies the same stale-confirmation guard as adult
+completion, so an intervening edit cannot silently increase the award.
+
 Rejection records a decision with optional trimmed feedback of at most 500
 characters, returns the job to `Open`, and clears its completion instant. It
 does not award points. Previous decisions remain historical records, while the
@@ -61,7 +65,8 @@ not record the reviewing adult.
 
 ## HTTP contract
 
-- `POST /api/jobs/{id}/approve` returns the approved job and updated balance.
+- `POST /api/jobs/{id}/approve` requires `expectedPoints` and returns the
+  approved job and updated balance when it still matches.
 - `POST /api/jobs/{id}/reject` accepts an optional reason and returns the open
   job with its latest rejection.
 - `GET /api/today` exposes pending count to adults and the balance to the
@@ -72,14 +77,17 @@ not record the reviewing adult.
 Missing jobs and jobs whose assigned child is unavailable return `404` across
 complete, approve, reject, edit, and cancel. Invalid, concurrently changed, or
 already-decided transitions and duplicate awards return `409`; an overlong
-rejection reason returns validation errors.
+rejection reason or missing adult completion confirmation returns validation
+errors.
 
 ## UI states
 
 Adults see pending jobs and approve/reject controls in the daily agenda.
 Completing on a child's behalf first shows an inline confirmation naming the
 child and points award; confirming still completes, approves, and awards in one
-server operation, while keeping the job open makes no request.
+server operation, while keeping the job open makes no request. Initial focus
+lands on the safe Keep open action, and the prompt closes if revalidation
+changes the job's status or points.
 Rejection feedback remains in the form if submission fails. Children see
 pending, rejected-for-retry, and approved states, plus their balance, which
 opens their newest-first points ledger. Loading, empty, submitting, success,
@@ -103,7 +111,7 @@ stable conflict responses, and the standard readiness check covers PostgreSQL.
 - Given an adult completes an open job on behalf of its child, then completion,
   approval, the review decision, and one ledger award commit atomically.
 - Given the job's points change after the adult opens confirmation, then the
-  stale completion is rejected and no decision or award is written.
+  stale completion or approval is rejected and no decision or award is written.
 - Given two approval attempts race, then at most one award exists for the job.
 - Given a pending job is rejected, then it becomes open, no points are awarded,
   and optional feedback is visible to the child.

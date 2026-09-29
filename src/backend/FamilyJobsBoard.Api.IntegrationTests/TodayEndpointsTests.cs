@@ -134,7 +134,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Conflict, repeatResponse.StatusCode);
 
         using var approvalResponse = await Client.PostAsync(
-            $"/api/jobs/{DemoDataIds.FeedDog}/approve",
+            $"/api/jobs/{DemoDataIds.FeedDog}/approve?expectedPoints=5",
             null);
         Assert.Equal(HttpStatusCode.Conflict, approvalResponse.StatusCode);
 
@@ -174,6 +174,85 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             .ToListAsync());
         Assert.Empty(await database.JobReviewDecisions
             .Where(decision => decision.JobId == job.Id)
+            .ToListAsync());
+    }
+
+    [Fact]
+    public async Task Adult_completion_without_confirmed_points_returns_validation_error()
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/jobs/{DemoDataIds.FeedDog}/complete");
+        request.Headers.Add("X-Test-Member-Id", DemoDataIds.Addie.ToString());
+
+        using var response = await Client.SendAsync(request);
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("Invalid job completion", problem?.Title);
+        Assert.Contains("expectedPoints", problem?.Errors.Keys ?? []);
+
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var job = await database.Jobs
+            .AsNoTracking()
+            .SingleAsync(candidate => candidate.Id == DemoDataIds.FeedDog);
+        Assert.Equal(JobStatus.Open, job.Status);
+        Assert.Empty(await database.PointsLedgerEntries
+            .Where(entry => entry.JobId == job.Id)
+            .ToListAsync());
+    }
+
+    [Fact]
+    public async Task Approval_rejects_points_changed_after_the_pending_job_was_shown()
+    {
+        using var completeResponse = await Client.PostAsync(
+            $"/api/jobs/{DemoDataIds.FeedDog}/complete",
+            null);
+        Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
+
+        await using (var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var job = await database.Jobs.SingleAsync(
+                candidate => candidate.Id == DemoDataIds.FeedDog);
+            job.Edit(
+                job.Name,
+                job.Description,
+                50,
+                job.ScheduledDate,
+                job.AgendaPeriod,
+                job.ScheduledTime);
+            await database.SaveChangesAsync();
+        }
+
+        using var response = await Client.PostAsync(
+            $"/api/jobs/{DemoDataIds.FeedDog}/approve?expectedPoints=5",
+            null);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("Job cannot be approved", problem?.Title);
+
+        await using var verificationScope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var verificationDatabase = verificationScope.ServiceProvider
+            .GetRequiredService<AppDbContext>();
+        var persisted = await verificationDatabase.Jobs
+            .AsNoTracking()
+            .SingleAsync(candidate => candidate.Id == DemoDataIds.FeedDog);
+        Assert.Equal(JobStatus.PendingApproval, persisted.Status);
+        Assert.Equal(50, persisted.Points);
+        Assert.Empty(await verificationDatabase.PointsLedgerEntries
+            .Where(entry => entry.JobId == persisted.Id)
+            .ToListAsync());
+        Assert.Empty(await verificationDatabase.JobReviewDecisions
+            .Where(decision => decision.JobId == persisted.Id)
             .ToListAsync());
     }
 
@@ -390,7 +469,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Approved_job_is_immutable_for_edit_and_cancel()
     {
-        await CompleteAndApproveAsync(DemoDataIds.FeedDog);
+        await CompleteAndApproveAsync(DemoDataIds.FeedDog, 5);
 
         using var edit = await Client.PutAsJsonAsync(
             $"/api/jobs/{DemoDataIds.FeedDog}",
@@ -554,7 +633,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     public async Task Adult_reset_atomically_clears_jobs_and_points_but_preserves_identity()
     {
         var client = Client;
-        await CompleteAndApproveAsync(DemoDataIds.FeedDog);
+        await CompleteAndApproveAsync(DemoDataIds.FeedDog, 5);
         await CompleteAsync(DemoDataIds.PackBag);
         using (var reject = await client.PostAsJsonAsync(
             $"/api/jobs/{DemoDataIds.PackBag}/reject",
@@ -1217,7 +1296,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             null);
         Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
         using var approveResponse = await Client.PostAsync(
-            $"/api/jobs/{persistedOccurrence.Id}/approve",
+            $"/api/jobs/{persistedOccurrence.Id}/approve?expectedPoints={persistedOccurrence.Points}",
             null);
         Assert.Equal(HttpStatusCode.OK, approveResponse.StatusCode);
 
@@ -1322,7 +1401,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             var approved = await database.Jobs
                 .SingleAsync(job => job.RecurringJobSeriesId == seriesId
                     && job.ScheduledDate == CurrentDate.AddDays(1));
-            await CompleteAndApproveAsync(approved.Id);
+            await CompleteAndApproveAsync(approved.Id, approved.Points);
         }
 
         var board = await Client.GetFromJsonAsync<TodayResponse>(
@@ -2158,12 +2237,12 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var target = initial.Jobs.Single(job => job.Id == DemoDataIds.FeedDog);
 
         using var missingResponse = await Client.PostAsync(
-            $"/api/jobs/{Guid.NewGuid()}/approve",
+            $"/api/jobs/{Guid.NewGuid()}/approve?expectedPoints={target.Points}",
             null);
         Assert.Equal(HttpStatusCode.NotFound, missingResponse.StatusCode);
 
         using var openResponse = await Client.PostAsync(
-            $"/api/jobs/{target.Id}/approve",
+            $"/api/jobs/{target.Id}/approve?expectedPoints={target.Points}",
             null);
         Assert.Equal(HttpStatusCode.Conflict, openResponse.StatusCode);
 
@@ -2172,8 +2251,13 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             null);
         Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
 
-        using var approveResponse = await Client.PostAsync(
+        using var missingExpectedPointsResponse = await Client.PostAsync(
             $"/api/jobs/{target.Id}/approve",
+            null);
+        Assert.Equal(HttpStatusCode.BadRequest, missingExpectedPointsResponse.StatusCode);
+
+        using var approveResponse = await Client.PostAsync(
+            $"/api/jobs/{target.Id}/approve?expectedPoints={target.Points}",
             null);
         var approval = await approveResponse.Content.ReadFromJsonAsync<JobApprovalResponse>();
 
@@ -2184,7 +2268,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.Equal(target.Points, approval.PointsBalance);
 
         using var repeatResponse = await Client.PostAsync(
-            $"/api/jobs/{target.Id}/approve",
+            $"/api/jobs/{target.Id}/approve?expectedPoints={target.Points}",
             null);
         Assert.Equal(HttpStatusCode.Conflict, repeatResponse.StatusCode);
 
@@ -2262,7 +2346,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.Null(resubmitted?.LatestRejection);
 
         using var approveResponse = await Client.PostAsync(
-            $"/api/jobs/{target.Id}/approve",
+            $"/api/jobs/{target.Id}/approve?expectedPoints={target.Points}",
             null);
         Assert.Equal(HttpStatusCode.OK, approveResponse.StatusCode);
 
@@ -2369,8 +2453,8 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var first = initial.Jobs.Single(job => job.Id == DemoDataIds.FeedDog);
         var second = initial.Jobs.Single(job => job.Id == DemoDataIds.PackBag);
 
-        await CompleteAndApproveAsync(first.Id);
-        await CompleteAndApproveAsync(second.Id);
+        await CompleteAndApproveAsync(first.Id, first.Points);
+        await CompleteAndApproveAsync(second.Id, second.Points);
 
         var board = await Client.GetFromJsonAsync<TodayResponse>("/api/today");
 
@@ -2402,8 +2486,8 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
 
         var approvalRequests = new[]
         {
-            Client.PostAsync($"/api/jobs/{DemoDataIds.FeedDog}/approve", null),
-            Client.PostAsync($"/api/jobs/{DemoDataIds.FeedDog}/approve", null),
+            Client.PostAsync($"/api/jobs/{DemoDataIds.FeedDog}/approve?expectedPoints=5", null),
+            Client.PostAsync($"/api/jobs/{DemoDataIds.FeedDog}/approve?expectedPoints=5", null),
         };
         var responses = await Task.WhenAll(approvalRequests);
 
@@ -2470,7 +2554,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
             action switch
             {
                 "complete" => $"/api/jobs/{DemoDataIds.FeedDog}/complete?expectedPoints=5",
-                "approve" => $"/api/jobs/{DemoDataIds.FeedDog}/approve",
+                "approve" => $"/api/jobs/{DemoDataIds.FeedDog}/approve?expectedPoints=5",
                 "reject" => $"/api/jobs/{DemoDataIds.FeedDog}/reject",
                 "edit" => $"/api/jobs/{DemoDataIds.FeedDog}",
                 "cancel" => $"/api/jobs/{DemoDataIds.FeedDog}/cancel",
@@ -2497,11 +2581,13 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         return request;
     }
 
-    private async Task CompleteAndApproveAsync(Guid jobId)
+    private async Task CompleteAndApproveAsync(Guid jobId, int expectedPoints)
     {
         using var completeResponse = await Client.PostAsync($"/api/jobs/{jobId}/complete", null);
         completeResponse.EnsureSuccessStatusCode();
-        using var approveResponse = await Client.PostAsync($"/api/jobs/{jobId}/approve", null);
+        using var approveResponse = await Client.PostAsync(
+            $"/api/jobs/{jobId}/approve?expectedPoints={expectedPoints}",
+            null);
         approveResponse.EnsureSuccessStatusCode();
     }
 

@@ -78,7 +78,8 @@ commit atomically. Existing migrations are forward-only.
 - `POST /api/jobs/{id}/complete` transitions the authenticated child's own job,
   or lets an authenticated adult complete and approve a child's job on their
   behalf, awarding its points in the same transaction. Adults supply the
-  points value they confirmed; a changed value is rejected as a conflict.
+  points value they confirmed; omission is rejected as validation and a
+  changed value is rejected as a conflict.
 - `PUT /api/jobs/{id}` lets an adult replace the editable details of one open
   or pending-approval occurrence.
 - `POST /api/jobs/{id}/cancel` lets an adult terminally cancel one open or
@@ -101,7 +102,8 @@ labelled controls and touch-sized actions. Each eligible adult job card exposes
 an assignee-specific completion action with an inline child-and-points
 confirmation, plus on-demand edit and cancellation forms; children never
 receive the management controls. Confirmation uses neutral styling, moves
-focus into its actions, and returns focus to the trigger when dismissed.
+focus to the safe dismissal action, closes if job status or points change, and
+returns focus to the trigger when dismissed.
 
 ## Audit and security
 

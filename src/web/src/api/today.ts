@@ -274,10 +274,13 @@ export async function completeJob(
   return mapJob(data);
 }
 
-export async function approveJob(id: string): Promise<JobApproval> {
+export async function approveJob(
+  id: string,
+  expectedPoints: number,
+): Promise<JobApproval> {
   const client = apiClient();
   const { data, error } = await client.POST("/api/jobs/{id}/approve", {
-    params: { path: { id } },
+    params: { path: { id }, query: { expectedPoints } },
   });
   if (!data) {
     throw new ApiError(problemMessage(error, "That job couldn't be approved."));

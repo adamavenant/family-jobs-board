@@ -154,9 +154,17 @@ public sealed class TodayBoardService
 
         var child = await GetChildAsync(job, cancellationToken);
 
-        if (actor.IsAdult && expectedPoints != job.Points)
+        if (actor.IsAdult && expectedPoints is null)
         {
-            throw new JobCompletionConfirmationConflictException(job.Id);
+            throw new InvalidJobCompletionException(new Dictionary<string, string[]>
+            {
+                [nameof(expectedPoints)] = ["Confirm the points award before completing the job."],
+            });
+        }
+
+        if (actor.IsAdult)
+        {
+            EnsureConfirmedPoints(job, expectedPoints!.Value);
         }
 
         var completedAtUtc = _clock.UtcNow;
@@ -762,10 +770,12 @@ public sealed class TodayBoardService
 
     public async Task<TodayJobApproval> ApproveAsync(
         Guid jobId,
+        int expectedPoints,
         CancellationToken cancellationToken)
     {
         var job = await GetJobAsync(jobId, cancellationToken);
         var child = await GetChildAsync(job, cancellationToken);
+        EnsureConfirmedPoints(job, expectedPoints);
 
         var decidedAtUtc = _clock.UtcNow;
         await ApproveAndAwardAsync(job, decidedAtUtc, cancellationToken);
@@ -775,6 +785,14 @@ public sealed class TodayBoardService
             cancellationToken);
 
         return new TodayJobApproval(MapJob(job, child, null), pointsBalance);
+    }
+
+    private static void EnsureConfirmedPoints(Job job, int expectedPoints)
+    {
+        if (expectedPoints != job.Points)
+        {
+            throw new JobPointsConfirmationConflictException(job.Id);
+        }
     }
 
     private async Task ApproveAndAwardAsync(

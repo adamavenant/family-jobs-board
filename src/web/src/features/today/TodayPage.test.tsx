@@ -171,7 +171,7 @@ describe("Today page", () => {
     const confirmButton = screen.getByRole("button", {
       name: "Yes, mark done",
     });
-    expect(confirmButton).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Keep open" })).toHaveFocus();
     await user.click(confirmButton);
 
     expect(
@@ -258,6 +258,48 @@ describe("Today page", () => {
       await screen.findByText("Nice work — ready for a grown-up."),
     ).toBeInTheDocument();
     router.revalidate();
+    expect(
+      await screen.findByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Confirm completion for Fredster" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("closes adult completion confirmation when the job points change", async () => {
+    const openJob = board.jobs[0];
+    if (!openJob) {
+      throw new Error("The open-job fixture was missing.");
+    }
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ ...board, jobs: [openJob] }))
+      .mockResolvedValueOnce(
+        jsonResponse({ ...board, jobs: [{ ...openJob, points: 50 }] }),
+      );
+    vi.stubGlobal("fetch", fetch);
+    acceptSession({
+      accessToken: "test-access-token",
+      accessTokenExpiresAtUtc: "2099-01-01T00:00:00Z",
+      member: { id: addie.id, displayName: addie.displayName, role: "adult" },
+    });
+    const router = createMemoryRouter(routes, { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
+    );
+    expect(
+      screen.getByText("Mark done and award 5 points to Fredster?"),
+    ).toBeInTheDocument();
+
+    router.revalidate();
+
     expect(
       await screen.findByRole("button", {
         name: "Mark as done for Fredster",
@@ -1207,6 +1249,13 @@ describe("Today page", () => {
     expect(
       await screen.findByText("Approved — 5 points awarded"),
     ).toBeInTheDocument();
+    const approvalRequest = vi.mocked(globalThis.fetch).mock.calls[1]?.[0];
+    expect(approvalRequest).toBeInstanceOf(Request);
+    expect(
+      new URL((approvalRequest as Request).url).searchParams.get(
+        "expectedPoints",
+      ),
+    ).toBe("5");
   });
 
   it("rejects a pending job with feedback and allows another try", async () => {

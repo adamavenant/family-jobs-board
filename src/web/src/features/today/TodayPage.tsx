@@ -311,11 +311,12 @@ function JobCard({
   const fetcher = useFetcher<TodayActionResult>();
   const [confirmingAdultCompletion, setConfirmingAdultCompletion] =
     useState(false);
-  const [confirmationStatus, setConfirmationStatus] = useState(job.status);
+  const confirmationKey = `${job.status}:${job.points}`;
+  const [confirmationFor, setConfirmationFor] = useState(confirmationKey);
   const completionTriggerRef = useRef<HTMLButtonElement>(null);
   const restoreCompletionFocus = useRef(false);
-  if (confirmationStatus !== job.status) {
-    setConfirmationStatus(job.status);
+  if (confirmationFor !== confirmationKey) {
+    setConfirmationFor(confirmationKey);
     setConfirmingAdultCompletion(false);
   }
 
@@ -488,6 +489,7 @@ function JobCard({
       ) : isPending && isAdult ? (
         <fetcher.Form method="post" className="approval-form">
           <input type="hidden" name="jobId" value={job.id} />
+          <input type="hidden" name="expectedPoints" value={job.points} />
           <p>Nice work — ready for a grown-up.</p>
           <label htmlFor={`rejection-reason-${job.id}`}>
             Rejection reason <span>(optional)</span>
@@ -548,7 +550,7 @@ function JobCard({
                     name="expectedPoints"
                     value={job.points}
                   />
-                  <button type="submit" disabled={isSubmitting} autoFocus>
+                  <button type="submit" disabled={isSubmitting}>
                     {isSubmitting && submittingIntent === "complete"
                       ? "Awarding…"
                       : "Yes, mark done"}
@@ -557,6 +559,7 @@ function JobCard({
                 <button
                   type="button"
                   className="button--quiet"
+                  autoFocus
                   onClick={() => {
                     restoreCompletionFocus.current = true;
                     setConfirmingAdultCompletion(false);

@@ -1,8 +1,8 @@
 namespace FamilyJobsBoard.Application.Today;
 
-public sealed class JobCompletionConfirmationConflictException : Exception
+public sealed class JobPointsConfirmationConflictException : Exception
 {
-    public JobCompletionConfirmationConflictException(Guid jobId)
+    public JobPointsConfirmationConflictException(Guid jobId)
         : base($"Job '{jobId}' changed after its points award was confirmed. Refresh and try again.")
     {
     }
