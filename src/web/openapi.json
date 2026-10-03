@@ -722,8 +722,8 @@
         "tags": [
           "Today"
         ],
-        "summary": "Mark an open job complete and pending approval.",
-        "description": "Returns 409 when the job has already been completed.",
+        "summary": "Complete an open job.",
+        "description": "A child may submit their own job for approval. An adult must supply expectedPoints and, when it still matches, completes, approves, and awards atomically. A missing adult confirmation returns 400. Returns 404 when the job or its active child is unavailable, and 409 when the job is not open, changed after confirmation, changed concurrently, or its points were already awarded.",
         "operationId": "CompleteJob",
         "parameters": [
           {
@@ -734,6 +734,18 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "expectedPoints",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
           }
         ],
         "responses": {
@@ -743,6 +755,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
                 }
               }
             }
@@ -1029,7 +1051,7 @@
           "Today"
         ],
         "summary": "Approve a pending job and award its points.",
-        "description": "Returns 409 unless the job is pending approval or its points were already awarded.",
+        "description": "The adult must supply expectedPoints from the pending job shown to them. A missing confirmation returns 400. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.",
         "operationId": "ApproveJob",
         "parameters": [
           {
@@ -1040,6 +1062,18 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "expectedPoints",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
           }
         ],
         "responses": {
@@ -1049,6 +1083,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/JobApprovalResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
                 }
               }
             }
@@ -1087,7 +1131,7 @@
           "Today"
         ],
         "summary": "Reject a pending job and return it for another try.",
-        "description": "Records optional feedback and returns 409 unless the job is pending approval.",
+        "description": "Records optional feedback. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval or when it changed concurrently.",
         "operationId": "RejectJob",
         "parameters": [
           {
@@ -1165,7 +1209,7 @@
           "Today"
         ],
         "summary": "Edit an open or pending-approval job occurrence.",
-        "description": "Updates only this job occurrence without changing its recurring series or points ledger; approved and cancelled jobs return 409.",
+        "description": "Updates only this job occurrence without changing its recurring series or points ledger. Returns 404 when the job or its active child is unavailable, and 409 when it is approved, cancelled, or changed concurrently.",
         "operationId": "UpdateJob",
         "parameters": [
           {
@@ -1243,7 +1287,7 @@
           "Today"
         ],
         "summary": "Cancel an open or pending-approval job occurrence.",
-        "description": "Records an optional reason, hides the occurrence from daily agendas, and leaves its recurring series and review history unchanged.",
+        "description": "Records an optional reason, hides the occurrence from daily agendas, and leaves its recurring series and review history unchanged. Returns 404 when the job or its active child is unavailable, and 409 when the job cannot be cancelled or changed concurrently.",
         "operationId": "CancelJob",
         "parameters": [
           {

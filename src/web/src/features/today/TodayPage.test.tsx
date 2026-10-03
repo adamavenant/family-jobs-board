@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
@@ -129,6 +129,247 @@ describe("Today page", () => {
       screen.getByRole("button", { name: "Approve +5 points" }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("For Fredster")[0]).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: "Mark as done for Fredster" }),
+    ).toHaveLength(2);
+  });
+
+  it("lets an adult mark a child's job done and refreshes to approved state", async () => {
+    const openJob = board.jobs[0];
+    if (!openJob) {
+      throw new Error("The open-job fixture was missing.");
+    }
+    const initialBoard = { ...board, pendingApprovalCount: 0, jobs: [openJob] };
+    const approvedJob = {
+      ...openJob,
+      status: "approved",
+      completedAtUtc: "2026-08-29T09:00:00Z",
+      approvedAtUtc: "2026-08-29T09:00:00Z",
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(initialBoard))
+      .mockResolvedValueOnce(jsonResponse(approvedJob))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          ...initialBoard,
+          jobs: [approvedJob],
+        }),
+      );
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    const button = await screen.findByRole("button", {
+      name: "Mark as done for Fredster",
+    });
+    await user.click(button);
+    expect(
+      screen.getByText("Mark done and award 5 points to Fredster?"),
+    ).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const confirmButton = screen.getByRole("button", {
+      name: "Yes, mark done",
+    });
+    expect(screen.getByRole("button", { name: "Keep open" })).toHaveFocus();
+    await user.click(confirmButton);
+
+    expect(
+      await screen.findByText("Approved — 5 points awarded"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Approve +5 points" }),
+    ).not.toBeInTheDocument();
+    const completionRequest = fetch.mock.calls[1]?.[0];
+    expect(completionRequest).toBeInstanceOf(Request);
+    expect((completionRequest as Request).method).toBe("POST");
+    expect((completionRequest as Request).url).toContain(
+      `/api/jobs/${openJob.id}/complete`,
+    );
+    expect(
+      new URL((completionRequest as Request).url).searchParams.get(
+        "expectedPoints",
+      ),
+    ).toBe("5");
+  });
+
+  it("lets an adult keep an open job after opening completion confirmation", async () => {
+    const openJob = board.jobs[0];
+    if (!openJob) {
+      throw new Error("The open-job fixture was missing.");
+    }
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ ...board, jobs: [openJob] }));
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp();
+
+    const trigger = await screen.findByRole("button", {
+      name: "Mark as done for Fredster",
+    });
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "Keep open" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Mark as done for Fredster" }),
+      ).toHaveFocus(),
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets a hidden adult confirmation when the job status changes", async () => {
+    const openJob = board.jobs[0];
+    if (!openJob) {
+      throw new Error("The open-job fixture was missing.");
+    }
+    const pendingJob = {
+      ...openJob,
+      status: "pendingApproval",
+      completedAtUtc: "2026-08-29T09:00:00Z",
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ ...board, jobs: [openJob] }))
+      .mockResolvedValueOnce(jsonResponse({ ...board, jobs: [pendingJob] }))
+      .mockResolvedValueOnce(jsonResponse({ ...board, jobs: [openJob] }));
+    vi.stubGlobal("fetch", fetch);
+    acceptSession({
+      accessToken: "test-access-token",
+      accessTokenExpiresAtUtc: "2099-01-01T00:00:00Z",
+      member: { id: addie.id, displayName: addie.displayName, role: "adult" },
+    });
+    const router = createMemoryRouter(routes, { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
+    );
+    expect(
+      screen.getByRole("group", { name: "Confirm completion for Fredster" }),
+    ).toBeInTheDocument();
+
+    router.revalidate();
+    expect(
+      await screen.findByText("Nice work — ready for a grown-up."),
+    ).toBeInTheDocument();
+    router.revalidate();
+    expect(
+      await screen.findByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Confirm completion for Fredster" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("closes adult completion confirmation when the job points change", async () => {
+    const openJob = board.jobs[0];
+    if (!openJob) {
+      throw new Error("The open-job fixture was missing.");
+    }
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ ...board, jobs: [openJob] }))
+      .mockResolvedValueOnce(
+        jsonResponse({ ...board, jobs: [{ ...openJob, points: 50 }] }),
+      );
+    vi.stubGlobal("fetch", fetch);
+    acceptSession({
+      accessToken: "test-access-token",
+      accessTokenExpiresAtUtc: "2099-01-01T00:00:00Z",
+      member: { id: addie.id, displayName: addie.displayName, role: "adult" },
+    });
+    const router = createMemoryRouter(routes, { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
+    );
+    expect(
+      screen.getByText("Mark done and award 5 points to Fredster?"),
+    ).toBeInTheDocument();
+
+    router.revalidate();
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Confirm completion for Fredster" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("uses singular point wording in adult completion confirmation", async () => {
+    const openJob = board.jobs[0];
+    if (!openJob) {
+      throw new Error("The open-job fixture was missing.");
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ ...board, jobs: [{ ...openJob, points: 1 }] }),
+        ),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
+    );
+
+    expect(
+      screen.getByText("Mark done and award 1 point to Fredster?"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps adult completion confirmation open when awarding fails", async () => {
+    const openJob = board.jobs[0];
+    if (!openJob) {
+      throw new Error("The open-job fixture was missing.");
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ ...board, jobs: [openJob] }))
+        .mockResolvedValueOnce(
+          jsonResponse(
+            { detail: "This job changed. Refresh and try again." },
+            { status: 409 },
+          ),
+        ),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Yes, mark done" }));
+
+    expect(
+      await screen.findByText("This job changed. Refresh and try again."),
+    ).toHaveAttribute("role", "alert");
+    expect(
+      screen.getByRole("group", { name: "Confirm completion for Fredster" }),
+    ).toBeInTheDocument();
   });
 
   it("lets an adult edit an open job and refreshes the agenda", async () => {
@@ -370,7 +611,9 @@ describe("Today page", () => {
     const addedCard = addedHeading.closest("article");
     expect(addedCard).not.toBeNull();
     expect(
-      within(addedCard as HTMLElement).getByText("Ready for Fredster"),
+      within(addedCard as HTMLElement).getByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
     ).toBeInTheDocument();
     expect(
       within(addedCard as HTMLElement).getByText("Arriving home · 15:45"),
@@ -543,8 +786,12 @@ describe("Today page", () => {
     expect(
       await screen.findAllByRole("heading", { name: "Make the beds" }),
     ).toHaveLength(2);
-    expect(screen.getAllByText("Ready for Fredster").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Ready for Harrie")).toHaveLength(1);
+    expect(
+      screen.getAllByRole("button", { name: "Mark as done for Fredster" }),
+    ).toHaveLength(3);
+    expect(
+      screen.getAllByRole("button", { name: "Mark as done for Harrie" }),
+    ).toHaveLength(1);
   });
 
   it.each(["native", "fallback"])(
@@ -1002,6 +1249,13 @@ describe("Today page", () => {
     expect(
       await screen.findByText("Approved — 5 points awarded"),
     ).toBeInTheDocument();
+    const approvalRequest = vi.mocked(globalThis.fetch).mock.calls[1]?.[0];
+    expect(approvalRequest).toBeInstanceOf(Request);
+    expect(
+      new URL((approvalRequest as Request).url).searchParams.get(
+        "expectedPoints",
+      ),
+    ).toBe("5");
   });
 
   it("rejects a pending job with feedback and allows another try", async () => {
@@ -1048,7 +1302,9 @@ describe("Today page", () => {
     );
 
     expect(
-      await within(card as HTMLElement).findByText("Ready for Fredster"),
+      await within(card as HTMLElement).findByRole("button", {
+        name: "Mark as done for Fredster",
+      }),
     ).toBeInTheDocument();
   });
 

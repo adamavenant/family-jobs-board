@@ -54,7 +54,7 @@ public sealed class PointsLedgerEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task An_adult_sees_every_childs_entries_newest_first_with_running_balances()
     {
-        await CompleteAndApproveAsync(DemoDataIds.FeedDog);
+        await CompleteAndApproveAsync(DemoDataIds.FeedDog, 5);
         using var behaviour = await SendAsync(
             HttpMethod.Post,
             "/api/good-behaviours",
@@ -306,13 +306,15 @@ public sealed class PointsLedgerEndpointsTests : IAsyncLifetime
         await database.SaveChangesAsync();
     }
 
-    private async Task CompleteAndApproveAsync(Guid jobId)
+    private async Task CompleteAndApproveAsync(Guid jobId, int expectedPoints)
     {
         using var complete = await SendAsync(
             HttpMethod.Post, $"/api/jobs/{jobId}/complete", DemoDataIds.Fredster);
         complete.EnsureSuccessStatusCode();
         using var approve = await SendAsync(
-            HttpMethod.Post, $"/api/jobs/{jobId}/approve", DemoDataIds.Addie);
+            HttpMethod.Post,
+            $"/api/jobs/{jobId}/approve?expectedPoints={expectedPoints}",
+            DemoDataIds.Addie);
         approve.EnsureSuccessStatusCode();
     }
 

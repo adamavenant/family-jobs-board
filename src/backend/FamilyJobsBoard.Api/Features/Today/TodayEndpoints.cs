@@ -20,10 +20,10 @@ internal static class TodayEndpoints
                 "Returns the child-owned or adult household view for the optional household-local date and adult-only child filter.");
 
         group.MapPost("/jobs/{id:guid}/complete", CompleteJobAsync)
-            .RequireAuthorization("Child")
             .WithName("CompleteJob")
-            .WithSummary("Mark an open job complete and pending approval.")
-            .WithDescription("Returns 409 when the job has already been completed.");
+            .WithSummary("Complete an open job.")
+            .WithDescription(
+                "A child may submit their own job for approval. An adult must supply expectedPoints and, when it still matches, completes, approves, and awards atomically. A missing adult confirmation returns 400. Returns 404 when the job or its active child is unavailable, and 409 when the job is not open, changed after confirmation, changed concurrently, or its points were already awarded.");
 
         group.MapPost("/today/jobs", AddJobAsync)
             .RequireAuthorization("Adult")
@@ -57,27 +57,29 @@ internal static class TodayEndpoints
             .RequireAuthorization("Adult")
             .WithName("ApproveJob")
             .WithSummary("Approve a pending job and award its points.")
-            .WithDescription("Returns 409 unless the job is pending approval or its points were already awarded.");
+            .WithDescription(
+                "The adult must supply expectedPoints from the pending job shown to them. A missing confirmation returns 400. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.");
 
         group.MapPost("/jobs/{id:guid}/reject", RejectJobAsync)
             .RequireAuthorization("Adult")
             .WithName("RejectJob")
             .WithSummary("Reject a pending job and return it for another try.")
-            .WithDescription("Records optional feedback and returns 409 unless the job is pending approval.");
+            .WithDescription(
+                "Records optional feedback. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval or when it changed concurrently.");
 
         group.MapPut("/jobs/{id:guid}", UpdateJobAsync)
             .RequireAuthorization("Adult")
             .WithName("UpdateJob")
             .WithSummary("Edit an open or pending-approval job occurrence.")
             .WithDescription(
-                "Updates only this job occurrence without changing its recurring series or points ledger; approved and cancelled jobs return 409.");
+                "Updates only this job occurrence without changing its recurring series or points ledger. Returns 404 when the job or its active child is unavailable, and 409 when it is approved, cancelled, or changed concurrently.");
 
         group.MapPost("/jobs/{id:guid}/cancel", CancelJobAsync)
             .RequireAuthorization("Adult")
             .WithName("CancelJob")
             .WithSummary("Cancel an open or pending-approval job occurrence.")
             .WithDescription(
-                "Records an optional reason, hides the occurrence from daily agendas, and leaves its recurring series and review history unchanged.");
+                "Records an optional reason, hides the occurrence from daily agendas, and leaves its recurring series and review history unchanged. Returns 404 when the job or its active child is unavailable, and 409 when the job cannot be cancelled or changed concurrently.");
 
         group.MapPost("/jobs/{id:guid}/recurring-change/preview", PreviewRecurringJobChangeAsync)
             .RequireAuthorization("Adult")
@@ -278,7 +280,8 @@ internal static class TodayEndpoints
                 Status = StatusCodes.Status404NotFound,
             });
         }
-        catch (JobEditRejectedException exception)
+        catch (Exception exception) when (
+            exception is JobEditRejectedException or JobStateConflictException)
         {
             return TypedResults.Conflict(new ProblemDetails
             {
@@ -329,7 +332,8 @@ internal static class TodayEndpoints
                 Status = StatusCodes.Status404NotFound,
             });
         }
-        catch (JobCancellationRejectedException exception)
+        catch (Exception exception) when (
+            exception is JobCancellationRejectedException or JobStateConflictException)
         {
             return TypedResults.Conflict(new ProblemDetails
             {
@@ -573,9 +577,10 @@ internal static class TodayEndpoints
         }
     }
 
-    private static async Task<Results<Ok<JobResponse>, NotFound<ProblemDetails>, Conflict<ProblemDetails>, ForbidHttpResult>>
+    private static async Task<Results<Ok<JobResponse>, ValidationProblem, NotFound<ProblemDetails>, Conflict<ProblemDetails>, ForbidHttpResult>>
         CompleteJobAsync(
             Guid id,
+            [FromQuery] int? expectedPoints,
             HttpContext context,
             TodayBoardService service,
             CancellationToken cancellationToken)
@@ -583,8 +588,18 @@ internal static class TodayEndpoints
         try
         {
             var memberId = IdentityEndpoints.PrincipalMemberId(context.User)!.Value;
-            var job = await service.CompleteAsync(id, memberId, cancellationToken);
+            var job = await service.CompleteAsync(
+                id,
+                memberId,
+                expectedPoints,
+                cancellationToken);
             return TypedResults.Ok(MapJob(job));
+        }
+        catch (InvalidJobPointsConfirmationException exception)
+        {
+            return TypedResults.ValidationProblem(
+                exception.Errors,
+                title: "Invalid job completion");
         }
         catch (JobNotFoundException exception)
         {
@@ -595,7 +610,11 @@ internal static class TodayEndpoints
                 Status = StatusCodes.Status404NotFound,
             });
         }
-        catch (JobCompletionRejectedException exception)
+        catch (Exception exception) when (
+            exception is JobCompletionRejectedException
+                or JobPointsConfirmationConflictException
+                or DuplicateJobPointsAwardException
+                or JobStateConflictException)
         {
             return TypedResults.Conflict(new ProblemDetails
             {
@@ -610,18 +629,25 @@ internal static class TodayEndpoints
         }
     }
 
-    private static async Task<Results<Ok<JobApprovalResponse>, NotFound<ProblemDetails>, Conflict<ProblemDetails>>>
+    private static async Task<Results<Ok<JobApprovalResponse>, ValidationProblem, NotFound<ProblemDetails>, Conflict<ProblemDetails>>>
         ApproveJobAsync(
             Guid id,
+            [FromQuery] int? expectedPoints,
             TodayBoardService service,
             CancellationToken cancellationToken)
     {
         try
         {
-            var approval = await service.ApproveAsync(id, cancellationToken);
+            var approval = await service.ApproveAsync(id, expectedPoints, cancellationToken);
             return TypedResults.Ok(new JobApprovalResponse(
                 MapJob(approval.Job),
                 approval.PointsBalance));
+        }
+        catch (InvalidJobPointsConfirmationException exception)
+        {
+            return TypedResults.ValidationProblem(
+                exception.Errors,
+                title: "Invalid job approval");
         }
         catch (JobNotFoundException exception)
         {
@@ -633,7 +659,10 @@ internal static class TodayEndpoints
             });
         }
         catch (Exception exception) when (
-            exception is JobApprovalRejectedException or DuplicateJobPointsAwardException)
+            exception is JobApprovalRejectedException
+                or JobPointsConfirmationConflictException
+                or DuplicateJobPointsAwardException
+                or JobStateConflictException)
         {
             return TypedResults.Conflict(new ProblemDetails
             {
@@ -671,7 +700,8 @@ internal static class TodayEndpoints
                 Status = StatusCodes.Status404NotFound,
             });
         }
-        catch (JobRejectionRejectedException exception)
+        catch (Exception exception) when (
+            exception is JobRejectionRejectedException or JobStateConflictException)
         {
             return TypedResults.Conflict(new ProblemDetails
             {

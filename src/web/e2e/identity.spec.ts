@@ -13,6 +13,7 @@ test("fresh household creates its first grown-up on a phone", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   let bootstrapped = false;
   let submittedPin = "";
+  let jobStatus: "open" | "approved" = "open";
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -30,8 +31,12 @@ test("fresh household creates its first grown-up on a phone", async ({
       bootstrapped = true;
       return json(route, auth(addieId, "Addie", "adult"), 201);
     }
+    if (path.endsWith("/complete")) {
+      jobStatus = "approved";
+      return json(route, job(jobStatus));
+    }
     if (path === "/api/today" && bootstrapped) {
-      return json(route, board("Addie", true, "open"));
+      return json(route, board("Addie", true, jobStatus));
     }
     return problem(route, 404);
   });
@@ -48,6 +53,12 @@ test("fresh household creates its first grown-up on a phone", async ({
   await expect(
     page.getByRole("heading", { name: "Good day, Addie!" }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Mark as done for Fredster" }).click();
+  await expect(
+    page.getByText("Mark done and award 3 points to Fredster?"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Yes, mark done" }).click();
+  await expect(page.getByText("Approved — 3 points awarded")).toBeVisible();
   expect(submittedPin).toBe("012345");
   expect(await page.evaluate(() => Object.keys(localStorage))).not.toContain(
     "family-jobs-board-member",
@@ -317,7 +328,9 @@ test("a grown-up assigns one job to both children on a tablet", async ({
     page.getByRole("heading", { name: "Make the beds" }),
   ).toHaveCount(2);
   expect(submittedChildIds).toEqual([fredsterId, harrieId]);
-  await expect(page.getByText("Ready for Harrie")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Mark as done for Harrie" }),
+  ).toBeVisible();
 });
 
 test("a grown-up browses and schedules a job on the next day", async ({

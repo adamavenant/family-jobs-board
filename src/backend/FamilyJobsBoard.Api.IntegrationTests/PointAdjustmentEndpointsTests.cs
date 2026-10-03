@@ -89,7 +89,9 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
             HttpMethod.Post, $"/api/jobs/{DemoDataIds.FeedDog}/complete", DemoDataIds.Fredster);
         complete.EnsureSuccessStatusCode();
         using var approve = await SendAsync(
-            HttpMethod.Post, $"/api/jobs/{DemoDataIds.FeedDog}/approve", DemoDataIds.Addie);
+            HttpMethod.Post,
+            $"/api/jobs/{DemoDataIds.FeedDog}/approve?expectedPoints=5",
+            DemoDataIds.Addie);
         approve.EnsureSuccessStatusCode();
         using var behaviour = await SendAsync(
             HttpMethod.Post,

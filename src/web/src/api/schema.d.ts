@@ -243,8 +243,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Mark an open job complete and pending approval.
-         * @description Returns 409 when the job has already been completed.
+         * Complete an open job.
+         * @description A child may submit their own job for approval. An adult must supply expectedPoints and, when it still matches, completes, approves, and awards atomically. A missing adult confirmation returns 400. Returns 404 when the job or its active child is unavailable, and 409 when the job is not open, changed after confirmation, changed concurrently, or its points were already awarded.
          */
         post: operations["CompleteJob"];
         delete?: never;
@@ -344,7 +344,7 @@ export interface paths {
         put?: never;
         /**
          * Approve a pending job and award its points.
-         * @description Returns 409 unless the job is pending approval or its points were already awarded.
+         * @description The adult must supply expectedPoints from the pending job shown to them. A missing confirmation returns 400. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.
          */
         post: operations["ApproveJob"];
         delete?: never;
@@ -364,7 +364,7 @@ export interface paths {
         put?: never;
         /**
          * Reject a pending job and return it for another try.
-         * @description Records optional feedback and returns 409 unless the job is pending approval.
+         * @description Records optional feedback. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval or when it changed concurrently.
          */
         post: operations["RejectJob"];
         delete?: never;
@@ -383,7 +383,7 @@ export interface paths {
         get?: never;
         /**
          * Edit an open or pending-approval job occurrence.
-         * @description Updates only this job occurrence without changing its recurring series or points ledger; approved and cancelled jobs return 409.
+         * @description Updates only this job occurrence without changing its recurring series or points ledger. Returns 404 when the job or its active child is unavailable, and 409 when it is approved, cancelled, or changed concurrently.
          */
         put: operations["UpdateJob"];
         post?: never;
@@ -404,7 +404,7 @@ export interface paths {
         put?: never;
         /**
          * Cancel an open or pending-approval job occurrence.
-         * @description Records an optional reason, hides the occurrence from daily agendas, and leaves its recurring series and review history unchanged.
+         * @description Records an optional reason, hides the occurrence from daily agendas, and leaves its recurring series and review history unchanged. Returns 404 when the job or its active child is unavailable, and 409 when the job cannot be cancelled or changed concurrently.
          */
         post: operations["CancelJob"];
         delete?: never;
@@ -1691,7 +1691,9 @@ export interface operations {
     };
     CompleteJob: {
         parameters: {
-            query?: never;
+            query?: {
+                expectedPoints?: number | string;
+            };
             header?: never;
             path: {
                 id: string;
@@ -1707,6 +1709,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
             };
             /** @description Not Found */
@@ -1917,7 +1928,9 @@ export interface operations {
     };
     ApproveJob: {
         parameters: {
-            query?: never;
+            query?: {
+                expectedPoints?: number | string;
+            };
             header?: never;
             path: {
                 id: string;
@@ -1933,6 +1946,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobApprovalResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
             };
             /** @description Not Found */

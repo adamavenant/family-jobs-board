@@ -14,6 +14,9 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
             "(status = 'Cancelled' AND cancelled_by_member_id IS NOT NULL AND cancelled_at_utc IS NOT NULL) OR " +
             "(status <> 'Cancelled' AND cancelled_by_member_id IS NULL AND cancelled_at_utc IS NULL AND cancellation_reason IS NULL)"));
         builder.HasKey(job => job.Id);
+        builder.Property<uint>("xmin")
+            .HasColumnName("xmin")
+            .IsRowVersion();
         builder.Property(job => job.Id).HasColumnName("id");
         builder.Property(job => job.ChildId).HasColumnName("child_id");
         builder.Property(job => job.Name).HasColumnName("name").HasMaxLength(160);

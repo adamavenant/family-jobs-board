@@ -622,6 +622,7 @@ a.hero__balance:focus-visible {
 .family-member-deactivate,
 .family-member-pin-reset,
 .deactivate-confirmation,
+.inline-confirmation,
 .member-restore-form {
   grid-column: 1 / -1;
 }
@@ -635,23 +636,34 @@ a.hero__balance:focus-visible {
 .family-member-pin-reset {
   justify-self: start;
 }
-.deactivate-confirmation {
+.deactivate-confirmation,
+.inline-confirmation {
   display: grid;
   gap: 10px;
   padding: 12px;
-  color: var(--error-text);
-  background: var(--error-bg);
   border-radius: 10px;
 }
-.deactivate-confirmation p {
+.deactivate-confirmation {
+  color: var(--error-text);
+  background: var(--error-bg);
+}
+.inline-confirmation {
+  color: var(--text);
+  background: var(--open-bg);
+  border: 1px solid var(--border);
+}
+.deactivate-confirmation p,
+.inline-confirmation p {
   margin: 0;
 }
-.deactivate-confirmation > div {
+.deactivate-confirmation > div,
+.inline-confirmation > div {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 .deactivate-confirmation button,
+.inline-confirmation button,
 .family-member-deactivate,
 .family-member-pin-reset,
 .member-restore-form button {
@@ -672,6 +684,11 @@ a.hero__balance:focus-visible {
   color: var(--error-text);
   background: transparent;
   border: 1px solid var(--error-text);
+}
+.inline-confirmation .button--quiet {
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
 }
 .member-restore-form button {
   color: #fff;

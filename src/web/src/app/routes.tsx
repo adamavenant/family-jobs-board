@@ -1049,6 +1049,7 @@ async function cancelJobAction(form: FormData): Promise<CancelJobActionResult> {
 
 async function approveAction(form: FormData): Promise<ApproveActionResult> {
   const jobId = form.get("jobId");
+  const expectedPointsValue = form.get("expectedPoints");
   if (typeof jobId !== "string") {
     return {
       intent: "approve",
@@ -1057,8 +1058,21 @@ async function approveAction(form: FormData): Promise<ApproveActionResult> {
     };
   }
 
+  const expectedPoints = Number(expectedPointsValue);
+  if (
+    typeof expectedPointsValue !== "string" ||
+    !Number.isInteger(expectedPoints) ||
+    expectedPoints < 0
+  ) {
+    return {
+      intent: "approve",
+      jobId,
+      error: "The confirmed points award was invalid. Refresh and try again.",
+    };
+  }
+
   try {
-    await approveJob(jobId);
+    await approveJob(jobId, expectedPoints);
     return { intent: "approve", jobId };
   } catch (error) {
     return {
@@ -1074,6 +1088,7 @@ async function approveAction(form: FormData): Promise<ApproveActionResult> {
 
 async function completeAction(form: FormData): Promise<CompleteActionResult> {
   const jobId = form.get("jobId");
+  const expectedPointsValue = form.get("expectedPoints");
   if (typeof jobId !== "string") {
     return {
       intent: "complete",
@@ -1082,8 +1097,23 @@ async function completeAction(form: FormData): Promise<CompleteActionResult> {
     };
   }
 
+  const expectedPoints =
+    typeof expectedPointsValue === "string"
+      ? Number(expectedPointsValue)
+      : null;
+  if (
+    expectedPoints !== null &&
+    (!Number.isInteger(expectedPoints) || expectedPoints < 0)
+  ) {
+    return {
+      intent: "complete",
+      jobId,
+      error: "The confirmed points award was invalid. Refresh and try again.",
+    };
+  }
+
   try {
-    await completeJob(jobId);
+    await completeJob(jobId, expectedPoints);
     return { intent: "complete", jobId };
   } catch (error) {
     return {

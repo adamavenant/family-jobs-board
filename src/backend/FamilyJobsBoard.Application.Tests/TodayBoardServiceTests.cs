@@ -116,6 +116,231 @@ public sealed class TodayBoardServiceTests
     }
 
     [Fact]
+    public async Task Adult_completion_approves_a_childs_open_job_and_awards_points()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        var completed = await service.CompleteAsync(
+            job.Id,
+            Adult.Id,
+            job.Points,
+            CancellationToken.None);
+
+        Assert.Equal("approved", completed.Status);
+        Assert.Equal(new FixedClock().UtcNow, completed.CompletedAtUtc);
+        Assert.Equal(new FixedClock().UtcNow, completed.ApprovedAtUtc);
+        var award = Assert.Single(repository.PointsAwards);
+        Assert.Equal(job.Id, award.JobId);
+        Assert.Equal(job.Points, award.Amount);
+        var decision = Assert.Single(repository.ReviewDecisions);
+        Assert.Equal(JobReviewOutcome.Approved, decision.Outcome);
+        Assert.Equal(1, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Child_completion_submits_for_approval_without_awarding_points()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        var completed = await service.CompleteAsync(
+            job.Id,
+            FirstChild.Id,
+            null,
+            CancellationToken.None);
+
+        Assert.Equal("pendingApproval", completed.Status);
+        Assert.Empty(repository.PointsAwards);
+        Assert.Empty(repository.ReviewDecisions);
+        Assert.Equal(1, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Adult_completion_rejects_a_stale_points_confirmation_without_writing()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        await Assert.ThrowsAsync<JobPointsConfirmationConflictException>(() =>
+            service.CompleteAsync(job.Id, Adult.Id, 4, CancellationToken.None));
+
+        Assert.Equal(JobStatus.Open, job.Status);
+        Assert.Empty(repository.PointsAwards);
+        Assert.Empty(repository.ReviewDecisions);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Adult_completion_requires_a_points_confirmation_without_writing()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        var exception = await Assert.ThrowsAsync<InvalidJobPointsConfirmationException>(() =>
+            service.CompleteAsync(job.Id, Adult.Id, null, CancellationToken.None));
+
+        Assert.Contains("expectedPoints", exception.Errors.Keys);
+        Assert.Equal(JobStatus.Open, job.Status);
+        Assert.Empty(repository.PointsAwards);
+        Assert.Empty(repository.ReviewDecisions);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Adult_approval_rejects_a_stale_points_confirmation_without_writing()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        job.MarkComplete(new FixedClock().UtcNow);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        await Assert.ThrowsAsync<JobPointsConfirmationConflictException>(() =>
+            service.ApproveAsync(job.Id, 4, CancellationToken.None));
+
+        Assert.Equal(JobStatus.PendingApproval, job.Status);
+        Assert.Empty(repository.PointsAwards);
+        Assert.Empty(repository.ReviewDecisions);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Adult_approval_requires_a_points_confirmation_without_writing()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        job.MarkComplete(new FixedClock().UtcNow);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        var exception = await Assert.ThrowsAsync<InvalidJobPointsConfirmationException>(() =>
+            service.ApproveAsync(job.Id, null, CancellationToken.None));
+
+        Assert.Contains("expectedPoints", exception.Errors.Keys);
+        Assert.Equal(JobStatus.PendingApproval, job.Status);
+        Assert.Empty(repository.PointsAwards);
+        Assert.Empty(repository.ReviewDecisions);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Theory]
+    [InlineData(JobStatus.PendingApproval)]
+    [InlineData(JobStatus.Cancelled)]
+    public async Task Adult_cannot_complete_a_pending_or_cancelled_job(JobStatus status)
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        if (status == JobStatus.PendingApproval)
+        {
+            job.MarkComplete(new FixedClock().UtcNow);
+        }
+        else
+        {
+            job.Cancel(Adult.Id, new FixedClock().UtcNow, null);
+        }
+
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        await Assert.ThrowsAsync<JobCompletionRejectedException>(() =>
+            service.CompleteAsync(job.Id, Adult.Id, job.Points, CancellationToken.None));
+
+        Assert.Equal(status, job.Status);
+        Assert.Empty(repository.PointsAwards);
+        Assert.Empty(repository.ReviewDecisions);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Inactive_actor_cannot_complete_a_job()
+    {
+        var inactiveAdult = new HouseholdMember(
+            Guid.NewGuid(),
+            "Inactive",
+            "Adult",
+            HouseholdRole.Adult,
+            isActive: false);
+        var repository = new RecordingRepository([inactiveAdult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        await Assert.ThrowsAsync<JobOwnershipRejectedException>(() =>
+            service.CompleteAsync(
+                job.Id,
+                inactiveAdult.Id,
+                job.Points,
+                CancellationToken.None));
+
+        Assert.Equal(JobStatus.Open, job.Status);
+        Assert.Empty(repository.PointsAwards);
+        Assert.Empty(repository.ReviewDecisions);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Adult_completion_changes_only_the_selected_recurring_occurrence()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var series = RecurringJobSeries.Daily(
+            Guid.NewGuid(),
+            FirstChild.Id,
+            Adult.Id,
+            "Daily",
+            "",
+            2,
+            AgendaPeriod.Morning,
+            null,
+            Today,
+            Today.AddDays(1),
+            Guid.NewGuid());
+        repository.Series.Add(series);
+        var selected = new Job(
+            Guid.NewGuid(), FirstChild.Id, "Daily", "", 2, Today,
+            AgendaPeriod.Morning, null, series.Id, RecurrenceFrequency.Daily);
+        var next = new Job(
+            Guid.NewGuid(), FirstChild.Id, "Daily", "", 2, Today.AddDays(1),
+            AgendaPeriod.Morning, null, series.Id, RecurrenceFrequency.Daily);
+        repository.Jobs.AddRange([selected, next]);
+        var service = CreateService(repository);
+
+        await service.CompleteAsync(
+            selected.Id,
+            Adult.Id,
+            selected.Points,
+            CancellationToken.None);
+
+        Assert.Equal(JobStatus.Approved, selected.Status);
+        Assert.Equal(JobStatus.Open, next.Status);
+        Assert.Single(repository.Series);
+        Assert.Equal(series.Id, repository.Series[0].Id);
+    }
+
+    [Fact]
+    public async Task Child_cannot_complete_another_childs_job()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild, SecondChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        await Assert.ThrowsAsync<JobOwnershipRejectedException>(() =>
+            service.CompleteAsync(job.Id, SecondChild.Id, null, CancellationToken.None));
+
+        Assert.Equal(JobStatus.Open, job.Status);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
     public async Task Adult_can_edit_a_pending_job_without_awarding_points()
     {
         var repository = new RecordingRepository([Adult, FirstChild]);
@@ -490,6 +715,10 @@ public sealed class TodayBoardServiceTests
 
         public List<RecurringJobSeries> Series { get; } = [];
 
+        public List<PointsLedgerEntry> PointsAwards { get; } = [];
+
+        public List<JobReviewDecision> ReviewDecisions { get; } = [];
+
         public int SaveCount { get; private set; }
 
         public DateOnly? LastGenerationHorizon { get; private set; }
@@ -501,7 +730,8 @@ public sealed class TodayBoardServiceTests
         public Task<HouseholdMember?> GetMemberAsync(
             Guid memberId,
             CancellationToken cancellationToken) =>
-            Task.FromResult(_members.SingleOrDefault(member => member.Id == memberId));
+            Task.FromResult(_members.SingleOrDefault(member =>
+                member.Id == memberId && member.IsActive));
 
         public Task AddJobsAsync(
             IReadOnlyCollection<Job> jobs,
@@ -574,8 +804,17 @@ public sealed class TodayBoardServiceTests
                 Series.Where(item => seriesIds.Contains(item.Id)).ToArray());
         public Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken) =>
             Task.FromResult(0);
-        public Task AddPointsAwardAsync(PointsLedgerEntry entry, CancellationToken cancellationToken) => throw Unused();
-        public Task AddReviewDecisionAsync(JobReviewDecision decision, CancellationToken cancellationToken) => throw Unused();
+        public Task AddPointsAwardAsync(PointsLedgerEntry entry, CancellationToken cancellationToken)
+        {
+            PointsAwards.Add(entry);
+            return Task.CompletedTask;
+        }
+
+        public Task AddReviewDecisionAsync(JobReviewDecision decision, CancellationToken cancellationToken)
+        {
+            ReviewDecisions.Add(decision);
+            return Task.CompletedTask;
+        }
 
         private static NotSupportedException Unused() => new("This operation is not used by the test.");
     }

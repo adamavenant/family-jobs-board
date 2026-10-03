@@ -90,7 +90,7 @@ public sealed class GoodBehaviourEndpointsTests : IAsyncLifetime
         complete.EnsureSuccessStatusCode();
         using var approve = await SendAsync(
             HttpMethod.Post,
-            $"/api/jobs/{DemoDataIds.FeedDog}/approve",
+            $"/api/jobs/{DemoDataIds.FeedDog}/approve?expectedPoints=5",
             DemoDataIds.Addie);
         approve.EnsureSuccessStatusCode();
 

@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Link, useFetcher } from "react-router";
 
 import type { HouseholdMember, TodayBoard, TodayJob } from "../../api/today";
@@ -308,6 +309,23 @@ function JobCard({
   isAdult: boolean;
 }) {
   const fetcher = useFetcher<TodayActionResult>();
+  const [confirmingAdultCompletion, setConfirmingAdultCompletion] =
+    useState(false);
+  const confirmationKey = `${job.status}:${job.points}`;
+  const [confirmationFor, setConfirmationFor] = useState(confirmationKey);
+  const completionTriggerRef = useRef<HTMLButtonElement>(null);
+  const restoreCompletionFocus = useRef(false);
+  if (confirmationFor !== confirmationKey) {
+    setConfirmationFor(confirmationKey);
+    setConfirmingAdultCompletion(false);
+  }
+
+  useEffect(() => {
+    if (!confirmingAdultCompletion && restoreCompletionFocus.current) {
+      completionTriggerRef.current?.focus();
+      restoreCompletionFocus.current = false;
+    }
+  }, [confirmingAdultCompletion]);
   const isSubmitting = fetcher.state !== "idle";
   const submittingIntent = fetcher.formData?.get("intent");
   const error =
@@ -471,6 +489,7 @@ function JobCard({
       ) : isPending && isAdult ? (
         <fetcher.Form method="post" className="approval-form">
           <input type="hidden" name="jobId" value={job.id} />
+          <input type="hidden" name="expectedPoints" value={job.points} />
           <p>Nice work — ready for a grown-up.</p>
           <label htmlFor={`rejection-reason-${job.id}`}>
             Rejection reason <span>(optional)</span>
@@ -510,8 +529,56 @@ function JobCard({
           Sent to a grown-up for approval
         </div>
       ) : isAdult ? (
-        <div className="complete-state" role="status">
-          Ready for {job.childDisplayName}
+        <div className="open-job-actions">
+          {confirmingAdultCompletion ? (
+            <div
+              className="inline-confirmation"
+              role="group"
+              aria-label={`Confirm completion for ${job.childDisplayName}`}
+            >
+              <p>
+                Mark done and award {job.points}{" "}
+                {job.points === 1 ? "point" : "points"} to{" "}
+                {job.childDisplayName}?
+              </p>
+              <div>
+                <fetcher.Form method="post">
+                  <input type="hidden" name="intent" value="complete" />
+                  <input type="hidden" name="jobId" value={job.id} />
+                  <input
+                    type="hidden"
+                    name="expectedPoints"
+                    value={job.points}
+                  />
+                  <button type="submit" disabled={isSubmitting}>
+                    {isSubmitting && submittingIntent === "complete"
+                      ? "Awarding…"
+                      : "Yes, mark done"}
+                  </button>
+                </fetcher.Form>
+                <button
+                  type="button"
+                  className="button--quiet"
+                  autoFocus
+                  onClick={() => {
+                    restoreCompletionFocus.current = true;
+                    setConfirmingAdultCompletion(false);
+                  }}
+                  disabled={isSubmitting}
+                >
+                  Keep open
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              ref={completionTriggerRef}
+              type="button"
+              onClick={() => setConfirmingAdultCompletion(true)}
+            >
+              Mark as done for {job.childDisplayName}
+            </button>
+          )}
         </div>
       ) : (
         <div className="open-job-actions">
