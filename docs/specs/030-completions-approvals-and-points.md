@@ -77,8 +77,7 @@ not record the reviewing adult.
 Missing jobs and jobs whose assigned child is unavailable return `404` across
 complete, approve, reject, edit, and cancel. Invalid, concurrently changed, or
 already-decided transitions and duplicate awards return `409`; an overlong
-rejection reason or missing adult completion confirmation returns validation
-errors.
+rejection reason or missing adult points confirmation returns validation errors.
 
 ## UI states
 

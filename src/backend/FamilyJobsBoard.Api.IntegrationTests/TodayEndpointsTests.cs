@@ -2254,7 +2254,11 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         using var missingExpectedPointsResponse = await Client.PostAsync(
             $"/api/jobs/{target.Id}/approve",
             null);
+        var missingExpectedPointsProblem = await missingExpectedPointsResponse.Content
+            .ReadFromJsonAsync<ValidationProblemDetails>();
         Assert.Equal(HttpStatusCode.BadRequest, missingExpectedPointsResponse.StatusCode);
+        Assert.Equal("Invalid job approval", missingExpectedPointsProblem?.Title);
+        Assert.Contains("expectedPoints", missingExpectedPointsProblem?.Errors.Keys ?? []);
 
         using var approveResponse = await Client.PostAsync(
             $"/api/jobs/{target.Id}/approve?expectedPoints={target.Points}",

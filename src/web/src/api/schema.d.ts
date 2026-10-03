@@ -344,7 +344,7 @@ export interface paths {
         put?: never;
         /**
          * Approve a pending job and award its points.
-         * @description The adult supplies expectedPoints from the pending job shown to them. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.
+         * @description The adult must supply expectedPoints from the pending job shown to them. A missing confirmation returns 400. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.
          */
         post: operations["ApproveJob"];
         delete?: never;
@@ -1928,8 +1928,8 @@ export interface operations {
     };
     ApproveJob: {
         parameters: {
-            query: {
-                expectedPoints: number | string;
+            query?: {
+                expectedPoints?: number | string;
             };
             header?: never;
             path: {
@@ -1946,6 +1946,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobApprovalResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
             };
             /** @description Not Found */

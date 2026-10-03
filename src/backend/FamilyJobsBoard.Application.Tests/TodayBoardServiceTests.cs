@@ -185,7 +185,7 @@ public sealed class TodayBoardServiceTests
         repository.Jobs.Add(job);
         var service = CreateService(repository);
 
-        var exception = await Assert.ThrowsAsync<InvalidJobCompletionException>(() =>
+        var exception = await Assert.ThrowsAsync<InvalidJobPointsConfirmationException>(() =>
             service.CompleteAsync(job.Id, Adult.Id, null, CancellationToken.None));
 
         Assert.Contains("expectedPoints", exception.Errors.Keys);
@@ -207,6 +207,25 @@ public sealed class TodayBoardServiceTests
         await Assert.ThrowsAsync<JobPointsConfirmationConflictException>(() =>
             service.ApproveAsync(job.Id, 4, CancellationToken.None));
 
+        Assert.Equal(JobStatus.PendingApproval, job.Status);
+        Assert.Empty(repository.PointsAwards);
+        Assert.Empty(repository.ReviewDecisions);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Adult_approval_requires_a_points_confirmation_without_writing()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        job.MarkComplete(new FixedClock().UtcNow);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        var exception = await Assert.ThrowsAsync<InvalidJobPointsConfirmationException>(() =>
+            service.ApproveAsync(job.Id, null, CancellationToken.None));
+
+        Assert.Contains("expectedPoints", exception.Errors.Keys);
         Assert.Equal(JobStatus.PendingApproval, job.Status);
         Assert.Empty(repository.PointsAwards);
         Assert.Empty(repository.ReviewDecisions);

@@ -58,7 +58,7 @@ internal static class TodayEndpoints
             .WithName("ApproveJob")
             .WithSummary("Approve a pending job and award its points.")
             .WithDescription(
-                "The adult supplies expectedPoints from the pending job shown to them. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.");
+                "The adult must supply expectedPoints from the pending job shown to them. A missing confirmation returns 400. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.");
 
         group.MapPost("/jobs/{id:guid}/reject", RejectJobAsync)
             .RequireAuthorization("Adult")
@@ -595,7 +595,7 @@ internal static class TodayEndpoints
                 cancellationToken);
             return TypedResults.Ok(MapJob(job));
         }
-        catch (InvalidJobCompletionException exception)
+        catch (InvalidJobPointsConfirmationException exception)
         {
             return TypedResults.ValidationProblem(
                 exception.Errors,
@@ -629,10 +629,10 @@ internal static class TodayEndpoints
         }
     }
 
-    private static async Task<Results<Ok<JobApprovalResponse>, NotFound<ProblemDetails>, Conflict<ProblemDetails>>>
+    private static async Task<Results<Ok<JobApprovalResponse>, ValidationProblem, NotFound<ProblemDetails>, Conflict<ProblemDetails>>>
         ApproveJobAsync(
             Guid id,
-            [FromQuery] int expectedPoints,
+            [FromQuery] int? expectedPoints,
             TodayBoardService service,
             CancellationToken cancellationToken)
     {
@@ -642,6 +642,12 @@ internal static class TodayEndpoints
             return TypedResults.Ok(new JobApprovalResponse(
                 MapJob(approval.Job),
                 approval.PointsBalance));
+        }
+        catch (InvalidJobPointsConfirmationException exception)
+        {
+            return TypedResults.ValidationProblem(
+                exception.Errors,
+                title: "Invalid job approval");
         }
         catch (JobNotFoundException exception)
         {
