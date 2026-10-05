@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
+import type { components } from "../src/api/schema";
+
+type AuthResponse = components["schemas"]["AuthResponse"];
+type MemberResponse = components["schemas"]["MemberResponse"];
+type TodayResponse = components["schemas"]["TodayResponse"];
 
 const addieId = "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c";
 const fredsterId = "754de05d-b6f6-4626-bbad-79e2079cc5c3";
@@ -66,7 +71,11 @@ async function expectNoSidewaysScroll(page: Page) {
   expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
 }
 
-function auth(id: string, displayName: string, role: "adult" | "child") {
+function auth(
+  id: string,
+  displayName: string,
+  role: "adult" | "child",
+): AuthResponse {
   return {
     accessToken: "test-access-token",
     accessTokenExpiresAtUtc: "2099-01-01T00:00:00Z",
@@ -74,15 +83,15 @@ function auth(id: string, displayName: string, role: "adult" | "child") {
   };
 }
 
-function board(isAdult: boolean) {
-  const addie = {
+function board(isAdult: boolean): TodayResponse {
+  const addie: MemberResponse = {
     id: addieId,
     firstName: "Addie",
     nickname: null,
     displayName: "Addie",
     isAdult: true,
   };
-  const fredster = {
+  const fredster: MemberResponse = {
     id: fredsterId,
     firstName: "Fredster",
     nickname: null,
@@ -98,6 +107,7 @@ function board(isAdult: boolean) {
     jobs: [],
     pointsBalance: isAdult ? null : 0,
     pendingApprovalCount: 0,
+    whoseTurns: [],
   };
 }
 
