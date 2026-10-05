@@ -22,7 +22,7 @@ The first increment is a database-backed walking skeleton, not a throwaway mock.
 
 The current `main` branch contains a runnable PostgreSQL-backed .NET API and React UI. Docker Compose builds the application, applies checked-in migrations, and exposes health-checked API and web services. Integration tests use disposable PostgreSQL containers; CI verifies the backend, web application, and Compose configuration and publishes deployable images.
 
-The delivered pilot includes household bootstrap, PIN authentication and revocable sessions, adult family-member administration, dated once-off jobs, daily/weekly/monthly recurrence creation, a navigable daily agenda, child completion submission, adult approval/rejection, adult-defined good behaviours logged with immediate points, signed manual point adjustments, adult day/week/month calendar views, and an append-only points ledger with child balance/history. Later phase deliverables remain tracked in section 9; in particular, job and recurring-series lifecycle operations, redemptions, and the complete audit/production-readiness scope are not yet delivered.
+The delivered pilot includes household bootstrap, PIN authentication and revocable sessions, adult family-member administration, dated once-off jobs, daily/weekly/monthly recurrence creation, a navigable daily agenda, child completion submission, adult approval/rejection, adult-defined good behaviours logged with immediate points, signed manual point adjustments, reward redemptions, adult day/week/month calendar views, and an append-only points ledger with child balance/history. Later phase deliverables remain tracked in section 9; in particular, job and recurring-series lifecycle operations and the complete audit/production-readiness scope are not yet delivered.
 
 Further implementation continues through GitHub issues with acceptance criteria, issue branches, and the Compose/test gates in this plan. Product decisions in section 12 remain open until their owning phase reaches them.
 
@@ -248,7 +248,7 @@ These rules prevent later phases from forcing destructive remodels.
 - Current points are the sum of ledger entries. A cached balance may be added only with a documented consistency mechanism.
 - Approval and good-behaviour entries are positive. Redemptions are negative. Manual adjustments may be either.
 - Correct errors with compensating entries; do not edit or delete ledger history.
-- Decide whether negative balances are allowed before implementing redemption.
+- Balances never go negative: redemptions and removals are rejected when the balance can't cover them (issue #82).
 
 ### Audit and deletion
 
@@ -289,7 +289,7 @@ Delivery status on `main` as of 2026-09-13:
 - [ ] Phase 3: the submit/approve-or-reject/ledger loop and child balance/history are delivered; approval-time point override remains.
 - [ ] Phase 4: daily, weekly, and monthly recurrence creation, adult day/week/month calendar views, and scoped edit/cancel are delivered; pause/resume and remaining series administration remain (issue #107).
 - [x] Phase 5: adult-defined good-behaviour types, logging with an editable point value, atomic idempotent ledger awards, and child history/read-only listing are delivered.
-- [ ] Phase 6: signed manual point adjustments with a required reason are delivered; redemptions, searchable audit, and administration completeness remain.
+- [ ] Phase 6: signed manual point adjustments with a required reason and reward redemptions are delivered; searchable audit and administration completeness remain.
 - [ ] Phase 7: image publication and home-server deployment automation are delivered; the full production-readiness exit gate remains.
 
 ### Phase 0 — Containerized, database-backed walking skeleton
@@ -530,7 +530,7 @@ Resolve each question in its owning feature spec rather than allowing an impleme
 | Can a child have more than one pending submission for a rejected occurrence? | Phase 2/3 | Rejection returns it to a resubmittable state while retaining decision history |
 | Are zero-point jobs allowed? Are negative job/behaviour points allowed? | Phase 2 | Allow zero; reject negative awards |
 | Can approval override points below zero? | Phase 3 | No; zero or positive only |
-| May a balance go negative after redemption or adjustment? | Phase 6 | Redemptions cannot; explicit adult adjustments may, with warning and reason |
+| May a balance go negative after redemption or adjustment? | Phase 6 | No. Neither redemptions nor adjustments may take a balance below zero (decided in issue #82) |
 | What exactly does monthly recurrence mean for dates absent in shorter months? | Phase 4 | Last valid day of the month; state this visibly |
 | How far ahead are recurring occurrences materialized? | Phase 4 | Rolling eight weeks plus on-demand generation |
 | How are weekend agenda periods represented? | Phase 4 | Same periods, with independently configurable schedules |

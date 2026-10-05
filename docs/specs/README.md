@@ -13,7 +13,7 @@ they were written in advance.
 | 3 — Completions, approvals, and points | Retrospective spec: `030-completions-approvals-and-points.md` |
 | 4 — Recurring jobs and calendar | Retrospective spec: `040-recurring-jobs-and-calendar.md` |
 | 5 — Good behaviours | Implemented with issue #81: `050-good-behaviours.md` |
-| 6 — Redemptions, adjustments, and audit | Partially specified: manual point adjustments (issue #83) and the points ledger view (issue #77) in `060-redemptions-adjustments-and-audit.md`; redemptions and audit still need sections before their issues are cut. |
+| 6 — Redemptions, adjustments, and audit | Partially specified: manual point adjustments (issue #83), redemptions (issue #82), and the points ledger view (issue #77) in `060-redemptions-adjustments-and-audit.md`; the audit view still needs a section before its issue is cut. |
 | 7 — Production readiness | Historical exception below; write `070-production-readiness.md` before further Phase 7 feature issues are cut. |
 
 ## Standalone features outside the phased plan
