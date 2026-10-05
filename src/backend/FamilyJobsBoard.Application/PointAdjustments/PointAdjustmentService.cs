@@ -1,4 +1,5 @@
 using FamilyJobsBoard.Application.Clock;
+using FamilyJobsBoard.Application.Points;
 using FamilyJobsBoard.Domain.PointAdjustments;
 using FamilyJobsBoard.Domain.Points;
 
@@ -50,6 +51,46 @@ public sealed class PointAdjustmentService
                 [$"The reason must be {PointAdjustment.MaximumReasonLength} characters or fewer."];
         }
 
+        var recorded = await RecordUnderLockAsync(request, reason, errors, cancellationToken);
+        if (recorded is not null)
+        {
+            return recorded;
+        }
+
+        // The request ID was taken by a concurrent request for another child, whose lock this
+        // request didn't hold. The failed transaction has been rolled back, so read the winner.
+        var winner = await _repository.GetAdjustmentByRequestAsync(
+            request.RequestId,
+            cancellationToken)
+            ?? throw new PointAdjustmentRequestConflictException(request.RequestId);
+        return await ReplayAsync(winner, request, cancellationToken);
+    }
+
+    /// <summary>
+    /// Checks and records the adjustment while holding the child's points lock, so a removal
+    /// can't take the balance below zero alongside a concurrent removal. Returns null when a
+    /// concurrent request with the same request ID won the insert.
+    /// </summary>
+    private async Task<PointAdjustmentResult?> RecordUnderLockAsync(
+        RecordPointAdjustment request,
+        string? reason,
+        Dictionary<string, string[]> errors,
+        CancellationToken cancellationToken)
+    {
+        await using var pointsLock = await _repository.LockChildPointsAsync(
+            request.ChildId,
+            cancellationToken);
+
+        // A retry may have been recorded while this request waited for the lock; replay it
+        // rather than judge it against the balance it already changed.
+        var existing = await _repository.GetAdjustmentByRequestAsync(
+            request.RequestId,
+            cancellationToken);
+        if (existing is not null)
+        {
+            return await ReplayAsync(existing, request, cancellationToken);
+        }
+
         var child = await _repository.GetActiveChildAsync(request.ChildId, cancellationToken);
         if (child is null)
         {
@@ -63,13 +104,9 @@ public sealed class PointAdjustmentService
         }
 
         var currentBalance = await _repository.GetPointsBalanceAsync(child!.Id, cancellationToken);
-        var resultingBalance = currentBalance + request.Amount;
-        if (request.Amount < 0 && resultingBalance < 0 && !request.ConfirmNegativeBalance)
+        if (request.Amount < 0 && currentBalance + request.Amount < 0)
         {
-            throw new NegativeBalanceConfirmationRequiredException(
-                child.DisplayName,
-                currentBalance,
-                resultingBalance);
+            throw new InsufficientPointsException(child.DisplayName, currentBalance);
         }
 
         var adjustedAtUtc = _clock.UtcNow;
@@ -95,16 +132,13 @@ public sealed class PointAdjustmentService
         }
         catch (DuplicatePointAdjustmentRequestException)
         {
-            var winner = await _repository.GetAdjustmentByRequestAsync(
-                request.RequestId,
-                cancellationToken)
-                ?? throw new PointAdjustmentRequestConflictException(request.RequestId);
-            return await ReplayAsync(winner, request, cancellationToken);
+            return null;
         }
 
+        await pointsLock.CommitAsync(cancellationToken);
         return new PointAdjustmentResult(
             Map(adjustment),
-            await _repository.GetPointsBalanceAsync(child.Id, cancellationToken),
+            currentBalance + adjustment.Amount,
             WasCreated: true);
     }
 

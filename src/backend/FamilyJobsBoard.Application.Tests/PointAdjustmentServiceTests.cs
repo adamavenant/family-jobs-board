@@ -1,5 +1,6 @@
 using FamilyJobsBoard.Application.Clock;
 using FamilyJobsBoard.Application.PointAdjustments;
+using FamilyJobsBoard.Application.Points;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.PointAdjustments;
 using FamilyJobsBoard.Domain.Points;
@@ -35,7 +36,7 @@ public sealed class PointAdjustmentServiceTests
     }
 
     [Fact]
-    public async Task Removing_points_within_the_balance_needs_no_confirmation()
+    public async Task Removing_points_down_to_zero_is_allowed()
     {
         var repository = new FakeRepository { Balance = 10 };
         var service = new PointAdjustmentService(repository, new FixedClock());
@@ -47,38 +48,54 @@ public sealed class PointAdjustmentServiceTests
     }
 
     [Fact]
-    public async Task Removing_more_than_the_balance_requires_confirmation_and_records_nothing()
+    public async Task Removing_more_than_the_balance_is_rejected_and_records_nothing()
     {
         var repository = new FakeRepository { Balance = 3 };
         var service = new PointAdjustmentService(repository, new FixedClock());
 
-        var exception = await Assert.ThrowsAsync<NegativeBalanceConfirmationRequiredException>(() =>
+        var exception = await Assert.ThrowsAsync<InsufficientPointsException>(() =>
             service.RecordAsync(Request(amount: -5), CancellationToken.None));
 
         Assert.Equal(3, exception.CurrentBalance);
-        Assert.Equal(-2, exception.ResultingBalance);
-        Assert.Contains("Fredster", exception.Message);
+        Assert.Equal("Fredster only has 3 points.", exception.Message);
         Assert.Empty(repository.Entries);
         Assert.Equal(0, repository.SaveCount);
+        var pointsLock = Assert.Single(repository.Locks);
+        Assert.False(pointsLock.Committed);
+        Assert.True(pointsLock.Disposed);
     }
 
     [Fact]
-    public async Task Confirmed_adjustment_may_take_the_balance_negative()
+    public async Task Removing_points_from_a_balance_that_was_already_negative_is_rejected()
     {
-        var repository = new FakeRepository { Balance = 3 };
+        var repository = new FakeRepository { Balance = -8 };
         var service = new PointAdjustmentService(repository, new FixedClock());
 
-        var result = await service.RecordAsync(
-            Request(amount: -5, confirm: true),
-            CancellationToken.None);
+        var exception = await Assert.ThrowsAsync<InsufficientPointsException>(() =>
+            service.RecordAsync(Request(amount: -1), CancellationToken.None));
 
-        Assert.True(result.WasCreated);
-        Assert.Equal(-2, result.PointsBalance);
-        Assert.Single(repository.Entries);
+        Assert.Equal(-8, exception.CurrentBalance);
+        Assert.Equal("Fredster doesn't have any points.", exception.Message);
+        Assert.Empty(repository.Entries);
     }
 
     [Fact]
-    public async Task Adding_points_to_an_already_negative_balance_needs_no_confirmation()
+    public async Task Every_adjustment_holds_the_childs_lock_and_commits_once_recorded()
+    {
+        var repository = new FakeRepository { Balance = 4 };
+        var service = new PointAdjustmentService(repository, new FixedClock());
+
+        await service.RecordAsync(Request(amount: -4), CancellationToken.None);
+
+        var pointsLock = Assert.Single(repository.Locks);
+        Assert.Equal(Child.Id, pointsLock.ChildId);
+        Assert.True(pointsLock.SavedWhileHeld);
+        Assert.True(pointsLock.Committed);
+        Assert.True(pointsLock.Disposed);
+    }
+
+    [Fact]
+    public async Task Adding_points_to_an_already_negative_balance_is_allowed()
     {
         var repository = new FakeRepository { Balance = -8 };
         var service = new PointAdjustmentService(repository, new FixedClock());
@@ -126,21 +143,45 @@ public sealed class PointAdjustmentServiceTests
     }
 
     [Fact]
-    public async Task Retrying_the_same_request_records_one_entry_and_needs_no_confirmation_again()
+    public async Task Retrying_the_same_request_records_one_entry()
     {
-        var repository = new FakeRepository { Balance = 1 };
+        var repository = new FakeRepository { Balance = 5 };
         var service = new PointAdjustmentService(repository, new FixedClock());
-        var confirmed = Request(amount: -5, confirm: true);
-        var first = await service.RecordAsync(confirmed, CancellationToken.None);
+        var request = Request(amount: -5);
+        var first = await service.RecordAsync(request, CancellationToken.None);
 
         var retry = await service.RecordAsync(
-            confirmed with { ConfirmNegativeBalance = false, Reason = "  Helped a neighbour " },
+            request with { Reason = "  Helped a neighbour " },
             CancellationToken.None);
 
         Assert.False(retry.WasCreated);
         Assert.Equal(first.Adjustment.Id, retry.Adjustment.Id);
-        Assert.Equal(-4, retry.PointsBalance);
+        Assert.Equal(0, retry.PointsBalance);
         Assert.Single(repository.Entries);
+    }
+
+    [Fact]
+    public async Task A_retry_recorded_while_waiting_for_the_lock_is_replayed_not_rechecked()
+    {
+        var repository = new FakeRepository { Balance = 5 };
+        var service = new PointAdjustmentService(repository, new FixedClock());
+        var request = Request(amount: -5);
+        repository.OnLockAcquired = () =>
+        {
+            // The original attempt took the points while this retry waited for the lock.
+            var original = new PointAdjustment(
+                Guid.NewGuid(), request.RequestId, Child.Id, AdultId, -5, "Helped a neighbour", Now);
+            repository.Adjustments.Add(original);
+            repository.Entries.Add(PointsLedgerEntry.ForManualAdjustment(
+                Guid.NewGuid(), Child.Id, original.Id, -5, Now));
+        };
+
+        var result = await service.RecordAsync(request, CancellationToken.None);
+
+        Assert.False(result.WasCreated);
+        Assert.Equal(0, result.PointsBalance);
+        Assert.Single(repository.Entries);
+        Assert.Equal(0, repository.SaveCount);
     }
 
     [Fact]
@@ -204,8 +245,8 @@ public sealed class PointAdjustmentServiceTests
 
     private static readonly DateTimeOffset Now = new(2026, 9, 21, 8, 0, 0, TimeSpan.Zero);
 
-    private static RecordPointAdjustment Request(int amount, bool confirm = false) =>
-        new(Guid.NewGuid(), AdultId, Child.Id, amount, "Helped a neighbour", confirm);
+    private static RecordPointAdjustment Request(int amount) =>
+        new(Guid.NewGuid(), AdultId, Child.Id, amount, "Helped a neighbour");
 
     private sealed class FixedClock : IHouseholdClock
     {
@@ -227,6 +268,20 @@ public sealed class PointAdjustmentServiceTests
         public int SaveCount { get; private set; }
 
         public Action? SimulateConcurrentWinner { get; set; }
+
+        public Action? OnLockAcquired { get; set; }
+
+        public List<FakeChildPointsLock> Locks { get; } = [];
+
+        public Task<IChildPointsLock> LockChildPointsAsync(
+            Guid childId,
+            CancellationToken cancellationToken)
+        {
+            var pointsLock = new FakeChildPointsLock(childId);
+            Locks.Add(pointsLock);
+            OnLockAcquired?.Invoke();
+            return Task.FromResult<IChildPointsLock>(pointsLock);
+        }
 
         public Task<HouseholdMember?> GetActiveChildAsync(
             Guid childId,
@@ -252,6 +307,11 @@ public sealed class PointAdjustmentServiceTests
 
         public Task SaveChangesAsync(CancellationToken cancellationToken)
         {
+            if (Locks.LastOrDefault() is { Committed: false, Disposed: false } held)
+            {
+                held.SavedWhileHeld = true;
+            }
+
             if (_pending is { } pending)
             {
                 _pending = null;

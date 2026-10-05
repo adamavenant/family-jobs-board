@@ -83,30 +83,70 @@ public sealed class EfPointsLedgerRepository : IPointsLedgerRepository
         var behaviourIds = entries.Where(entry => entry.GoodBehaviourId is not null)
             .Select(entry => entry.GoodBehaviourId!.Value)
             .ToArray();
-        var behaviourNames = await _database.GoodBehaviours
+        var behaviours = await _database.GoodBehaviours
             .AsNoTracking()
             .Where(behaviour => behaviourIds.Contains(behaviour.Id))
-            .ToDictionaryAsync(behaviour => behaviour.Id, behaviour => behaviour.TypeName, cancellationToken);
+            .ToDictionaryAsync(
+                behaviour => behaviour.Id,
+                behaviour => new RecordedSource(behaviour.TypeName, behaviour.LoggedByMemberId),
+                cancellationToken);
         var adjustmentIds = entries.Where(entry => entry.PointAdjustmentId is not null)
             .Select(entry => entry.PointAdjustmentId!.Value)
             .ToArray();
-        var adjustmentReasons = await _database.PointAdjustments
+        var adjustments = await _database.PointAdjustments
             .AsNoTracking()
             .Where(adjustment => adjustmentIds.Contains(adjustment.Id))
-            .ToDictionaryAsync(adjustment => adjustment.Id, adjustment => adjustment.Reason, cancellationToken);
+            .ToDictionaryAsync(
+                adjustment => adjustment.Id,
+                adjustment => new RecordedSource(adjustment.Reason, adjustment.AdjustedByMemberId),
+                cancellationToken);
+        var redemptionIds = entries.Where(entry => entry.PointRedemptionId is not null)
+            .Select(entry => entry.PointRedemptionId!.Value)
+            .ToArray();
+        var redemptions = await _database.PointRedemptions
+            .AsNoTracking()
+            .Where(redemption => redemptionIds.Contains(redemption.Id))
+            .ToDictionaryAsync(
+                redemption => redemption.Id,
+                redemption => new RecordedSource(redemption.Reward, redemption.RedeemedByMemberId),
+                cancellationToken);
+
+        // Job approvals don't record the deciding adult yet, so job awards have no recorder.
+        var sources = entries.ToDictionary(
+            entry => entry.Id,
+            entry => entry switch
+            {
+                { GoodBehaviourId: { } behaviourId } => behaviours[behaviourId],
+                { PointAdjustmentId: { } adjustmentId } => adjustments[adjustmentId],
+                { PointRedemptionId: { } redemptionId } => redemptions[redemptionId],
+                _ => new RecordedSource(jobNames[entry.JobId!.Value], null),
+            });
+        var recorderIds = sources.Values
+            .Where(source => source.RecordedByMemberId is not null)
+            .Select(source => source.RecordedByMemberId!.Value)
+            .Distinct()
+            .ToArray();
+        // Recorders are listed even after they are deactivated, so history keeps their name.
+        var recorderNames = (await _database.HouseholdMembers
+            .AsNoTracking()
+            .Where(member => recorderIds.Contains(member.Id))
+            .ToListAsync(cancellationToken))
+            .ToDictionary(member => member.Id, member => member.DisplayName);
 
         return entries
-            .Select(entry => new PointsLedgerRecord(
-                entry.Id,
-                entry.ChildId,
-                entry switch
-                {
-                    { GoodBehaviourId: { } behaviourId } => behaviourNames[behaviourId],
-                    { PointAdjustmentId: { } adjustmentId } => adjustmentReasons[adjustmentId],
-                    _ => jobNames[entry.JobId!.Value],
-                },
-                entry.Amount,
-                entry.AwardedAtUtc))
+            .Select(entry =>
+            {
+                var source = sources[entry.Id];
+                return new PointsLedgerRecord(
+                    entry.Id,
+                    entry.ChildId,
+                    source.Name,
+                    entry.Amount,
+                    entry.AwardedAtUtc,
+                    source.RecordedByMemberId is { } recorderId
+                        ? recorderNames.GetValueOrDefault(recorderId)
+                        : null);
+            })
             .ToArray();
     }
 
@@ -127,4 +167,6 @@ public sealed class EfPointsLedgerRepository : IPointsLedgerRepository
             .Select(group => new { ChildId = group.Key, Balance = group.Sum(entry => entry.Amount) })
             .ToDictionaryAsync(item => item.ChildId, item => item.Balance, cancellationToken);
     }
+
+    private sealed record RecordedSource(string Name, Guid? RecordedByMemberId);
 }

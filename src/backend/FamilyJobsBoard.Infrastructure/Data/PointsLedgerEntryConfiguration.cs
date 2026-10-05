@@ -2,6 +2,7 @@ using FamilyJobsBoard.Domain.GoodBehaviours;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Domain.PointAdjustments;
+using FamilyJobsBoard.Domain.PointRedemptions;
 using FamilyJobsBoard.Domain.Points;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -18,10 +19,10 @@ internal sealed class PointsLedgerEntryConfiguration : IEntityTypeConfiguration<
             {
                 table.HasCheckConstraint(
                     "ck_points_ledger_entries_single_source",
-                    "num_nonnulls(job_id, good_behaviour_id, point_adjustment_id) = 1");
+                    "num_nonnulls(job_id, good_behaviour_id, point_adjustment_id, point_redemption_id) = 1");
                 table.HasCheckConstraint(
                     "ck_points_ledger_entries_amount_sign",
-                    "(point_adjustment_id IS NULL AND amount >= 0) OR (point_adjustment_id IS NOT NULL AND amount <> 0)");
+                    "(point_adjustment_id IS NULL AND point_redemption_id IS NULL AND amount >= 0) OR (point_adjustment_id IS NOT NULL AND amount <> 0) OR (point_redemption_id IS NOT NULL AND amount < 0)");
             });
         builder.HasKey(entry => entry.Id);
         builder.Property(entry => entry.Id).HasColumnName("id");
@@ -29,6 +30,7 @@ internal sealed class PointsLedgerEntryConfiguration : IEntityTypeConfiguration<
         builder.Property(entry => entry.JobId).HasColumnName("job_id");
         builder.Property(entry => entry.GoodBehaviourId).HasColumnName("good_behaviour_id");
         builder.Property(entry => entry.PointAdjustmentId).HasColumnName("point_adjustment_id");
+        builder.Property(entry => entry.PointRedemptionId).HasColumnName("point_redemption_id");
         builder.Property(entry => entry.Amount).HasColumnName("amount");
         builder.Property(entry => entry.AwardedAtUtc).HasColumnName("awarded_at_utc");
         // Serves the newest-first ledger, keyset paging, and per-child balances.
@@ -43,6 +45,9 @@ internal sealed class PointsLedgerEntryConfiguration : IEntityTypeConfiguration<
         builder.HasIndex(entry => entry.PointAdjustmentId)
             .IsUnique()
             .HasDatabaseName("ux_points_ledger_entries_point_adjustment_id");
+        builder.HasIndex(entry => entry.PointRedemptionId)
+            .IsUnique()
+            .HasDatabaseName("ux_points_ledger_entries_point_redemption_id");
         builder.HasOne<HouseholdMember>()
             .WithMany()
             .HasForeignKey(entry => entry.ChildId)
@@ -58,6 +63,10 @@ internal sealed class PointsLedgerEntryConfiguration : IEntityTypeConfiguration<
         builder.HasOne<PointAdjustment>()
             .WithMany()
             .HasForeignKey(entry => entry.PointAdjustmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<PointRedemption>()
+            .WithMany()
+            .HasForeignKey(entry => entry.PointRedemptionId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

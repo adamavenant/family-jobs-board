@@ -1,20 +1,20 @@
-using FamilyJobsBoard.Application.PointAdjustments;
+using FamilyJobsBoard.Application.PointRedemptions;
 using FamilyJobsBoard.Application.Points;
 using FamilyJobsBoard.Domain.Households;
-using FamilyJobsBoard.Domain.PointAdjustments;
+using FamilyJobsBoard.Domain.PointRedemptions;
 using FamilyJobsBoard.Domain.Points;
 using FamilyJobsBoard.Infrastructure.Data;
 using FamilyJobsBoard.Infrastructure.Points;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
-namespace FamilyJobsBoard.Infrastructure.PointAdjustments;
+namespace FamilyJobsBoard.Infrastructure.PointRedemptions;
 
-public sealed class EfPointAdjustmentRepository : IPointAdjustmentRepository
+public sealed class EfPointRedemptionRepository : IPointRedemptionRepository
 {
     private readonly AppDbContext _database;
 
-    public EfPointAdjustmentRepository(AppDbContext database)
+    public EfPointRedemptionRepository(AppDbContext database)
     {
         _database = database;
     }
@@ -39,21 +39,21 @@ public sealed class EfPointAdjustmentRepository : IPointAdjustmentRepository
                 cancellationToken);
     }
 
-    public Task<PointAdjustment?> GetAdjustmentByRequestAsync(
+    public Task<PointRedemption?> GetRedemptionByRequestAsync(
         Guid requestId,
         CancellationToken cancellationToken)
     {
-        return _database.PointAdjustments
+        return _database.PointRedemptions
             .AsNoTracking()
-            .SingleOrDefaultAsync(adjustment => adjustment.RequestId == requestId, cancellationToken);
+            .SingleOrDefaultAsync(redemption => redemption.RequestId == requestId, cancellationToken);
     }
 
-    public async Task AddAdjustmentAsync(
-        PointAdjustment adjustment,
+    public async Task AddRedemptionAsync(
+        PointRedemption redemption,
         PointsLedgerEntry entry,
         CancellationToken cancellationToken)
     {
-        await _database.PointAdjustments.AddAsync(adjustment, cancellationToken);
+        await _database.PointRedemptions.AddAsync(redemption, cancellationToken);
         await _database.PointsLedgerEntries.AddAsync(entry, cancellationToken);
     }
 
@@ -75,12 +75,12 @@ public sealed class EfPointAdjustmentRepository : IPointAdjustmentRepository
             when (exception.InnerException is PostgresException
             {
                 SqlState: PostgresErrorCodes.UniqueViolation,
-                ConstraintName: PointAdjustmentConfiguration.RequestIdIndexName,
+                ConstraintName: PointRedemptionConfiguration.RequestIdIndexName,
             })
         {
             // Detach the failed inserts so the caller can read the winning request.
             _database.ChangeTracker.Clear();
-            throw new DuplicatePointAdjustmentRequestException();
+            throw new DuplicatePointRedemptionRequestException();
         }
     }
 }

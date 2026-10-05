@@ -1,11 +1,11 @@
 using FamilyJobsBoard.Application.Points;
 using FamilyJobsBoard.Domain.Households;
-using FamilyJobsBoard.Domain.PointAdjustments;
+using FamilyJobsBoard.Domain.PointRedemptions;
 using FamilyJobsBoard.Domain.Points;
 
-namespace FamilyJobsBoard.Application.PointAdjustments;
+namespace FamilyJobsBoard.Application.PointRedemptions;
 
-public interface IPointAdjustmentRepository
+public interface IPointRedemptionRepository
 {
     /// <summary>
     /// Starts a transaction holding the child's points lock. Reads and writes made before it
@@ -15,19 +15,19 @@ public interface IPointAdjustmentRepository
 
     Task<HouseholdMember?> GetActiveChildAsync(Guid childId, CancellationToken cancellationToken);
 
-    Task<PointAdjustment?> GetAdjustmentByRequestAsync(
+    Task<PointRedemption?> GetRedemptionByRequestAsync(
         Guid requestId,
         CancellationToken cancellationToken);
 
-    Task AddAdjustmentAsync(
-        PointAdjustment adjustment,
+    Task AddRedemptionAsync(
+        PointRedemption redemption,
         PointsLedgerEntry entry,
         CancellationToken cancellationToken);
 
     Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Persists pending changes. Throws <see cref="DuplicatePointAdjustmentRequestException"/>
+    /// Persists pending changes. Throws <see cref="DuplicatePointRedemptionRequestException"/>
     /// when the request ID was already used by a concurrent request.
     /// </summary>
     Task SaveChangesAsync(CancellationToken cancellationToken);

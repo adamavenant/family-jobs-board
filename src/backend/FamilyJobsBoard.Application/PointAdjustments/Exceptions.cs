@@ -26,21 +26,3 @@ public sealed class DuplicatePointAdjustmentRequestException : Exception
     {
     }
 }
-
-public sealed class NegativeBalanceConfirmationRequiredException : Exception
-{
-    public NegativeBalanceConfirmationRequiredException(
-        string childDisplayName,
-        int currentBalance,
-        int resultingBalance)
-        : base(
-            $"This adjustment would take {childDisplayName}'s balance from {currentBalance} to {resultingBalance}. Confirm to continue.")
-    {
-        CurrentBalance = currentBalance;
-        ResultingBalance = resultingBalance;
-    }
-
-    public int CurrentBalance { get; }
-
-    public int ResultingBalance { get; }
-}

@@ -88,7 +88,7 @@ public sealed class PointAdjustmentTests
     }
 
     [Fact]
-    public void Only_manual_adjustments_may_be_negative()
+    public void Job_and_behaviour_awards_cannot_be_negative()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new PointsLedgerEntry(
             Guid.NewGuid(), Child, Guid.NewGuid(), -1, Now));
