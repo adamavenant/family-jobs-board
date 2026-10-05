@@ -63,6 +63,10 @@ import {
 } from "../features/goodBehaviours/goodBehavioursRoute";
 import { pointAdjustmentsAction } from "../features/pointAdjustments/pointAdjustmentsRoute";
 import {
+  pointRedemptionsAction,
+  pointRedemptionsLoader,
+} from "../features/pointRedemptions/pointRedemptionsRoute";
+import {
   whoseTurnAction,
   whoseTurnLoader,
 } from "../features/whoseTurn/whoseTurnRoute";
@@ -1248,6 +1252,11 @@ export const routes: RouteObject[] = [
   {
     path: "/point-adjustments",
     action: pointAdjustmentsAction,
+  },
+  {
+    path: "/point-redemptions",
+    loader: pointRedemptionsLoader,
+    action: pointRedemptionsAction,
   },
   {
     path: "/calendar",

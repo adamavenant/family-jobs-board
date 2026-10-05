@@ -44,14 +44,9 @@ export function PointAdjustmentsPanel({
   const formRef = useRef<HTMLFormElement>(null);
   const [requestId, setRequestId] = useState(safeRequestId);
   const [handledResult, setHandledResult] = useState<unknown>(null);
-  const [dismissedResult, setDismissedResult] = useState<unknown>(null);
   const result = fetcher.data;
   const submitting = fetcher.state !== "idle";
   const message = recordedMessage(result?.recorded, children);
-  const warning =
-    result?.needsConfirmation && result !== dismissedResult
-      ? result.needsConfirmation
-      : undefined;
 
   // A retry after an error reuses the request ID so the server can record it once;
   // only a recorded adjustment starts a fresh request.
@@ -84,9 +79,9 @@ export function PointAdjustmentsPanel({
           <div>
             <h2>Adjust points</h2>
             <p>
-              Add or remove points with a reason. Each change is recorded on its
-              own and never edited. To fix a mistake, record a new adjustment
-              that undoes it.
+              Add or remove points with a reason. Points never go below zero.
+              Each change is recorded on its own and never edited. To fix a
+              mistake, record a new adjustment that undoes it.
             </p>
           </div>
           <fetcher.Form
@@ -154,63 +149,6 @@ export function PointAdjustmentsPanel({
             </button>
           </fetcher.Form>
         </div>
-
-        {warning ? (
-          <div
-            className="deactivate-confirmation adjustment-warning"
-            role="alert"
-            aria-label="Negative balance warning"
-          >
-            <h3>This will make the balance negative</h3>
-            <p>{warning.message}</p>
-            <div>
-              <fetcher.Form method="post" action="/point-adjustments">
-                <input
-                  type="hidden"
-                  name="requestId"
-                  value={warning.submitted.requestId}
-                />
-                <input
-                  type="hidden"
-                  name="childId"
-                  value={warning.submitted.childId}
-                />
-                <input
-                  type="hidden"
-                  name="direction"
-                  value={warning.submitted.amount < 0 ? "remove" : "add"}
-                />
-                <input
-                  type="hidden"
-                  name="amount"
-                  value={Math.abs(warning.submitted.amount)}
-                />
-                <input
-                  type="hidden"
-                  name="reason"
-                  value={warning.submitted.reason}
-                />
-                <button
-                  type="submit"
-                  name="confirm"
-                  value="true"
-                  className="button--danger"
-                  disabled={submitting}
-                >
-                  {submitting ? "Saving…" : "Yes, adjust anyway"}
-                </button>
-              </fetcher.Form>
-              <button
-                type="button"
-                className="button--quiet"
-                onClick={() => setDismissedResult(result)}
-                disabled={submitting}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : null}
       </div>
     </details>
   );

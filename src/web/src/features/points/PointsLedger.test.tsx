@@ -31,7 +31,14 @@ describe("Points ledger", () => {
           selectedChildId: fredster.id,
           children: [child(fredster, 4)],
           entries: [
-            entry(fredster, "Broke a plate", -2, 4, "2026-09-21T09:00:00Z"),
+            entry(
+              fredster,
+              "Broke a plate",
+              -2,
+              4,
+              "2026-09-21T09:00:00Z",
+              "Addie",
+            ),
             entry(fredster, "Feed the dog", 6, 6, "2026-09-20T08:00:00Z"),
           ],
         }),
@@ -59,6 +66,7 @@ describe("Points ledger", () => {
     expect(newest).toHaveTextContent("−2");
     expect(newest).toHaveTextContent("Broke a plate");
     expect(newest).toHaveTextContent("Balance 4");
+    expect(newest).toHaveTextContent("by Addie");
     expect(within(newest as HTMLElement).getByText(/2026/)).toHaveAttribute(
       "datetime",
       "2026-09-21T09:00:00Z",
@@ -66,9 +74,12 @@ describe("Points ledger", () => {
     expect(oldest).toHaveTextContent("+6");
     expect(oldest).toHaveTextContent("Feed the dog");
     expect(oldest).toHaveTextContent("Balance 6");
-    // A child's own ledger never names children, sources, or adults.
+    // Job awards don't record who approved them, so they name nobody.
+    expect(oldest).not.toHaveTextContent(/\bby\b/);
+    // A child's own ledger names the adult who recorded an entry, but never
+    // children or sources.
     expect(list).not.toHaveTextContent("Fredster");
-    expect(list).not.toHaveTextContent(/Adjustment|Job|logged by/);
+    expect(list).not.toHaveTextContent(/Adjustment|Job|Redemption/);
     expect(api.ledgerRequests).toEqual([{ childId: null, before: null }]);
   });
 
@@ -298,6 +309,7 @@ function entry(
   points: number,
   balanceAfter: number,
   awardedAtUtc: string,
+  recordedByDisplayName: string | null = null,
 ) {
   return {
     id: crypto.randomUUID(),
@@ -307,6 +319,7 @@ function entry(
     points,
     balanceAfter,
     awardedAtUtc,
+    recordedByDisplayName,
   };
 }
 

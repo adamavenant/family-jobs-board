@@ -4,22 +4,11 @@ import {
   PointAdjustmentApiError,
   recordPointAdjustment,
 } from "../../api/pointAdjustments";
-import type { NegativeBalanceWarning } from "../../api/pointAdjustments";
 import { createRequestId } from "../../app/requestId";
-
-export interface SubmittedAdjustment {
-  requestId: string;
-  childId: string;
-  amount: number;
-  reason: string;
-}
 
 export interface PointAdjustmentActionResult {
   intent: "recordAdjustment";
   recorded?: { childId: string; amount: number; pointsBalance: number };
-  needsConfirmation?: NegativeBalanceWarning & {
-    submitted: SubmittedAdjustment;
-  };
   error?: string;
 }
 
@@ -58,29 +47,13 @@ export async function pointAdjustmentsAction({
     );
   }
 
-  const submitted: SubmittedAdjustment = {
-    requestId,
-    childId,
-    amount: direction === "remove" ? -magnitude : magnitude,
-    reason,
-  };
   try {
     const result = await recordPointAdjustment({
-      ...submitted,
-      confirmNegativeBalance: text(form, "confirm") === "true",
+      requestId,
+      childId,
+      amount: direction === "remove" ? -magnitude : magnitude,
+      reason,
     });
-    if (result.status === "needsConfirmation") {
-      return {
-        intent: "recordAdjustment",
-        needsConfirmation: {
-          message: result.message,
-          currentBalance: result.currentBalance,
-          resultingBalance: result.resultingBalance,
-          submitted,
-        },
-      };
-    }
-
     return {
       intent: "recordAdjustment",
       recorded: {

@@ -3,44 +3,46 @@ import createClient from "openapi-fetch";
 import type { paths } from "./schema";
 import { authenticatedFetch } from "./auth";
 
-export interface PointAdjustmentInput {
+export interface PointRedemptionInput {
   requestId: string;
   childId: string;
-  amount: number;
-  reason: string;
+  points: number;
+  reward: string;
 }
 
-export interface RecordedPointAdjustment {
-  amount: number;
+export interface RecordedPointRedemption {
+  points: number;
+  reward: string;
   pointsBalance: number;
 }
 
-export class PointAdjustmentApiError extends Error {
+export class PointRedemptionApiError extends Error {
   public constructor(message: string) {
     super(message);
-    this.name = "PointAdjustmentApiError";
+    this.name = "PointRedemptionApiError";
   }
 }
 
-export async function recordPointAdjustment(
-  input: PointAdjustmentInput,
-): Promise<RecordedPointAdjustment> {
+export async function redeemPoints(
+  input: PointRedemptionInput,
+): Promise<RecordedPointRedemption> {
   const client = createClient<paths>({
     baseUrl: window.location.origin,
     fetch: authenticatedFetch,
   });
-  const { data, error } = await client.POST("/api/point-adjustments", {
+  const { data, error } = await client.POST("/api/point-redemptions", {
     body: input,
   });
   if (data) {
     return {
-      amount: Number(data.adjustment.amount),
+      points: Number(data.redemption.points),
+      reward: data.redemption.reward,
       pointsBalance: Number(data.pointsBalance),
     };
   }
 
-  throw new PointAdjustmentApiError(
-    problemMessage(error, "That points adjustment couldn't be saved."),
+  throw new PointRedemptionApiError(
+    problemMessage(error, "That redemption couldn't be saved."),
   );
 }
 

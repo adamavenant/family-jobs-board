@@ -1653,7 +1653,8 @@ a.hero__balance:focus-visible {
   font-size: 0.9rem;
   white-space: nowrap;
 }
-.earning-list time {
+.earning-list time,
+.earning-list__recorder {
   color: var(--muted);
   font-size: 0.9rem;
 }
@@ -1683,8 +1684,13 @@ a.hero__balance:focus-visible {
 .point-adjustments .family-member-form .form-group:last-of-type {
   grid-column: 1 / -1;
 }
-.adjustment-warning h3 {
-  margin: 0 0 6px;
+.redeem-reward__balance {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+}
+.redeem-reward__reward {
+  grid-column: 1 / -1;
 }
 .good-behaviours__note {
   margin: 16px 0 0;
