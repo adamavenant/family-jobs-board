@@ -1891,12 +1891,18 @@ a.hero__balance:focus-visible {
     flex-direction: column;
   }
   .hero__actions {
+    position: relative;
     width: 100%;
+    flex-wrap: wrap;
     justify-content: space-between;
   }
+  .identity-menu {
+    position: static;
+  }
   .identity-menu__panel {
-    right: auto;
+    right: 0;
     left: 0;
+    width: auto;
   }
   .hero__count {
     width: 98px;
