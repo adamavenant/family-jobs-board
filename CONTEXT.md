@@ -28,7 +28,8 @@ A user with administrative privileges within the family system. Adults can manag
 #### Characteristics
 - All User characteristics
 - Implemented administration includes user management, job creation,
-  good-behaviour types and logging, and manual point adjustments
+  good-behaviour types and logging, manual point adjustments, and reward
+  redemptions
 
 ### Job
 A task or chore assigned to one child within the family system. An adult may
@@ -94,18 +95,21 @@ a type never changes behaviours already logged.
 
 ### Points
 The currency accumulated by Children. Job-earned awards, good-behaviour awards,
-and manual adjustments, with their append-only history, are implemented. Adult
-redemption is planned and not yet implemented.
+manual adjustments, and adult redemptions, with their append-only history, are
+implemented.
 
 #### Properties
 - Accumulated total per Child
 - Trackable history of point assignments, read as a newest-first points
   ledger with a running balance: each Child sees only their own, and Adults
-  see every Child's, filterable by Child
-- Manual adjustments by Adults are signed, need a reason, and may take a balance
-  negative only after explicit confirmation; mistakes are corrected with a new
-  opposite entry, never by editing history
-- Adult redemption is planned, not yet implemented
+  see every Child's, filterable by Child. Each entry names the Adult who
+  recorded it, where one is recorded
+- Never negative: points are never taken below zero, and every removal for a
+  Child is serialized so concurrent removals can't overdraw a balance
+- Manual adjustments by Adults are signed and need a reason; mistakes are
+  corrected with a new opposite entry, never by editing history
+- Redemptions: an Adult spends a Child's points on a free-text reward; a
+  redemption is its own negative ledger entry and is never edited or undone
 - Do not expire
 
 ### Turn Rotation ("Whose Turn Is It?")
@@ -139,6 +143,7 @@ Functions available to Adult users for managing the system.
 - Manage Jobs (add, edit, schedule, delete)
 - Manage Good Behaviours (planned, not yet implemented)
 - Manually adjust accumulated points (add or remove, with a required reason)
+- Redeem a Child's points for a reward
 - View audit trails for all actions (planned, not yet implemented)
 
 ## Relationships

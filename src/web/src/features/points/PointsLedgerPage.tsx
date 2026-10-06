@@ -189,6 +189,11 @@ function LedgerEntries({
                 <time dateTime={entry.awardedAtUtc}>
                   {formatAwardTime(entry.awardedAtUtc)}
                 </time>
+                {entry.recordedByDisplayName ? (
+                  <span className="earning-list__recorder">
+                    by {entry.recordedByDisplayName}
+                  </span>
+                ) : null}
               </span>
               <span className="earning-list__balance">
                 Balance {formatBalance(entry.balanceAfter)}

@@ -68,7 +68,7 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Removing_points_within_the_balance_succeeds_without_confirmation()
+    public async Task Removing_points_within_the_balance_succeeds()
     {
         (await AdjustAsync(DemoDataIds.Harrie, 10, "Bonus")).Dispose();
 
@@ -105,15 +105,15 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
                 points = (int?)null,
             });
         behaviour.EnsureSuccessStatusCode();
-        (await AdjustAsync(DemoDataIds.Fredster, -3, "Left the gate open", confirm: true)).Dispose();
+        (await AdjustAsync(DemoDataIds.Fredster, -3, "Left the gate open")).Dispose();
 
         var board = await GetTodayAsync(DemoDataIds.Fredster);
         var ledger = await GetLedgerAsync(DemoDataIds.Fredster);
 
         Assert.Equal(7, board.PointsBalance);
         Assert.Equal(
-            [("Left the gate open", 7), ("Being Helpful", 10), ("Feed the dog", 5)],
-            ledger.Entries.Select(entry => (entry.Name, entry.BalanceAfter)));
+            [("Left the gate open", 7, "Addie"), ("Being Helpful", 10, "Addie"), ("Feed the dog", 5, null)],
+            ledger.Entries.Select(entry => (entry.Name, entry.BalanceAfter, entry.RecordedByDisplayName)));
     }
 
     [Fact]
@@ -136,30 +136,55 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Taking_the_balance_negative_requires_confirmation_then_succeeds()
+    public async Task Removing_more_than_the_balance_is_rejected_with_the_current_balance()
     {
         (await AdjustAsync(DemoDataIds.Fredster, 3, "Start")).Dispose();
 
-        using var unconfirmed = await AdjustAsync(DemoDataIds.Fredster, -5, "Lost a library book");
+        using var rejected = await AdjustAsync(DemoDataIds.Fredster, -5, "Lost a library book");
 
-        Assert.Equal(HttpStatusCode.Conflict, unconfirmed.StatusCode);
-        var problem = await unconfirmed.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("negativeBalanceConfirmationRequired", problem.GetProperty("code").GetString());
+        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+        var problem = await rejected.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("insufficientPoints", problem.GetProperty("code").GetString());
         Assert.Equal(3, problem.GetProperty("currentBalance").GetInt32());
-        Assert.Equal(-2, problem.GetProperty("resultingBalance").GetInt32());
+        Assert.Equal("Fredster only has 3 points.", problem.GetProperty("detail").GetString());
         Assert.Equal(1, await CountLedgerEntriesAsync());
         Assert.Equal(3, (await GetTodayAsync(DemoDataIds.Fredster)).PointsBalance);
+    }
 
-        using var confirmed = await AdjustAsync(
-            DemoDataIds.Fredster, -5, "Lost a library book", confirm: true);
+    [Fact]
+    public async Task The_retired_confirmation_flag_cannot_take_the_balance_negative()
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            "/api/point-adjustments",
+            DemoDataIds.Addie,
+            new
+            {
+                requestId = Guid.NewGuid(),
+                childId = DemoDataIds.Fredster,
+                amount = -1,
+                reason = "Old client",
+                confirmNegativeBalance = true,
+            });
 
-        Assert.Equal(HttpStatusCode.Created, confirmed.StatusCode);
-        var body = await confirmed.Content.ReadFromJsonAsync<AdjustmentResponse>();
-        Assert.Equal(-2, body!.PointsBalance);
-        var board = await GetTodayAsync(DemoDataIds.Fredster);
-        Assert.Equal(-2, board.PointsBalance);
-        var newest = (await GetLedgerAsync(DemoDataIds.Fredster)).Entries[0];
-        Assert.Equal((-5, -2), (newest.Points, newest.BalanceAfter));
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(0, await CountLedgerEntriesAsync());
+    }
+
+    [Fact]
+    public async Task Concurrent_removals_never_take_the_balance_below_zero()
+    {
+        (await AdjustAsync(DemoDataIds.Harrie, 10, "Start")).Dispose();
+
+        var statuses = await Task.WhenAll(Enumerable.Range(0, 6).Select(async index =>
+        {
+            using var response = await AdjustAsync(DemoDataIds.Harrie, -3, $"Removal {index}");
+            return response.StatusCode;
+        }));
+
+        Assert.Equal(3, statuses.Count(status => status == HttpStatusCode.Created));
+        Assert.Equal(3, statuses.Count(status => status == HttpStatusCode.Conflict));
+        Assert.Equal(1, (await GetTodayAsync(DemoDataIds.Harrie)).PointsBalance);
     }
 
     [Fact]
@@ -177,6 +202,21 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
         Assert.Equal(firstBody!.Adjustment.Id, retryBody!.Adjustment.Id);
         Assert.Equal(8, retryBody.PointsBalance);
         Assert.Equal(1, await CountLedgerEntriesAsync());
+    }
+
+    [Fact]
+    public async Task A_retry_returns_the_original_balance_after_later_points()
+    {
+        var requestId = Guid.NewGuid();
+        (await AdjustAsync(DemoDataIds.Fredster, 8, "Tidy room", requestId: requestId)).Dispose();
+        (await AdjustAsync(DemoDataIds.Fredster, 5, "Bonus")).Dispose();
+
+        using var retry = await AdjustAsync(DemoDataIds.Fredster, 8, "Tidy room", requestId: requestId);
+
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        var body = await retry.Content.ReadFromJsonAsync<AdjustmentResponse>();
+        Assert.Equal(8, body!.PointsBalance);
+        Assert.Equal(13, (await GetTodayAsync(DemoDataIds.Fredster)).PointsBalance);
     }
 
     [Fact]
@@ -225,7 +265,6 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
                 childId = DemoDataIds.Fredster,
                 amount = 1000,
                 reason = "Sneaky",
-                confirmNegativeBalance = false,
             });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
@@ -354,7 +393,6 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
         Guid childId,
         int amount,
         string? reason,
-        bool confirm = false,
         Guid? requestId = null)
     {
         return SendAsync(
@@ -367,7 +405,6 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
                 childId,
                 amount,
                 reason,
-                confirmNegativeBalance = confirm,
             });
     }
 

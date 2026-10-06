@@ -37,7 +37,6 @@ interface AdjustmentRequest {
   childId: string;
   amount: number;
   reason: string;
-  confirmNegativeBalance: boolean;
 }
 
 describe("Point adjustments", () => {
@@ -63,7 +62,6 @@ describe("Point adjustments", () => {
         childId: harrie.id,
         amount: 5,
         reason: "Helped a friend",
-        confirmNegativeBalance: false,
       },
     ]);
     expect(within(form).getByLabelText("Reason")).toHaveValue("");
@@ -90,7 +88,6 @@ describe("Point adjustments", () => {
     expect(api.requests[0]).toMatchObject({
       childId: fredster.id,
       amount: -3,
-      confirmNegativeBalance: false,
     });
   });
 
@@ -112,10 +109,8 @@ describe("Point adjustments", () => {
     expect(api.requests).toHaveLength(0);
   });
 
-  it("warns before a negative balance and only proceeds after explicit confirmation", async () => {
-    const api = fakeApi(adultBoard, (body) =>
-      body.confirmNegativeBalance ? recorded(body, -2) : negativeWarning(3, -2),
-    );
+  it("shows the server's message when removing more points than the child has", async () => {
+    const api = fakeApi(adultBoard, () => insufficientPoints(3));
     const user = userEvent.setup();
     renderApp(addie);
 
@@ -127,57 +122,21 @@ describe("Point adjustments", () => {
       within(form).getByRole("button", { name: "Record adjustment" }),
     );
 
-    const warning = await screen.findByRole("alert", {
-      name: "Negative balance warning",
-    });
-    expect(warning).toHaveTextContent("This will make the balance negative");
-    expect(warning).toHaveTextContent("from 3 to -2");
+    expect(await within(form).findByRole("alert")).toHaveTextContent(
+      "Fredster only has 3 points.",
+    );
     expect(screen.queryByText(/Balance is now/)).not.toBeInTheDocument();
-    expect(api.requests).toHaveLength(1);
-    expect(api.requests[0]?.confirmNegativeBalance).toBe(false);
-
-    // Editing the form after the warning must not change what gets confirmed.
-    await user.clear(within(form).getByLabelText("Number of points"));
-    await user.type(within(form).getByLabelText("Number of points"), "500");
-    await user.click(
-      within(warning).getByRole("button", { name: "Yes, adjust anyway" }),
-    );
-
     expect(
-      await screen.findByText(
-        "Removed 5 points from Fredster. Balance is now -2.",
-      ),
-    ).toBeInTheDocument();
-    expect(api.requests).toHaveLength(2);
-    expect(api.requests[1]).toEqual({
-      ...api.requests[0],
-      confirmNegativeBalance: true,
-    });
-    expect(api.requests[1]?.amount).toBe(-5);
-    expect(api.requests[1]?.requestId).toBe(api.requests[0]?.requestId);
-  });
-
-  it("lets the adult cancel at the warning without recording anything", async () => {
-    const api = fakeApi(adultBoard, () => negativeWarning(0, -4));
-    const user = userEvent.setup();
-    renderApp(addie);
-
-    const form = await openPanel(user);
-    await user.click(within(form).getByLabelText("Remove points"));
-    await user.type(within(form).getByLabelText("Number of points"), "4");
-    await user.type(within(form).getByLabelText("Reason"), "Mistake");
-    await user.click(
-      within(form).getByRole("button", { name: "Record adjustment" }),
-    );
-    const warning = await screen.findByRole("alert", {
-      name: "Negative balance warning",
-    });
-    await user.click(within(warning).getByRole("button", { name: "Cancel" }));
-
-    expect(
-      screen.queryByRole("alert", { name: "Negative balance warning" }),
+      screen.queryByRole("button", { name: /adjust anyway/i }),
     ).not.toBeInTheDocument();
-    expect(api.requests).toHaveLength(1);
+    expect(api.requests).toEqual([
+      {
+        requestId: expect.any(String),
+        childId: fredster.id,
+        amount: -5,
+        reason: "Lost a book",
+      },
+    ]);
   });
 
   it("shows server rejections and reuses the request ID for the retry", async () => {
@@ -254,15 +213,14 @@ function recorded(body: AdjustmentRequest, balance: number) {
   );
 }
 
-function negativeWarning(currentBalance: number, resultingBalance: number) {
+function insufficientPoints(currentBalance: number) {
   return jsonResponse(
     {
-      title: "Confirm a negative balance",
-      detail: `This adjustment would take Fredster's balance from ${currentBalance} to ${resultingBalance}. Confirm to continue.`,
+      title: "Not enough points",
+      detail: `Fredster only has ${currentBalance} points.`,
       status: 409,
-      code: "negativeBalanceConfirmationRequired",
+      code: "insufficientPoints",
       currentBalance,
-      resultingBalance,
     },
     { status: 409 },
   );

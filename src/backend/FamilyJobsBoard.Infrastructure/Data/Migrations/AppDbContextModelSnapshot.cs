@@ -887,6 +887,57 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FamilyJobsBoard.Domain.PointRedemptions.PointRedemption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ChildId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("child_id");
+
+                    b.Property<int>("Points")
+                        .HasColumnType("integer")
+                        .HasColumnName("points");
+
+                    b.Property<DateTimeOffset>("RedeemedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("redeemed_at_utc");
+
+                    b.Property<Guid>("RedeemedByMemberId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("redeemed_by_member_id");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_id");
+
+                    b.Property<string>("Reward")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("reward");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RedeemedByMemberId");
+
+                    b.HasIndex("RequestId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_point_redemptions_request_id");
+
+                    b.HasIndex("ChildId", "RedeemedAtUtc");
+
+                    b.ToTable("point_redemptions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_point_redemptions_points", "points > 0");
+
+                            t.HasCheckConstraint("ck_point_redemptions_reward", "length(btrim(reward)) > 0");
+                        });
+                });
+
             modelBuilder.Entity("FamilyJobsBoard.Domain.Points.PointsLedgerEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -918,6 +969,10 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("point_adjustment_id");
 
+                    b.Property<Guid?>("PointRedemptionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("point_redemption_id");
+
                     b.HasKey("Id");
 
                     b.HasIndex("GoodBehaviourId")
@@ -932,14 +987,18 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_points_ledger_entries_point_adjustment_id");
 
+                    b.HasIndex("PointRedemptionId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_points_ledger_entries_point_redemption_id");
+
                     b.HasIndex("ChildId", "AwardedAtUtc", "Id")
                         .HasDatabaseName("ix_points_ledger_entries_child_timeline");
 
                     b.ToTable("points_ledger_entries", null, t =>
                         {
-                            t.HasCheckConstraint("ck_points_ledger_entries_amount_sign", "(point_adjustment_id IS NULL AND amount >= 0) OR (point_adjustment_id IS NOT NULL AND amount <> 0)");
+                            t.HasCheckConstraint("ck_points_ledger_entries_amount_sign", "(point_adjustment_id IS NULL AND point_redemption_id IS NULL AND amount >= 0) OR (point_adjustment_id IS NOT NULL AND amount <> 0) OR (point_redemption_id IS NOT NULL AND amount < 0)");
 
-                            t.HasCheckConstraint("ck_points_ledger_entries_single_source", "num_nonnulls(job_id, good_behaviour_id, point_adjustment_id) = 1");
+                            t.HasCheckConstraint("ck_points_ledger_entries_single_source", "num_nonnulls(job_id, good_behaviour_id, point_adjustment_id, point_redemption_id) = 1");
                         });
                 });
 
@@ -1194,6 +1253,21 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("FamilyJobsBoard.Domain.PointRedemptions.PointRedemption", b =>
+                {
+                    b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
+                        .WithMany()
+                        .HasForeignKey("ChildId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
+                        .WithMany()
+                        .HasForeignKey("RedeemedByMemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("FamilyJobsBoard.Domain.Points.PointsLedgerEntry", b =>
                 {
                     b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
@@ -1215,6 +1289,11 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                     b.HasOne("FamilyJobsBoard.Domain.PointAdjustments.PointAdjustment", null)
                         .WithMany()
                         .HasForeignKey("PointAdjustmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FamilyJobsBoard.Domain.PointRedemptions.PointRedemption", null)
+                        .WithMany()
+                        .HasForeignKey("PointRedemptionId")
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 

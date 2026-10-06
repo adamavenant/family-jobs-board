@@ -22,3 +22,22 @@ public sealed class PointsLedgerForbiddenException : Exception
     {
     }
 }
+
+/// <summary>
+/// Removing the requested points would take the child's balance below zero.
+/// </summary>
+public sealed class InsufficientPointsException : Exception
+{
+    public InsufficientPointsException(string childDisplayName, int currentBalance)
+        : base(currentBalance switch
+        {
+            <= 0 => $"{childDisplayName} doesn't have any points.",
+            1 => $"{childDisplayName} only has 1 point.",
+            _ => $"{childDisplayName} only has {currentBalance} points.",
+        })
+    {
+        CurrentBalance = currentBalance;
+    }
+
+    public int CurrentBalance { get; }
+}

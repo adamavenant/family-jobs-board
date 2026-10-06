@@ -5,8 +5,7 @@ public sealed record RecordPointAdjustment(
     Guid AdjustedByMemberId,
     Guid ChildId,
     int Amount,
-    string? Reason,
-    bool ConfirmNegativeBalance);
+    string? Reason);
 
 public sealed record RecordedPointAdjustment(
     Guid Id,

@@ -4,6 +4,7 @@ using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Identity;
 using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Domain.PointAdjustments;
+using FamilyJobsBoard.Domain.PointRedemptions;
 using FamilyJobsBoard.Domain.Points;
 using FamilyJobsBoard.Domain.TurnRotations;
 using Microsoft.EntityFrameworkCore;
@@ -45,6 +46,8 @@ public sealed class AppDbContext : DbContext
     public DbSet<GoodBehaviour> GoodBehaviours => Set<GoodBehaviour>();
 
     public DbSet<PointAdjustment> PointAdjustments => Set<PointAdjustment>();
+
+    public DbSet<PointRedemption> PointRedemptions => Set<PointRedemption>();
 
     public DbSet<HouseholdDataReset> HouseholdDataResets => Set<HouseholdDataReset>();
 

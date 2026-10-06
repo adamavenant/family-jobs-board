@@ -19,6 +19,7 @@ import {
 import { GoodBehavioursPanel } from "../goodBehaviours/GoodBehavioursPanel";
 import { GoodBehaviourTypesList } from "../goodBehaviours/GoodBehaviourTypesList";
 import { PointAdjustmentsPanel } from "../pointAdjustments/PointAdjustmentsPanel";
+import { RedeemRewardPanel } from "../pointRedemptions/RedeemRewardPanel";
 import { WhoseTurnCard } from "../whoseTurn/WhoseTurnCard";
 import { WhoseTurnPanel } from "../whoseTurn/WhoseTurnPanel";
 import { formatBalance } from "../points/pointsFormatting";
@@ -110,6 +111,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
           <RecurringJobForm children={children} today={currentDate} />
           <GoodBehavioursPanel children={children} />
           <PointAdjustmentsPanel children={children} />
+          <RedeemRewardPanel children={children} />
           <WhoseTurnPanel children={children} currentDate={currentDate} />
           <AdminDataResetPanel />
         </div>

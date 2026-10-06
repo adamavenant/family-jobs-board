@@ -1,25 +1,25 @@
 import createClient from "openapi-fetch";
 
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
 import { authenticatedFetch } from "./auth";
 
-export interface PointAdjustmentInput {
-  requestId: string;
-  childId: string;
+type GeneratedPointAdjustmentRequest =
+  components["schemas"]["RecordPointAdjustmentRequest"];
+
+// The generated request, narrowed to what the UI always sends: a whole number of
+// points and a reason that has already been checked.
+export type PointAdjustmentInput = Omit<
+  GeneratedPointAdjustmentRequest,
+  "amount" | "reason"
+> & {
   amount: number;
   reason: string;
-  confirmNegativeBalance: boolean;
-}
+};
 
-export interface NegativeBalanceWarning {
-  message: string;
-  currentBalance: number;
-  resultingBalance: number;
+export interface RecordedPointAdjustment {
+  amount: number;
+  pointsBalance: number;
 }
-
-export type RecordPointAdjustmentResult =
-  | { status: "recorded"; amount: number; pointsBalance: number }
-  | ({ status: "needsConfirmation" } & NegativeBalanceWarning);
 
 export class PointAdjustmentApiError extends Error {
   public constructor(message: string) {
@@ -30,7 +30,7 @@ export class PointAdjustmentApiError extends Error {
 
 export async function recordPointAdjustment(
   input: PointAdjustmentInput,
-): Promise<RecordPointAdjustmentResult> {
+): Promise<RecordedPointAdjustment> {
   const client = createClient<paths>({
     baseUrl: window.location.origin,
     fetch: authenticatedFetch,
@@ -40,47 +40,14 @@ export async function recordPointAdjustment(
   });
   if (data) {
     return {
-      status: "recorded",
       amount: Number(data.adjustment.amount),
       pointsBalance: Number(data.pointsBalance),
     };
   }
 
-  const warning = negativeBalanceWarning(error);
-  if (warning) {
-    return { status: "needsConfirmation", ...warning };
-  }
-
   throw new PointAdjustmentApiError(
     problemMessage(error, "That points adjustment couldn't be saved."),
   );
-}
-
-function negativeBalanceWarning(error: unknown): NegativeBalanceWarning | null {
-  if (
-    error &&
-    typeof error === "object" &&
-    Reflect.get(error, "code") === "negativeBalanceConfirmationRequired"
-  ) {
-    const currentBalance = Number(Reflect.get(error, "currentBalance"));
-    const resultingBalance = Number(Reflect.get(error, "resultingBalance"));
-    const detail = Reflect.get(error, "detail");
-    if (
-      Number.isInteger(currentBalance) &&
-      Number.isInteger(resultingBalance)
-    ) {
-      return {
-        message:
-          typeof detail === "string" && detail.length > 0
-            ? detail
-            : `This would take the balance from ${currentBalance} to ${resultingBalance}.`,
-        currentBalance,
-        resultingBalance,
-      };
-    }
-  }
-
-  return null;
 }
 
 function problemMessage(error: unknown, fallback: string): string {

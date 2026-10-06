@@ -1,5 +1,6 @@
 using FamilyJobsBoard.Api.Features.Identity;
 using FamilyJobsBoard.Application.PointAdjustments;
+using FamilyJobsBoard.Application.Points;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 
@@ -7,7 +8,7 @@ namespace FamilyJobsBoard.Api.Features.PointAdjustments;
 
 internal static class PointAdjustmentEndpoints
 {
-    public const string NegativeBalanceCode = "negativeBalanceConfirmationRequired";
+    public const string InsufficientPointsCode = "insufficientPoints";
     public const string RequestConflictCode = "requestConflict";
 
     public static IEndpointRouteBuilder MapPointAdjustmentEndpoints(
@@ -21,7 +22,7 @@ internal static class PointAdjustmentEndpoints
             .WithName("RecordPointAdjustment")
             .WithSummary("Manually add or remove points for a child.")
             .WithDescription(
-                "Adult-only. Records a signed, non-zero adjustment with a required reason as its own append-only ledger entry; mistakes are corrected with a new opposite adjustment. An adjustment that would take the balance below zero returns 409 with code 'negativeBalanceConfirmationRequired' and the current and resulting balances unless confirmNegativeBalance is true. Repeating a request ID with the same details returns the original result without a second entry; reusing it for different details returns 409 with code 'requestConflict'.");
+                "Adult-only. Records a signed, non-zero adjustment with a required reason as its own append-only ledger entry; mistakes are corrected with a new opposite adjustment. Points are never taken below zero: a removal larger than the balance returns 409 with code 'insufficientPoints' and the current balance. Repeating a request ID with the same details returns the original result without a second entry; reusing it for different details returns 409 with code 'requestConflict'.");
 
         return endpoints;
     }
@@ -44,8 +45,7 @@ internal static class PointAdjustmentEndpoints
                     IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
                     request.ChildId,
                     request.Amount,
-                    request.Reason,
-                    request.ConfirmNegativeBalance),
+                    request.Reason),
                 cancellationToken);
             var adjustment = result.Adjustment;
             var response = new RecordPointAdjustmentResponse(
@@ -67,17 +67,16 @@ internal static class PointAdjustmentEndpoints
                 exception.Errors,
                 title: "Invalid point adjustment data");
         }
-        catch (NegativeBalanceConfirmationRequiredException exception)
+        catch (InsufficientPointsException exception)
         {
             var problem = new ProblemDetails
             {
-                Title = "Confirm a negative balance",
+                Title = "Not enough points",
                 Detail = exception.Message,
                 Status = StatusCodes.Status409Conflict,
             };
-            problem.Extensions["code"] = NegativeBalanceCode;
+            problem.Extensions["code"] = InsufficientPointsCode;
             problem.Extensions["currentBalance"] = exception.CurrentBalance;
-            problem.Extensions["resultingBalance"] = exception.ResultingBalance;
             return TypedResults.Conflict(problem);
         }
         catch (PointAdjustmentRequestConflictException exception)

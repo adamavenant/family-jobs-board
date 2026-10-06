@@ -1,8 +1,10 @@
 using FamilyJobsBoard.Application.PointAdjustments;
+using FamilyJobsBoard.Application.Points;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.PointAdjustments;
 using FamilyJobsBoard.Domain.Points;
 using FamilyJobsBoard.Infrastructure.Data;
+using FamilyJobsBoard.Infrastructure.Points;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -15,6 +17,13 @@ public sealed class EfPointAdjustmentRepository : IPointAdjustmentRepository
     public EfPointAdjustmentRepository(AppDbContext database)
     {
         _database = database;
+    }
+
+    public Task<IChildPointsLock> LockChildPointsAsync(
+        Guid childId,
+        CancellationToken cancellationToken)
+    {
+        return EfChildPointsLock.AcquireAsync(_database, childId, cancellationToken);
     }
 
     public Task<HouseholdMember?> GetActiveChildAsync(
@@ -54,6 +63,16 @@ public sealed class EfPointAdjustmentRepository : IPointAdjustmentRepository
             .AsNoTracking()
             .Where(entry => entry.ChildId == childId)
             .SumAsync(entry => entry.Amount, cancellationToken);
+    }
+
+    public Task<int> GetPointsBalanceAfterAdjustmentAsync(
+        Guid adjustmentId,
+        CancellationToken cancellationToken)
+    {
+        return LedgerBalances.AfterEntryAsync(
+            _database,
+            entry => entry.PointAdjustmentId == adjustmentId,
+            cancellationToken);
     }
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken)

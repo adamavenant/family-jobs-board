@@ -1777,7 +1777,7 @@
           "Point adjustments"
         ],
         "summary": "Manually add or remove points for a child.",
-        "description": "Adult-only. Records a signed, non-zero adjustment with a required reason as its own append-only ledger entry; mistakes are corrected with a new opposite adjustment. An adjustment that would take the balance below zero returns 409 with code 'negativeBalanceConfirmationRequired' and the current and resulting balances unless confirmNegativeBalance is true. Repeating a request ID with the same details returns the original result without a second entry; reusing it for different details returns 409 with code 'requestConflict'.",
+        "description": "Adult-only. Records a signed, non-zero adjustment with a required reason as its own append-only ledger entry; mistakes are corrected with a new opposite adjustment. Points are never taken below zero: a removal larger than the balance returns 409 with code 'insufficientPoints' and the current balance. Repeating a request ID with the same details returns the original result without a second entry; reusing it for different details returns 409 with code 'requestConflict'.",
         "operationId": "RecordPointAdjustment",
         "requestBody": {
           "content": {
@@ -1838,13 +1838,80 @@
         ]
       }
     },
+    "/api/point-redemptions": {
+      "post": {
+        "tags": [
+          "Point redemptions"
+        ],
+        "summary": "Spend a child's points on a reward.",
+        "description": "Adult-only. Records a redemption of a positive number of points with a required reward as its own append-only, negative ledger entry. A redemption can never take the balance below zero: asking for more points than the child has returns 409 with code 'insufficientPoints' and the current balance. Repeating a request ID with the same details returns the original result without a second entry; reusing it for different details returns 409 with code 'requestConflict'.",
+        "operationId": "RedeemPoints",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedeemPointsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RedeemPointsResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RedeemPointsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
     "/api/points-ledger": {
       "get": {
         "tags": [
           "Points ledger"
         ],
         "summary": "Get the points ledger, newest first.",
-        "description": "Children always receive their own ledger; any other childId returns 403. Adults receive every child's ledger, or one child's with childId; an unknown or adult ID returns 400. Each page holds up to 20 entries with the name, signed points, award time, and the child's balance after the entry. Pass nextCursor as 'before' to read older entries.",
+        "description": "Children always receive their own ledger; any other childId returns 403. Adults receive every child's ledger, or one child's with childId; an unknown or adult ID returns 400. Each page holds up to 20 entries with the name, signed points, award time, the child's balance after the entry, and recordedByDisplayName: the adult who logged the behaviour, made the adjustment, or redeemed the points (null for job awards). Pass nextCursor as 'before' to read older entries.",
         "operationId": "GetPointsLedger",
         "parameters": [
           {
@@ -3264,6 +3331,46 @@
           }
         }
       },
+      "PointRedemptionResponse": {
+        "required": [
+          "id",
+          "childId",
+          "redeemedByMemberId",
+          "points",
+          "reward",
+          "redeemedAtUtc"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "redeemedByMemberId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "points": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "reward": {
+            "type": "string"
+          },
+          "redeemedAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "PointsLedgerChildResponse": {
         "required": [
           "id",
@@ -3301,7 +3408,8 @@
           "name",
           "points",
           "balanceAfter",
-          "awardedAtUtc"
+          "awardedAtUtc",
+          "recordedByDisplayName"
         ],
         "type": "object",
         "properties": {
@@ -3338,6 +3446,12 @@
           "awardedAtUtc": {
             "type": "string",
             "format": "date-time"
+          },
+          "recordedByDisplayName": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -3420,8 +3534,7 @@
           "requestId",
           "childId",
           "amount",
-          "reason",
-          "confirmNegativeBalance"
+          "reason"
         ],
         "type": "object",
         "properties": {
@@ -3446,9 +3559,6 @@
               "null",
               "string"
             ]
-          },
-          "confirmNegativeBalance": {
-            "type": "boolean"
           }
         }
       },
@@ -3858,6 +3968,59 @@
           },
           "takesTurns": {
             "type": "boolean"
+          }
+        }
+      },
+      "RedeemPointsRequest": {
+        "required": [
+          "requestId",
+          "childId",
+          "points",
+          "reward"
+        ],
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "points": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "reward": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "RedeemPointsResponse": {
+        "required": [
+          "redemption",
+          "pointsBalance"
+        ],
+        "type": "object",
+        "properties": {
+          "redemption": {
+            "$ref": "#/components/schemas/PointRedemptionResponse"
+          },
+          "pointsBalance": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -4407,6 +4570,9 @@
     },
     {
       "name": "Point adjustments"
+    },
+    {
+      "name": "Point redemptions"
     },
     {
       "name": "Points ledger"

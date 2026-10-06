@@ -532,9 +532,29 @@ export interface paths {
         put?: never;
         /**
          * Manually add or remove points for a child.
-         * @description Adult-only. Records a signed, non-zero adjustment with a required reason as its own append-only ledger entry; mistakes are corrected with a new opposite adjustment. An adjustment that would take the balance below zero returns 409 with code 'negativeBalanceConfirmationRequired' and the current and resulting balances unless confirmNegativeBalance is true. Repeating a request ID with the same details returns the original result without a second entry; reusing it for different details returns 409 with code 'requestConflict'.
+         * @description Adult-only. Records a signed, non-zero adjustment with a required reason as its own append-only ledger entry; mistakes are corrected with a new opposite adjustment. Points are never taken below zero: a removal larger than the balance returns 409 with code 'insufficientPoints' and the current balance. Repeating a request ID with the same details returns the original result without a second entry; reusing it for different details returns 409 with code 'requestConflict'.
          */
         post: operations["RecordPointAdjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/point-redemptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Spend a child's points on a reward.
+         * @description Adult-only. Records a redemption of a positive number of points with a required reward as its own append-only, negative ledger entry. A redemption can never take the balance below zero: asking for more points than the child has returns 409 with code 'insufficientPoints' and the current balance. Repeating a request ID with the same details returns the original result without a second entry; reusing it for different details returns 409 with code 'requestConflict'.
+         */
+        post: operations["RedeemPoints"];
         delete?: never;
         options?: never;
         head?: never;
@@ -550,7 +570,7 @@ export interface paths {
         };
         /**
          * Get the points ledger, newest first.
-         * @description Children always receive their own ledger; any other childId returns 403. Adults receive every child's ledger, or one child's with childId; an unknown or adult ID returns 400. Each page holds up to 20 entries with the name, signed points, award time, and the child's balance after the entry. Pass nextCursor as 'before' to read older entries.
+         * @description Children always receive their own ledger; any other childId returns 403. Adults receive every child's ledger, or one child's with childId; an unknown or adult ID returns 400. Each page holds up to 20 entries with the name, signed points, award time, the child's balance after the entry, and recordedByDisplayName: the adult who logged the behaviour, made the adjustment, or redeemed the points (null for job awards). Pass nextCursor as 'before' to read older entries.
          */
         get: operations["GetPointsLedger"];
         put?: never;
@@ -895,6 +915,19 @@ export interface components {
             /** Format: date-time */
             adjustedAtUtc: string;
         };
+        PointRedemptionResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            childId: string;
+            /** Format: uuid */
+            redeemedByMemberId: string;
+            /** Format: int32 */
+            points: number | string;
+            reward: string;
+            /** Format: date-time */
+            redeemedAtUtc: string;
+        };
         PointsLedgerChildResponse: {
             /** Format: uuid */
             id: string;
@@ -916,6 +949,7 @@ export interface components {
             balanceAfter: number | string;
             /** Format: date-time */
             awardedAtUtc: string;
+            recordedByDisplayName: null | string;
         };
         PointsLedgerResponse: {
             /** Format: uuid */
@@ -940,7 +974,6 @@ export interface components {
             /** Format: int32 */
             amount: number | string;
             reason: null | string;
-            confirmNegativeBalance: boolean;
         };
         RecordPointAdjustmentResponse: {
             adjustment: components["schemas"]["PointAdjustmentResponse"];
@@ -1034,6 +1067,20 @@ export interface components {
             /** Format: date */
             endDate: null | string;
             takesTurns: boolean;
+        };
+        RedeemPointsRequest: {
+            /** Format: uuid */
+            requestId: string;
+            /** Format: uuid */
+            childId: string;
+            /** Format: int32 */
+            points: number | string;
+            reward: null | string;
+        };
+        RedeemPointsResponse: {
+            redemption: components["schemas"]["PointRedemptionResponse"];
+            /** Format: int32 */
+            pointsBalance: number | string;
         };
         RejectJobRequest: {
             reason: null | string;
@@ -2457,6 +2504,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecordPointAdjustmentResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    RedeemPoints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedeemPointsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedeemPointsResponse"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedeemPointsResponse"];
                 };
             };
             /** @description Bad Request */

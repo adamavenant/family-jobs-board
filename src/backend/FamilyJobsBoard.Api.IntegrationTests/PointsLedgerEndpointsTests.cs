@@ -77,26 +77,54 @@ public sealed class PointsLedgerEndpointsTests : IAsyncLifetime
                 childId = DemoDataIds.Fredster,
                 amount = -2,
                 reason = "Broke a plate",
-                confirmNegativeBalance = false,
             });
         adjustment.EnsureSuccessStatusCode();
+        using var redemption = await RedeemAsync(DemoDataIds.Harrie, 4, "Ice cream", DemoDataIds.Hellie);
+        redemption.EnsureSuccessStatusCode();
 
         var ledger = await GetLedgerAsync(_client!, DemoDataIds.Addie);
 
         Assert.Null(ledger.SelectedChildId);
         Assert.Null(ledger.NextCursor);
         Assert.Equal(
-            [("Fredster", true, 3), ("Harrie", true, 10)],
+            [("Fredster", true, 3), ("Harrie", true, 6)],
             ledger.Children.Select(child => (child.DisplayName, child.IsActive, child.Balance)));
         Assert.Equal(
             [
-                ("Broke a plate", "Fredster", -2, 3),
-                ("Being Brave", "Harrie", 10, 10),
-                ("Feed the dog", "Fredster", 5, 5),
+                ("Ice cream", "Harrie", -4, 6, "Hellie"),
+                ("Broke a plate", "Fredster", -2, 3, "Addie"),
+                ("Being Brave", "Harrie", 10, 10, "Addie"),
+                ("Feed the dog", "Fredster", 5, 5, null),
             ],
-            ledger.Entries.Select(entry =>
-                (entry.Name, entry.ChildDisplayName, entry.Points, entry.BalanceAfter)));
+            ledger.Entries.Select(entry => (
+                entry.Name,
+                entry.ChildDisplayName,
+                entry.Points,
+                entry.BalanceAfter,
+                entry.RecordedByDisplayName)));
         Assert.All(ledger.Entries, entry => Assert.NotEqual(default, entry.AwardedAtUtc));
+    }
+
+    [Fact]
+    public async Task Recording_adults_stay_named_after_they_are_deactivated()
+    {
+        await SeedAdjustmentsAsync((DemoDataIds.Harrie, "Bonus", 6, DateTimeOffset.UtcNow.AddMinutes(-5)));
+        using var redemption = await RedeemAsync(DemoDataIds.Harrie, 2, "Sticker", DemoDataIds.Hellie);
+        redemption.EnsureSuccessStatusCode();
+        await using (var scope = _factory!.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var hellie = await database.HouseholdMembers.SingleAsync(
+                member => member.Id == DemoDataIds.Hellie);
+            hellie.Deactivate(DemoDataIds.Addie, DateTimeOffset.UtcNow);
+            await database.SaveChangesAsync();
+        }
+
+        var ledger = await GetLedgerAsync(_client!, DemoDataIds.Harrie);
+
+        Assert.Equal(
+            [("Sticker", "Hellie"), ("Bonus", "Addie")],
+            ledger.Entries.Select(entry => (entry.Name, entry.RecordedByDisplayName)));
     }
 
     [Fact]
@@ -306,6 +334,17 @@ public sealed class PointsLedgerEndpointsTests : IAsyncLifetime
         await database.SaveChangesAsync();
     }
 
+    private Task<HttpResponseMessage> RedeemAsync(
+        Guid childId,
+        int points,
+        string reward,
+        Guid adultId) =>
+        SendAsync(
+            HttpMethod.Post,
+            "/api/point-redemptions",
+            adultId,
+            new { requestId = Guid.NewGuid(), childId, points, reward });
+
     private async Task CompleteAndApproveAsync(Guid jobId, int expectedPoints)
     {
         using var complete = await SendAsync(
@@ -353,5 +392,6 @@ public sealed class PointsLedgerEndpointsTests : IAsyncLifetime
         string Name,
         int Points,
         int BalanceAfter,
-        DateTimeOffset AwardedAtUtc);
+        DateTimeOffset AwardedAtUtc,
+        string? RecordedByDisplayName);
 }

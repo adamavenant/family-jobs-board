@@ -54,6 +54,8 @@ public sealed class PointsLedgerEntry
 
     public Guid? PointAdjustmentId { get; private set; }
 
+    public Guid? PointRedemptionId { get; private set; }
+
     public int Amount { get; private set; }
 
     public DateTimeOffset AwardedAtUtc { get; private set; }
@@ -79,7 +81,7 @@ public sealed class PointsLedgerEntry
     }
 
     /// <summary>
-    /// The only kind of entry that may be negative: a manual adjustment by an adult.
+    /// A manual adjustment by an adult: the only kind of entry that may be either sign.
     /// </summary>
     public static PointsLedgerEntry ForManualAdjustment(
         Guid id,
@@ -105,6 +107,36 @@ public sealed class PointsLedgerEntry
         return new PointsLedgerEntry(id, childId, amount, awardedAtUtc)
         {
             PointAdjustmentId = pointAdjustmentId,
+        };
+    }
+
+    /// <summary>
+    /// A reward redemption: always negative, spending <paramref name="points"/> points.
+    /// </summary>
+    public static PointsLedgerEntry ForRedemption(
+        Guid id,
+        Guid childId,
+        Guid pointRedemptionId,
+        int points,
+        DateTimeOffset redeemedAtUtc)
+    {
+        if (pointRedemptionId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "A points redemption needs a source point redemption.",
+                nameof(pointRedemptionId));
+        }
+
+        if (points < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(points),
+                "A points redemption must spend at least one point.");
+        }
+
+        return new PointsLedgerEntry(id, childId, -points, redeemedAtUtc)
+        {
+            PointRedemptionId = pointRedemptionId,
         };
     }
 

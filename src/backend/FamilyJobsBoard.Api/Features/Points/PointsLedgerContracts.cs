@@ -19,4 +19,5 @@ public sealed record PointsLedgerEntryResponse(
     string Name,
     int Points,
     int BalanceAfter,
-    DateTimeOffset AwardedAtUtc);
+    DateTimeOffset AwardedAtUtc,
+    string? RecordedByDisplayName);

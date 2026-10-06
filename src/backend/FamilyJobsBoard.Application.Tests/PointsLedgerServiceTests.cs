@@ -31,6 +31,27 @@ public sealed class PointsLedgerServiceTests
     }
 
     [Fact]
+    public async Task Each_entry_carries_the_adult_who_recorded_it()
+    {
+        var repository = Repository();
+        repository.Add(_fredster, "Feed the dog", 5, Start);
+        repository.Add(_fredster, "Ice cream", -3, Start.AddMinutes(1), recordedBy: "Addie");
+        var service = new PointsLedgerService(repository);
+
+        var ledger = await service.GetAsync(_fredster.Id, null, null, CancellationToken.None);
+
+        Assert.Collection(
+            ledger.Entries,
+            redemption =>
+            {
+                Assert.Equal("Ice cream", redemption.Name);
+                Assert.Equal("Addie", redemption.RecordedByDisplayName);
+                Assert.Equal(2, redemption.BalanceAfter);
+            },
+            jobAward => Assert.Null(jobAward.RecordedByDisplayName));
+    }
+
+    [Fact]
     public async Task A_child_cannot_ask_for_another_childs_ledger()
     {
         var service = new PointsLedgerService(Repository());
@@ -203,8 +224,14 @@ public sealed class PointsLedgerServiceTests
             _members = members;
         }
 
-        public void Add(HouseholdMember child, string name, int amount, DateTimeOffset awardedAtUtc) =>
-            _records.Add(new PointsLedgerRecord(Guid.NewGuid(), child.Id, name, amount, awardedAtUtc));
+        public void Add(
+            HouseholdMember child,
+            string name,
+            int amount,
+            DateTimeOffset awardedAtUtc,
+            string? recordedBy = null) =>
+            _records.Add(new PointsLedgerRecord(
+                Guid.NewGuid(), child.Id, name, amount, awardedAtUtc, recordedBy));
 
         public IEnumerable<PointsLedgerRecord> Ordered() =>
             _records.OrderByDescending(record => record.AwardedAtUtc).ThenByDescending(record => record.Id);
