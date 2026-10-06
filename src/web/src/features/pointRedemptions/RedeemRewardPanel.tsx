@@ -83,11 +83,8 @@ export function RedeemRewardPanel({
     <details
       className="grown-up-tools point-redemptions"
       onToggle={(event) => {
-        if (
-          event.currentTarget.open &&
-          balances.state === "idle" &&
-          balances.data === undefined
-        ) {
+        // Reload on every open: points may have changed elsewhere, or the last load failed.
+        if (event.currentTarget.open && balances.state === "idle") {
           void balances.load("/point-redemptions");
         }
       }}

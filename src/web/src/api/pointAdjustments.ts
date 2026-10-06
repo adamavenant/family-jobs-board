@@ -1,14 +1,20 @@
 import createClient from "openapi-fetch";
 
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
 import { authenticatedFetch } from "./auth";
 
-export interface PointAdjustmentInput {
-  requestId: string;
-  childId: string;
+type GeneratedPointAdjustmentRequest =
+  components["schemas"]["RecordPointAdjustmentRequest"];
+
+// The generated request, narrowed to what the UI always sends: a whole number of
+// points and a reason that has already been checked.
+export type PointAdjustmentInput = Omit<
+  GeneratedPointAdjustmentRequest,
+  "amount" | "reason"
+> & {
   amount: number;
   reason: string;
-}
+};
 
 export interface RecordedPointAdjustment {
   amount: number;

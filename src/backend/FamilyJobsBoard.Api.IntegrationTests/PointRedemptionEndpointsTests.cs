@@ -141,6 +141,23 @@ public sealed class PointRedemptionEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_retry_returns_the_original_balance_after_later_points()
+    {
+        await GiveAsync(DemoDataIds.Fredster, 8);
+        var requestId = Guid.NewGuid();
+        (await RedeemAsync(DemoDataIds.Fredster, 8, "Ice cream", requestId: requestId)).Dispose();
+        await GiveAsync(DemoDataIds.Fredster, 5);
+
+        using var retry = await RedeemAsync(
+            DemoDataIds.Fredster, 8, "Ice cream", requestId: requestId);
+
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        var body = await retry.Content.ReadFromJsonAsync<RedemptionResponse>();
+        Assert.Equal(0, body!.PointsBalance);
+        Assert.Equal(5, (await GetTodayAsync(DemoDataIds.Fredster)).PointsBalance);
+    }
+
+    [Fact]
     public async Task Concurrent_duplicate_requests_record_one_ledger_entry()
     {
         await GiveAsync(DemoDataIds.Harrie, 5);

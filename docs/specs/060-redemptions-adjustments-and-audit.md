@@ -56,7 +56,8 @@ retrying after an error. A unique database index on the request ID guarantees
 one adjustment and one ledger entry, including under concurrent retries.
 
 - Same request ID and same child, adult, amount, and reason: the original result
-  is returned with `200`.
+  is returned with `200`. Its balance is the one right after the original entry,
+  as the ledger shows it, not the child's current balance.
 - Same request ID with different details: `409` with code `requestConflict`.
 - The request ID is checked again after the child lock is taken. A retry that
   raced the original then replays it, rather than being checked against the
@@ -151,7 +152,8 @@ The same as adjustments: the client sends a `requestId` (GUID), and a unique
 database index on it guarantees one redemption and one ledger entry.
 
 - Same request ID and same child, adult, points, and reward: the original
-  result is returned with `200`.
+  result is returned with `200`, with the balance right after the original
+  entry, as for adjustments.
 - Same request ID with different details: `409` with code `requestConflict`.
 - The request ID is checked again under the child lock.
 

@@ -1,14 +1,20 @@
 import createClient from "openapi-fetch";
 
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
 import { authenticatedFetch } from "./auth";
 
-export interface PointRedemptionInput {
-  requestId: string;
-  childId: string;
+type GeneratedRedeemPointsRequest =
+  components["schemas"]["RedeemPointsRequest"];
+
+// The generated request, narrowed to what the UI always sends: a whole number of
+// points and a reward that has already been checked.
+export type PointRedemptionInput = Omit<
+  GeneratedRedeemPointsRequest,
+  "points" | "reward"
+> & {
   points: number;
   reward: string;
-}
+};
 
 export interface RecordedPointRedemption {
   points: number;

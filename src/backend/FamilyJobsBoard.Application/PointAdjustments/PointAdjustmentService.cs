@@ -156,9 +156,10 @@ public sealed class PointAdjustmentService
             throw new PointAdjustmentRequestConflictException(request.RequestId);
         }
 
+        // The original result: the balance right after this adjustment, not today's balance.
         return new PointAdjustmentResult(
             Map(existing),
-            await _repository.GetPointsBalanceAsync(existing.ChildId, cancellationToken),
+            await _repository.GetPointsBalanceAfterAdjustmentAsync(existing.Id, cancellationToken),
             WasCreated: false);
     }
 

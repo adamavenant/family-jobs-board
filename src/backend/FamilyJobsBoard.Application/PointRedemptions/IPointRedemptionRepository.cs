@@ -27,6 +27,14 @@ public interface IPointRedemptionRepository
     Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// The child's balance right after the redemption's ledger entry, in ledger order: the
+    /// balance-after the points ledger shows for that entry, however many entries followed.
+    /// </summary>
+    Task<int> GetPointsBalanceAfterRedemptionAsync(
+        Guid redemptionId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Persists pending changes. Throws <see cref="DuplicatePointRedemptionRequestException"/>
     /// when the request ID was already used by a concurrent request.
     /// </summary>

@@ -161,6 +161,23 @@ public sealed class PointAdjustmentServiceTests
     }
 
     [Fact]
+    public async Task A_retry_returns_the_original_balance_even_after_later_points()
+    {
+        var repository = new FakeRepository { Balance = 2 };
+        var service = new PointAdjustmentService(repository, new FixedClock());
+        var request = Request(amount: 3);
+        var original = await service.RecordAsync(request, CancellationToken.None);
+        repository.Entries.Add(PointsLedgerEntry.ForGoodBehaviour(
+            Guid.NewGuid(), Child.Id, Guid.NewGuid(), 8, Now.AddMinutes(1)));
+
+        var retry = await service.RecordAsync(request, CancellationToken.None);
+
+        Assert.Equal(5, original.PointsBalance);
+        Assert.False(retry.WasCreated);
+        Assert.Equal(original.PointsBalance, retry.PointsBalance);
+    }
+
+    [Fact]
     public async Task A_retry_recorded_while_waiting_for_the_lock_is_replayed_not_rechecked()
     {
         var repository = new FakeRepository { Balance = 5 };
@@ -304,6 +321,15 @@ public sealed class PointAdjustmentServiceTests
 
         public Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken) =>
             Task.FromResult(Balance + Entries.Where(entry => entry.ChildId == childId).Sum(entry => entry.Amount));
+
+        public Task<int> GetPointsBalanceAfterAdjustmentAsync(
+            Guid adjustmentId,
+            CancellationToken cancellationToken)
+        {
+            // Entries are kept in ledger order, so the balance-after is a running sum.
+            var through = Entries.FindIndex(entry => entry.PointAdjustmentId == adjustmentId);
+            return Task.FromResult(Balance + Entries.Take(through + 1).Sum(entry => entry.Amount));
+        }
 
         public Task SaveChangesAsync(CancellationToken cancellationToken)
         {

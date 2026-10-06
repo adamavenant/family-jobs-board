@@ -65,6 +65,16 @@ public sealed class EfPointRedemptionRepository : IPointRedemptionRepository
             .SumAsync(entry => entry.Amount, cancellationToken);
     }
 
+    public Task<int> GetPointsBalanceAfterRedemptionAsync(
+        Guid redemptionId,
+        CancellationToken cancellationToken)
+    {
+        return LedgerBalances.AfterEntryAsync(
+            _database,
+            entry => entry.PointRedemptionId == redemptionId,
+            cancellationToken);
+    }
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         try

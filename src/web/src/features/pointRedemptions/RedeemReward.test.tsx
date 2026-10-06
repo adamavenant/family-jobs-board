@@ -173,6 +173,53 @@ describe("Redeem a reward", () => {
     expect(api.redemptions).toHaveLength(1);
   });
 
+  it("reloads the balances each time the panel opens", async () => {
+    const api = fakeApi({ balances: { [fredster.id]: 0 } });
+    const user = userEvent.setup();
+    renderApp(addie);
+
+    const form = await openPanel(user);
+    await user.selectOptions(within(form).getByLabelText("Child"), "Fredster");
+    await within(form).findByText(
+      "Fredster doesn't have any points to spend yet.",
+    );
+    expect(
+      within(form).getByRole("button", { name: "Redeem points" }),
+    ).toBeDisabled();
+
+    // Fredster earns points somewhere else while the panel is closed.
+    api.setBalances({ [fredster.id]: 6 });
+    await reopenPanel(user);
+
+    expect(
+      await within(form).findByText("Fredster has 6 points to spend."),
+    ).toBeInTheDocument();
+    expect(
+      within(form).getByRole("button", { name: "Redeem points" }),
+    ).toBeEnabled();
+    expect(within(form).getByLabelText("Points to spend")).toHaveAttribute(
+      "max",
+      "6",
+    );
+  });
+
+  it("retries a failed balance load when the panel is reopened", async () => {
+    const api = fakeApi({ balances: null });
+    const user = userEvent.setup();
+    renderApp(addie);
+
+    const form = await openPanel(user);
+    await user.selectOptions(within(form).getByLabelText("Child"), "Harrie");
+    await within(form).findByText(/The balance couldn’t be loaded/);
+
+    api.setBalances({ [harrie.id]: 3 });
+    await reopenPanel(user);
+
+    expect(
+      await within(form).findByText("Harrie has 3 points to spend."),
+    ).toBeInTheDocument();
+  });
+
   it("does not show children the redeem tool", async () => {
     fakeApi({
       board: { ...adultBoard, viewer: fredster, pointsBalance: 4 },
@@ -218,6 +265,19 @@ function insufficientPoints(currentBalance: number) {
   );
 }
 
+async function reopenPanel(user: ReturnType<typeof userEvent.setup>) {
+  const summary = document.querySelector(".point-redemptions > summary");
+  if (!summary) {
+    throw new Error("The redeem a reward tool was not rendered.");
+  }
+
+  await user.click(summary);
+  expect(
+    document.querySelector<HTMLDetailsElement>(".point-redemptions")?.open,
+  ).toBe(false);
+  await user.click(summary);
+}
+
 async function openPanel(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByRole("heading", { name: "Good day, Addie!" });
   const summary = document.querySelector(".point-redemptions > summary");
@@ -235,6 +295,7 @@ function fakeApi(options: {
   onRedeem?: (body: RedemptionRequest) => Response;
 }) {
   const redemptions: RedemptionRequest[] = [];
+  let balances = options.balances;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -247,18 +308,16 @@ function fakeApi(options: {
       }
 
       if (path === "/api/points-ledger") {
-        return options.balances === null
+        return balances === null
           ? jsonResponse({ title: "Server error" }, { status: 500 })
           : jsonResponse({
               selectedChildId: null,
-              children: Object.entries(options.balances).map(
-                ([id, balance]) => ({
-                  id,
-                  displayName: id === fredster.id ? "Fredster" : "Harrie",
-                  isActive: true,
-                  balance,
-                }),
-              ),
+              children: Object.entries(balances).map(([id, balance]) => ({
+                id,
+                displayName: id === fredster.id ? "Fredster" : "Harrie",
+                isActive: true,
+                balance,
+              })),
               entries: [],
               nextCursor: null,
             });
@@ -267,7 +326,12 @@ function fakeApi(options: {
       return jsonResponse(options.board ?? adultBoard);
     }),
   );
-  return { redemptions };
+  return {
+    redemptions,
+    setBalances(next: Record<string, number> | null) {
+      balances = next;
+    },
+  };
 }
 
 function renderApp(viewer: ReturnType<typeof member>) {

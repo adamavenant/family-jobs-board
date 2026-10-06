@@ -205,6 +205,21 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_retry_returns_the_original_balance_after_later_points()
+    {
+        var requestId = Guid.NewGuid();
+        (await AdjustAsync(DemoDataIds.Fredster, 8, "Tidy room", requestId: requestId)).Dispose();
+        (await AdjustAsync(DemoDataIds.Fredster, 5, "Bonus")).Dispose();
+
+        using var retry = await AdjustAsync(DemoDataIds.Fredster, 8, "Tidy room", requestId: requestId);
+
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        var body = await retry.Content.ReadFromJsonAsync<AdjustmentResponse>();
+        Assert.Equal(8, body!.PointsBalance);
+        Assert.Equal(13, (await GetTodayAsync(DemoDataIds.Fredster)).PointsBalance);
+    }
+
+    [Fact]
     public async Task Concurrent_duplicate_requests_record_one_ledger_entry()
     {
         var requestId = Guid.NewGuid();

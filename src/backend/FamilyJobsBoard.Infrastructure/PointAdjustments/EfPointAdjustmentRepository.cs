@@ -65,6 +65,16 @@ public sealed class EfPointAdjustmentRepository : IPointAdjustmentRepository
             .SumAsync(entry => entry.Amount, cancellationToken);
     }
 
+    public Task<int> GetPointsBalanceAfterAdjustmentAsync(
+        Guid adjustmentId,
+        CancellationToken cancellationToken)
+    {
+        return LedgerBalances.AfterEntryAsync(
+            _database,
+            entry => entry.PointAdjustmentId == adjustmentId,
+            cancellationToken);
+    }
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         try

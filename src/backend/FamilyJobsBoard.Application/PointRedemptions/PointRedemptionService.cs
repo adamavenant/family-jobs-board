@@ -153,9 +153,10 @@ public sealed class PointRedemptionService
             throw new PointRedemptionRequestConflictException(request.RequestId);
         }
 
+        // The original result: the balance right after this redemption, not today's balance.
         return new PointRedemptionResult(
             Map(existing),
-            await _repository.GetPointsBalanceAsync(existing.ChildId, cancellationToken),
+            await _repository.GetPointsBalanceAfterRedemptionAsync(existing.Id, cancellationToken),
             WasCreated: false);
     }
 
