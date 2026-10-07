@@ -8,9 +8,22 @@ using FamilyJobsBoard.Api.Features.PointRedemptions;
 using FamilyJobsBoard.Api.Features.Points;
 using FamilyJobsBoard.Api.Features.GoodBehaviours;
 using FamilyJobsBoard.Api.Features.Today;
+using FamilyJobsBoard.Api.Features.Telemetry;
 using FamilyJobsBoard.Api.Features.TurnRotations;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.Configure(options => options.ActivityTrackingOptions = ActivityTrackingOptions.None);
+builder.Logging.AddFilter(
+    ApplicationEventMetricsLoggerProvider.ExceptionHandlerCategory,
+    LogLevel.None);
+builder.Logging.AddJsonConsole(options =>
+{
+    options.IncludeScopes = false;
+    options.TimestampFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
+    options.UseUtcTimestamp = true;
+});
 
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi(options =>
@@ -21,11 +34,13 @@ builder.Services.AddOpenApi(options =>
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
 builder.Services.AddFamilyAuthentication(builder.Configuration, builder.Environment);
+builder.Services.AddApplicationTelemetry(builder.Configuration, builder.Environment);
 
 var app = builder.Build();
 
-app.UseExceptionHandler();
 app.UseForwardedHeaders();
+app.UseMiddleware<RequestTelemetryMiddleware>();
+app.UseExceptionHandler();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -45,6 +60,13 @@ app.MapPointRedemptionEndpoints();
 app.MapPointsLedgerEndpoints();
 app.MapCalendarEndpoints();
 app.MapTurnRotationEndpoints();
+
+var telemetryEvents = app.Services.GetRequiredService<TelemetryEventWriter>();
+telemetryEvents.ApplicationStarted();
+if (app.Services.GetRequiredService<ApplicationTelemetryOptions>().ConfigurationIssue is { } issue)
+{
+    telemetryEvents.TelemetryConfigurationIgnored(issue);
+}
 
 app.Run();
 
