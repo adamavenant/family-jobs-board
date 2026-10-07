@@ -1,0 +1,181 @@
+logging {
+  level  = "info"
+  format = "json"
+}
+
+otelcol.receiver.otlp "application" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    metrics = [otelcol.processor.filter.privacy_allowlist.input]
+    logs    = [otelcol.processor.filter.privacy_allowlist.input]
+  }
+}
+
+// Drop everything except the versioned, privacy-reviewed application contract.
+// General API stdout and Docker logs intentionally have no source component.
+otelcol.processor.filter "privacy_allowlist" {
+  error_mode = "propagate"
+
+  metric_conditions {
+    context = "metric"
+    conditions = [
+      `resource.attributes["service.name"] != "family-jobs-board-api"`,
+      `not IsMatch(metric.name, "^(http\\.server\\.request\\.duration|aspnetcore\\.diagnostics\\.exceptions|family_jobs_board\\.application\\.runtime_error\\.count|family_jobs_board\\.application\\.warning\\.count|family_jobs_board\\.authentication\\.rejection\\.count|family_jobs_board\\.process\\.start\\.time|dotnet\\.assembly\\.count|dotnet\\.gc\\.collections|dotnet\\.gc\\.heap\\.total_allocated|dotnet\\.gc\\.last_collection\\.heap\\.fragmentation\\.size|dotnet\\.gc\\.last_collection\\.heap\\.size|dotnet\\.gc\\.last_collection\\.memory\\.committed_size|dotnet\\.gc\\.pause\\.time|dotnet\\.jit\\.compilation\\.time|dotnet\\.jit\\.compiled_il\\.size|dotnet\\.jit\\.compiled_methods|dotnet\\.monitor\\.lock_contentions|dotnet\\.process\\.cpu\\.count|dotnet\\.process\\.cpu\\.time|dotnet\\.process\\.memory\\.working_set|dotnet\\.thread_pool\\.work_item\\.count|dotnet\\.timer\\.count)$")`,
+      `metric.name == "http.server.request.duration" and scope.name != "Microsoft.AspNetCore.Hosting"`,
+      `metric.name == "aspnetcore.diagnostics.exceptions" and scope.name != "Microsoft.AspNetCore.Diagnostics"`,
+      `IsMatch(metric.name, "^family_jobs_board\\.") and scope.name != "FamilyJobsBoard.Api"`,
+      `IsMatch(metric.name, "^dotnet\\.") and scope.name != "System.Runtime"`,
+      `metric.name == "http.server.request.duration" and metric.type != METRIC_DATA_TYPE_HISTOGRAM`,
+      `metric.name == "family_jobs_board.process.start.time" and metric.type != METRIC_DATA_TYPE_GAUGE`,
+      `metric.name != "http.server.request.duration" and metric.name != "family_jobs_board.process.start.time" and metric.type != METRIC_DATA_TYPE_SUM`,
+    ]
+  }
+
+  log_conditions {
+    context = "log"
+    conditions = [
+      `resource.attributes["service.name"] != "family-jobs-board-api"`,
+      `scope.name != "FamilyJobsBoard.Telemetry"`,
+      `log.attributes["telemetry.schema"] != "family-jobs-board.event.v1"`,
+      `log.attributes["event.name"] == nil`,
+      `not IsMatch(log.attributes["event.name"], "^(application\\.started|http\\.request\\.completed|authentication\\.rejected|http\\.request\\.unhandled_failure|telemetry\\.configuration\\.ignored)$")`,
+    ]
+  }
+
+  output {
+    metrics = [otelcol.processor.transform.privacy_boundary.input]
+    logs    = [otelcol.processor.transform.privacy_boundary.input]
+  }
+}
+
+otelcol.processor.transform "privacy_boundary" {
+  error_mode = "propagate"
+
+  metric_statements {
+    context = "metric"
+    statements = [
+      `set(metric.description, "")`,
+      `set(metric.unit, "s") where IsMatch(metric.name, "^(http\\.server\\.request\\.duration|family_jobs_board\\.process\\.start\\.time|dotnet\\.gc\\.pause\\.time|dotnet\\.jit\\.compilation\\.time|dotnet\\.process\\.cpu\\.time)$")`,
+      `set(metric.unit, "By") where IsMatch(metric.name, "^(dotnet\\.gc\\.heap\\.total_allocated|dotnet\\.gc\\.last_collection\\.heap\\.fragmentation\\.size|dotnet\\.gc\\.last_collection\\.heap\\.size|dotnet\\.gc\\.last_collection\\.memory\\.committed_size|dotnet\\.jit\\.compiled_il\\.size|dotnet\\.process\\.memory\\.working_set)$")`,
+      `set(metric.unit, "{exception}") where metric.name == "aspnetcore.diagnostics.exceptions"`,
+      `set(metric.unit, "{event}") where IsMatch(metric.name, "^family_jobs_board\\.application\\.")`,
+      `set(metric.unit, "{rejection}") where metric.name == "family_jobs_board.authentication.rejection.count"`,
+      `set(metric.unit, "{assembly}") where metric.name == "dotnet.assembly.count"`,
+      `set(metric.unit, "{collection}") where metric.name == "dotnet.gc.collections"`,
+      `set(metric.unit, "{method}") where metric.name == "dotnet.jit.compiled_methods"`,
+      `set(metric.unit, "{contention}") where metric.name == "dotnet.monitor.lock_contentions"`,
+      `set(metric.unit, "{cpu}") where metric.name == "dotnet.process.cpu.count"`,
+      `set(metric.unit, "{work_item}") where metric.name == "dotnet.thread_pool.work_item.count"`,
+      `set(metric.unit, "{timer}") where metric.name == "dotnet.timer.count"`,
+    ]
+  }
+
+  metric_statements {
+    context = "resource"
+    statements = [
+      `keep_keys(resource.attributes, ["service.name", "service.version", "deployment.environment.name"])`,
+      `truncate_all(resource.attributes, 128)`,
+    ]
+  }
+
+  metric_statements {
+    context = "scope"
+    statements = [
+      `keep_keys(scope.attributes, [])`,
+      `set(scope.version, "")`,
+    ]
+  }
+
+  metric_statements {
+    context = "datapoint"
+    statements = [
+      `keep_keys(datapoint.attributes, ["http.request.method", "http.route", "http.response.status_code", "aspnetcore.diagnostics.exception.result", "event.severity", "gc.heap.generation", "cpu.mode"])`,
+      `delete_key(datapoint.attributes, "gc.heap.generation") where not IsMatch(metric.name, "^(dotnet\\.gc\\.collections|dotnet\\.gc\\.last_collection\\.heap\\.fragmentation\\.size|dotnet\\.gc\\.last_collection\\.heap\\.size)$")`,
+      `delete_key(datapoint.attributes, "gc.heap.generation") where datapoint.attributes["gc.heap.generation"] != nil and not IsString(datapoint.attributes["gc.heap.generation"])`,
+      `delete_key(datapoint.attributes, "gc.heap.generation") where datapoint.attributes["gc.heap.generation"] != nil and not IsMatch(datapoint.attributes["gc.heap.generation"], "^(gen0|gen1|gen2|loh|poh)$")`,
+      `delete_key(datapoint.attributes, "cpu.mode") where metric.name != "dotnet.process.cpu.time"`,
+      `delete_key(datapoint.attributes, "cpu.mode") where datapoint.attributes["cpu.mode"] != nil and not IsString(datapoint.attributes["cpu.mode"])`,
+      `delete_key(datapoint.attributes, "cpu.mode") where datapoint.attributes["cpu.mode"] != nil and not IsMatch(datapoint.attributes["cpu.mode"], "^(user|system)$")`,
+      `delete_key(datapoint.attributes, "aspnetcore.diagnostics.exception.result") where datapoint.attributes["aspnetcore.diagnostics.exception.result"] != nil and not IsString(datapoint.attributes["aspnetcore.diagnostics.exception.result"])`,
+      `delete_key(datapoint.attributes, "aspnetcore.diagnostics.exception.result") where datapoint.attributes["aspnetcore.diagnostics.exception.result"] != nil and not IsMatch(datapoint.attributes["aspnetcore.diagnostics.exception.result"], "^(handled|unhandled)$")`,
+      `delete_key(datapoint.attributes, "event.severity") where datapoint.attributes["event.severity"] != nil and not IsString(datapoint.attributes["event.severity"])`,
+      `delete_key(datapoint.attributes, "event.severity") where datapoint.attributes["event.severity"] != nil and not IsMatch(datapoint.attributes["event.severity"], "^(error|critical)$")`,
+      `delete_key(datapoint.attributes, "http.request.method") where datapoint.attributes["http.request.method"] != nil and not IsString(datapoint.attributes["http.request.method"])`,
+      `delete_key(datapoint.attributes, "http.request.method") where datapoint.attributes["http.request.method"] != nil and not IsMatch(datapoint.attributes["http.request.method"], "^(CONNECT|DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT|TRACE|_OTHER)$")`,
+      `truncate_all(datapoint.attributes, 128)`,
+    ]
+  }
+
+  log_statements {
+    context = "resource"
+    statements = [
+      `keep_keys(resource.attributes, ["service.name", "service.version", "deployment.environment.name"])`,
+      `truncate_all(resource.attributes, 128)`,
+    ]
+  }
+
+  log_statements {
+    context = "scope"
+    statements = [
+      `keep_keys(scope.attributes, [])`,
+      `set(scope.version, "")`,
+    ]
+  }
+
+  log_statements {
+    context = "log"
+    statements = [
+      `set(log.body, log.attributes["event.name"])`,
+      `set(log.severity_text, "INFO") where IsMatch(log.attributes["event.name"], "^(application\\.started|http\\.request\\.completed)$")`,
+      `set(log.severity_number, SEVERITY_NUMBER_INFO) where IsMatch(log.attributes["event.name"], "^(application\\.started|http\\.request\\.completed)$")`,
+      `set(log.severity_text, "WARN") where IsMatch(log.attributes["event.name"], "^(authentication\\.rejected|telemetry\\.configuration\\.ignored)$")`,
+      `set(log.severity_number, SEVERITY_NUMBER_WARN) where IsMatch(log.attributes["event.name"], "^(authentication\\.rejected|telemetry\\.configuration\\.ignored)$")`,
+      `set(log.severity_text, "ERROR") where log.attributes["event.name"] == "http.request.unhandled_failure"`,
+      `set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.attributes["event.name"] == "http.request.unhandled_failure"`,
+      `keep_keys(log.attributes, ["telemetry.schema", "event.name", "http.request.method", "http.route", "http.response.status_code", "duration_ms"])`,
+      `delete_key(log.attributes, "http.request.method") where log.attributes["http.request.method"] != nil and not IsString(log.attributes["http.request.method"])`,
+      `delete_key(log.attributes, "http.request.method") where log.attributes["http.request.method"] != nil and not IsMatch(log.attributes["http.request.method"], "^(CONNECT|DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT|TRACE|_OTHER)$")`,
+      `delete_key(log.attributes, "http.route") where log.attributes["http.route"] != nil and not IsString(log.attributes["http.route"])`,
+      `delete_key(log.attributes, "http.response.status_code") where log.attributes["http.response.status_code"] != nil and not IsInt(log.attributes["http.response.status_code"])`,
+      `delete_key(log.attributes, "duration_ms") where log.attributes["duration_ms"] != nil and not IsDouble(log.attributes["duration_ms"]) and not IsInt(log.attributes["duration_ms"])`,
+      `truncate_all(log.attributes, 128)`,
+      `set(log.trace_id, TraceID(0x00000000000000000000000000000000))`,
+      `set(log.span_id, SpanID(0x0000000000000000))`,
+    ]
+  }
+
+  output {
+    metrics = [otelcol.processor.batch.application.input]
+    logs    = [otelcol.processor.batch.application.input]
+  }
+}
+
+otelcol.processor.batch "application" {
+  timeout             = "5s"
+  send_batch_size     = 512
+  send_batch_max_size = 1024
+
+  output {
+    metrics = [otelcol.exporter.otlphttp.prometheus.input]
+    logs    = [otelcol.exporter.otlphttp.loki.input]
+  }
+}
+
+otelcol.exporter.otlphttp "prometheus" {
+  client {
+    endpoint = "http://prometheus:9090/api/v1/otlp"
+  }
+}
+
+otelcol.exporter.otlphttp "loki" {
+  client {
+    endpoint = "http://loki:3100/otlp"
+  }
+}

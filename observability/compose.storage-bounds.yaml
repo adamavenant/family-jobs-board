@@ -1,0 +1,57 @@
+services:
+  storage-preflight:
+    image: busybox:1.37.0-uclibc
+    user: "0:0"
+    restart: "no"
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PROMETHEUS_VOLUME_BUDGET_MIB: "2048"
+      LOKI_VOLUME_BUDGET_MIB: "4096"
+    command:
+      - /bin/sh
+      - -euc
+      - |
+        check_budget() {
+          path="$$1"
+          budget_mib="$$2"
+          actual_mib="$$(df -Pm "$$path" | awk 'NR == 2 { print $$2 }')"
+          test -n "$$actual_mib"
+          if [ "$$actual_mib" -gt "$$budget_mib" ]; then
+            echo "$$path is on a $${actual_mib}MiB filesystem; expected a dedicated filesystem no larger than $${budget_mib}MiB" >&2
+            exit 1
+          fi
+        }
+        check_budget /data/prometheus "$$PROMETHEUS_VOLUME_BUDGET_MIB"
+        check_budget /data/loki "$$LOKI_VOLUME_BUDGET_MIB"
+    volumes:
+      - prometheus-data:/data/prometheus
+      - loki-data:/data/loki
+    logging:
+      driver: local
+      options:
+        max-size: "1m"
+        max-file: "2"
+
+  storage-init:
+    depends_on:
+      storage-preflight:
+        condition: service_completed_successfully
+
+volumes:
+  prometheus-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PROMETHEUS_DATA_DIR:?set PROMETHEUS_DATA_DIR to the absolute path of a dedicated filesystem no larger than 2048MiB}
+  loki-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${LOKI_DATA_DIR:?set LOKI_DATA_DIR to the absolute path of a dedicated filesystem no larger than 4096MiB}

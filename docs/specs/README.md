@@ -27,6 +27,7 @@ into the phase table above:
 | Feature | Specification status |
 | --- | --- |
 | Whose Turn Is It? daily household rotation | Implemented with issue #112: `080-whose-turn-rotation.md` |
+| Family Jobs Board observability dashboard | Foundation implemented with issue #127: `090-observability-dashboard.md` |
 
 ## Phase 7 historical exception
 

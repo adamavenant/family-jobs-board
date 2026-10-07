@@ -1,0 +1,11 @@
+services:
+  grafana:
+    ports:
+      - "127.0.0.1:${GRAFANA_TEST_PORT:-33000}:3000"
+    networks:
+      - backend
+      - test-ingress
+
+networks:
+  test-ingress:
+    name: ${OBSERVABILITY_RESOURCE_PREFIX:-family-jobs-board-observability}-test-ingress

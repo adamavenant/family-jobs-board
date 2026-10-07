@@ -1,0 +1,378 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "family-jobs-board-api"
+            }
+          },
+          {
+            "key": "service.version",
+            "value": {
+              "stringValue": "test-version"
+            }
+          },
+          {
+            "key": "deployment.environment.name",
+            "value": {
+              "stringValue": "test"
+            }
+          },
+          {
+            "key": "service.instance.id",
+            "value": {
+              "stringValue": "must-not-survive"
+            }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": {
+            "name": "Microsoft.AspNetCore.Hosting",
+            "version": "PRIVATE SCOPE VERSION MUST NOT SURVIVE"
+          },
+          "metrics": [
+            {
+              "name": "http.server.request.duration",
+              "description": "PRIVATE DESCRIPTION MUST NOT SURVIVE",
+              "unit": "PRIVATE-UNIT",
+              "histogram": {
+                "aggregationTemporality": 2,
+                "dataPoints": [
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "count": "1",
+                    "sum": 0.125,
+                    "min": 0.125,
+                    "max": 0.125,
+                    "explicitBounds": [
+                      0.1,
+                      0.5
+                    ],
+                    "bucketCounts": [
+                      "0",
+                      "1",
+                      "0"
+                    ],
+                    "attributes": [
+                      {
+                        "key": "http.request.method",
+                        "value": {
+                          "stringValue": "GET"
+                        }
+                      },
+                      {
+                        "key": "http.route",
+                        "value": {
+                          "stringValue": "/health/ready"
+                        }
+                      },
+                      {
+                        "key": "http.response.status_code",
+                        "value": {
+                          "intValue": "200"
+                        }
+                      },
+                      {
+                        "key": "member.id",
+                        "value": {
+                          "stringValue": "must-not-survive"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "count": "1",
+                    "sum": 0.125,
+                    "min": 0.125,
+                    "max": 0.125,
+                    "explicitBounds": [
+                      0.1,
+                      0.5
+                    ],
+                    "bucketCounts": [
+                      "0",
+                      "1",
+                      "0"
+                    ],
+                    "attributes": [
+                      {
+                        "key": "http.request.method",
+                        "value": {
+                          "stringValue": "CONNECT"
+                        }
+                      },
+                      {
+                        "key": "http.route",
+                        "value": {
+                          "stringValue": "/health/ready"
+                        }
+                      },
+                      {
+                        "key": "http.response.status_code",
+                        "value": {
+                          "intValue": "200"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "count": "1",
+                    "sum": 0.125,
+                    "min": 0.125,
+                    "max": 0.125,
+                    "explicitBounds": [
+                      0.1,
+                      0.5
+                    ],
+                    "bucketCounts": [
+                      "0",
+                      "1",
+                      "0"
+                    ],
+                    "attributes": [
+                      {
+                        "key": "http.request.method",
+                        "value": {
+                          "stringValue": "TRACE"
+                        }
+                      },
+                      {
+                        "key": "http.route",
+                        "value": {
+                          "stringValue": "/health/ready"
+                        }
+                      },
+                      {
+                        "key": "http.response.status_code",
+                        "value": {
+                          "intValue": "200"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "count": "1",
+                    "sum": 0.125,
+                    "min": 0.125,
+                    "max": 0.125,
+                    "explicitBounds": [
+                      0.1,
+                      0.5
+                    ],
+                    "bucketCounts": [
+                      "0",
+                      "1",
+                      "0"
+                    ],
+                    "attributes": [
+                      {
+                        "key": "http.request.method",
+                        "value": {
+                          "stringValue": "_OTHER"
+                        }
+                      },
+                      {
+                        "key": "http.route",
+                        "value": {
+                          "stringValue": "/health/ready"
+                        }
+                      },
+                      {
+                        "key": "http.response.status_code",
+                        "value": {
+                          "intValue": "200"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "name": "private.household.member.count",
+              "description": "Must be rejected",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "0",
+                    "asInt": "42",
+                    "attributes": [
+                      {
+                        "key": "member.name",
+                        "value": {
+                          "stringValue": "must-not-survive"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "scope": {
+            "name": "System.Runtime",
+            "version": "PRIVATE RUNTIME SCOPE VERSION MUST NOT SURVIVE"
+          },
+          "metrics": [
+            {
+              "name": "dotnet.process.cpu.count",
+              "description": "PRIVATE RUNTIME DESCRIPTION MUST NOT SURVIVE",
+              "unit": "PRIVATE-RUNTIME-UNIT",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": false,
+                "dataPoints": [
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asInt": "4",
+                    "attributes": [
+                      {
+                        "key": "process.command_line",
+                        "value": {
+                          "stringValue": "must-not-survive"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "name": "dotnet.gc.collections",
+              "description": "Reviewed bounded generation dimension",
+              "unit": "{collection}",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asInt": "5",
+                    "attributes": [
+                      {
+                        "key": "gc.heap.generation",
+                        "value": {
+                          "stringValue": "gen0"
+                        }
+                      },
+                      {
+                        "key": "member.id",
+                        "value": {
+                          "stringValue": "must-not-survive"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asInt": "2",
+                    "attributes": [
+                      {
+                        "key": "gc.heap.generation",
+                        "value": {
+                          "stringValue": "gen1"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asInt": "1",
+                    "attributes": [
+                      {
+                        "key": "gc.heap.generation",
+                        "value": {
+                          "stringValue": "must-not-survive"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "name": "dotnet.process.cpu.time",
+              "description": "Reviewed bounded CPU mode dimension",
+              "unit": "s",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asDouble": 1.25,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": {
+                          "stringValue": "user"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asDouble": 0.5,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": {
+                          "stringValue": "system"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "name": "dotnet.exceptions",
+              "description": "High-cardinality exception metric must be rejected",
+              "unit": "{exception}",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asInt": "1",
+                    "attributes": [
+                      {
+                        "key": "error.type",
+                        "value": {
+                          "stringValue": "Private.Exception.Type"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

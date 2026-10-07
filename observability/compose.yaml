@@ -1,0 +1,257 @@
+name: ${OBSERVABILITY_PROJECT_NAME:-family-jobs-board-observability}
+
+x-observability-service: &observability-service
+  init: true
+  restart: unless-stopped
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: local
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  storage-init:
+    image: busybox:1.37.0-uclibc
+    user: "0:0"
+    restart: "no"
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - /bin/sh
+      - -euc
+      - |
+        chown 472:472 /data/grafana
+        chown 65534:65534 /data/prometheus
+        chown 10001:10001 /data/loki
+        chown 473:473 /data/alloy
+    volumes:
+      - grafana-data:/data/grafana
+      - prometheus-data:/data/prometheus
+      - loki-data:/data/loki
+      - alloy-data:/data/alloy
+    logging:
+      driver: local
+      options:
+        max-size: "1m"
+        max-file: "2"
+
+  loki:
+    <<: *observability-service
+    image: familyjobsboard/observability-loki:3.7.8-healthcheck
+    build:
+      context: ..
+      dockerfile: observability/docker/healthcheck/Dockerfile
+      args:
+        BASE_IMAGE: grafana/loki:3.7.8
+    command:
+      - -config.file=/etc/loki/config.yaml
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+    expose:
+      - "3100"
+    volumes:
+      - ./config/loki/loki.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--quiet", "--spider", "http://127.0.0.1:3100/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  alloy:
+    <<: *observability-service
+    image: familyjobsboard/observability-alloy:1.20.1-healthcheck
+    build:
+      context: ..
+      dockerfile: observability/docker/healthcheck/Dockerfile
+      args:
+        BASE_IMAGE: grafana/alloy:v1.20.1
+    user: "473:473"
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+      loki:
+        condition: service_healthy
+    expose:
+      - "12345"
+      - "4317"
+      - "4318"
+    volumes:
+      - ./config/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks:
+      - backend
+      - telemetry
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--quiet", "--spider", "http://127.0.0.1:12345/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  blackbox:
+    <<: *observability-service
+    image: familyjobsboard/observability-blackbox:0.28.0-healthcheck
+    build:
+      context: ..
+      dockerfile: observability/docker/healthcheck/Dockerfile
+      args:
+        BASE_IMAGE: prom/blackbox-exporter:v0.28.0
+    user: "65534:65534"
+    command:
+      - --config.file=/etc/blackbox_exporter/config.yaml
+      - --log.prober=warn
+    expose:
+      - "9115"
+    volumes:
+      - ./config/blackbox/blackbox.yaml:/etc/blackbox_exporter/config.yaml:ro
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--quiet", "--spider", "http://127.0.0.1:9115/"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  prometheus:
+    <<: *observability-service
+    image: prom/prometheus:v3.15.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-otlp-receiver
+      - --query.timeout=30s
+      - --query.max-concurrency=4
+      - --query.max-samples=5000000
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+      alloy:
+        condition: service_healthy
+      blackbox:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    expose:
+      - "9090"
+    volumes:
+      - ./config/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus-data:/prometheus
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "/bin/wget", "--quiet", "--spider", "http://127.0.0.1:9090/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  grafana:
+    <<: *observability-service
+    image: grafana/grafana:13.2.3
+    init: false
+    user: "0:0"
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+      - SETGID
+      - SETUID
+    entrypoint:
+      - /usr/local/bin/grafana-secure-entrypoint
+    environment:
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_HIDE_VERSION: "true"
+      GF_AUTH_ANONYMOUS_ORG_NAME: Main Org.
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_BASIC_ENABLED: "true"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/telemetry-stack-health.json
+      GF_EXPLORE_ENABLED: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_PLUGINS_PLUGIN_ADMIN_ENABLED: "false"
+      GF_PLUGINS_PREINSTALL_AUTO_UPDATE: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /tmp/grafana-admin-password
+      GF_SECURITY_ADMIN_USER: operator
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_EDITORS_CAN_ADMIN: "false"
+      GF_USERS_VIEWERS_CAN_EDIT: "false"
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+      loki:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+    expose:
+      - "3000"
+    secrets:
+      - grafana-admin-password
+    volumes:
+      - ./docker/grafana-entrypoint.sh:/usr/local/bin/grafana-secure-entrypoint:ro
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "/usr/bin/wget", "--quiet", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+
+networks:
+  backend:
+    name: ${OBSERVABILITY_RESOURCE_PREFIX:-family-jobs-board-observability}-backend
+    internal: true
+  telemetry:
+    name: ${TELEMETRY_NETWORK_NAME:-family-jobs-board-telemetry}
+    external: true
+
+volumes:
+  alloy-data:
+    name: ${OBSERVABILITY_RESOURCE_PREFIX:-family-jobs-board-observability}-alloy-data
+  grafana-data:
+    name: ${OBSERVABILITY_RESOURCE_PREFIX:-family-jobs-board-observability}-grafana-data
+  loki-data:
+    name: ${OBSERVABILITY_RESOURCE_PREFIX:-family-jobs-board-observability}-loki-data
+  prometheus-data:
+    name: ${OBSERVABILITY_RESOURCE_PREFIX:-family-jobs-board-observability}-prometheus-data
+
+secrets:
+  grafana-admin-password:
+    file: ${GRAFANA_ADMIN_PASSWORD_FILE:?set GRAFANA_ADMIN_PASSWORD_FILE to a mode-0600 file containing the Grafana operator password}

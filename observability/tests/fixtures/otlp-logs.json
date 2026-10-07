@@ -1,0 +1,173 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "family-jobs-board-api"
+            }
+          },
+          {
+            "key": "service.version",
+            "value": {
+              "stringValue": "test-version"
+            }
+          },
+          {
+            "key": "deployment.environment.name",
+            "value": {
+              "stringValue": "test"
+            }
+          },
+          {
+            "key": "service.instance.id",
+            "value": {
+              "stringValue": "must-not-survive"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {
+            "name": "FamilyJobsBoard.Telemetry",
+            "version": "PRIVATE SCOPE VERSION MUST NOT SURVIVE",
+            "attributes": [
+              {
+                "key": "scope.secret",
+                "value": {
+                  "stringValue": "must-not-survive"
+                }
+              }
+            ]
+          },
+          "logRecords": [
+            {
+              "timeUnixNano": "0",
+              "observedTimeUnixNano": "0",
+              "severityNumber": 13,
+              "severityText": "PRIVATE SEVERITY MUST NOT SURVIVE",
+              "body": {
+                "stringValue": "PRIVATE BODY MUST BE REPLACED"
+              },
+              "traceId": "1234567890abcdef1234567890abcdef",
+              "spanId": "1234567890abcdef",
+              "attributes": [
+                {
+                  "key": "telemetry.schema",
+                  "value": {
+                    "stringValue": "family-jobs-board.event.v1"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "http.request.completed"
+                  }
+                },
+                {
+                  "key": "http.request.method",
+                  "value": {
+                          "stringValue": "_OTHER"
+                  }
+                },
+                {
+                  "key": "http.route",
+                  "value": {
+                    "stringValue": "/health/ready"
+                  }
+                },
+                {
+                  "key": "member.id",
+                  "value": {
+                    "stringValue": "must-not-survive"
+                  }
+                },
+                {
+                  "key": "request.id",
+                  "value": {
+                    "stringValue": "must-not-survive"
+                  }
+                },
+                {
+                  "key": "reason",
+                  "value": {
+                    "stringValue": "PRIVATE REASON MUST NOT SURVIVE"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "0",
+              "observedTimeUnixNano": "0",
+              "severityNumber": 13,
+              "severityText": "Warn",
+              "body": {
+                "stringValue": "REJECTED UNAPPROVED EVENT BODY"
+              },
+              "attributes": [
+                {
+                  "key": "telemetry.schema",
+                  "value": {
+                    "stringValue": "family-jobs-board.event.v1"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "application.warning"
+                  }
+                },
+                {
+                  "key": "member.id",
+                  "value": {
+                    "stringValue": "must-not-survive"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "scope": {
+            "name": "IdentityAudit",
+            "version": "1.0.0"
+          },
+          "logRecords": [
+            {
+              "timeUnixNano": "0",
+              "observedTimeUnixNano": "0",
+              "severityNumber": 17,
+              "severityText": "Error",
+              "body": {
+                "stringValue": "REJECTED IDENTITY BODY"
+              },
+              "attributes": [
+                {
+                  "key": "telemetry.schema",
+                  "value": {
+                    "stringValue": "family-jobs-board.event.v1"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "identity.audit"
+                  }
+                },
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "must-not-survive"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
