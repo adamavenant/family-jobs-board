@@ -108,6 +108,11 @@ grep -q 'http://query-gateway:8080/grafana/api/health' observability/config/prom
 if grep -Eq '(http://)?grafana:3000' observability/config/prometheus/prometheus.yaml; then
   fail "a backend collector bypasses the Grafana gateway bridge"
 fi
+preflight_env_load_count=$(grep -Fc \
+  'set -a && . /etc/family-jobs-board-observability/observability.env && set +a' \
+  docs/operations/observability.md || true)
+[ "$preflight_env_load_count" = "2" ] \
+  || fail "each documented network preflight must load the root-only environment file"
 
 assert_jq "$validation_dir/storage.json" \
   '.services["storage-preflight"].environment.PROMETHEUS_VOLUME_BUDGET_MIB == "2048" and .services["storage-preflight"].environment.LOKI_VOLUME_BUDGET_MIB == "4096"' \
