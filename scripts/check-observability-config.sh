@@ -147,6 +147,9 @@ grep -q 'working_directory: /loki/compactor' observability/config/loki/loki.yaml
 grep -Fq "sudo sh -c 'cd -- \"\$1\" && sha256sum -- *.tgz > SHA256SUMS' sh \"\$backup_dir\"" \
   docs/operations/observability.md \
   || fail "backup checksums do not expand inside the privileged root-owned directory"
+grep -Fq "sudo sh -c 'cd -- \"\$1\" && sha256sum --check SHA256SUMS' sh \"\$backup_dir\"" \
+  docs/operations/observability.md \
+  || fail "backup checksum verification does not run inside the privileged root-owned directory"
 retired_observability_host='familydash'"."'home'"."'arpa'
 if grep -R -n "$retired_observability_host" docs observability scripts; then
   fail "retired observability hostname is still present"

@@ -229,7 +229,7 @@ restore_prefix=family-jobs-board-observability-restore
 restore_project=family-jobs-board-observability-restore
 backup_dir=/srv/backups/family-jobs-board-observability/2026-10-07T120000Z
 
-sudo sha256sum --check "$backup_dir/SHA256SUMS"
+sudo sh -c 'cd -- "$1" && sha256sum --check SHA256SUMS' sh "$backup_dir"
 
 OBSERVABILITY_RESOURCE_PREFIX="$restore_prefix" \
 OBSERVABILITY_PROJECT_NAME="$restore_project" \
