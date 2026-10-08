@@ -374,26 +374,124 @@ public sealed class ApplicationTelemetryTests
     }
 
     [Fact]
-    public void Resource_identity_is_stable_and_has_no_instance_or_container_identifier()
+    public async Task Exported_metric_and_log_resources_ignore_hostile_environment_attributes()
     {
-        var attributes = TelemetryServiceCollectionExtensions
-            .CreateResourceBuilder(TestOptions())
-            .Build()
-            .Attributes
-            .ToDictionary(attribute => attribute.Key, attribute => attribute.Value);
+        const string hostileAttributes =
+            "service.instance.id=private-instance,container.id=private-container,host.name=private-host,household.name=private-family";
+        var originalAttributes = Environment.GetEnvironmentVariable("OTEL_RESOURCE_ATTRIBUTES");
+        Environment.SetEnvironmentVariable("OTEL_RESOURCE_ATTRIBUTES", hostileAttributes);
 
-        Assert.Equal(ApplicationTelemetryOptions.DefaultServiceName, attributes["service.name"]);
-        Assert.Equal("test-version", attributes["service.version"]);
-        Assert.Equal("testing", attributes["deployment.environment.name"]);
-        Assert.DoesNotContain("service.instance.id", attributes.Keys);
-        Assert.DoesNotContain("container.id", attributes.Keys);
-        Assert.DoesNotContain("container.name", attributes.Keys);
+        try
+        {
+            var logs = new CapturingLoggerProvider();
+            var exportedLogs = new List<LogRecord>();
+            await using var app = BuildTestApi(
+                logs,
+                exportedLogs,
+                new Dictionary<string, string?>
+                {
+                    ["OTEL_SERVICE_VERSION"] = "test-version",
+                });
+
+            await app.StartAsync();
+
+            var metricResource = app.Services
+                .GetRequiredService<MeterProvider>()
+                .GetResource();
+            var logResource = app.Services
+                .GetServices<ILoggerProvider>()
+                .OfType<OpenTelemetryLoggerProvider>()
+                .Single()
+                .GetResource();
+
+            AssertAllowlistedResource(metricResource.Attributes);
+            AssertAllowlistedResource(logResource.Attributes);
+            Assert.Single(
+                exportedLogs,
+                record => record.EventId.Name == "ApplicationStarted");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OTEL_RESOURCE_ATTRIBUTES", originalAttributes);
+        }
+    }
+
+    [Fact]
+    public async Task Application_started_is_emitted_only_after_successful_host_start()
+    {
+        var successfulLogs = new CapturingLoggerProvider();
+        await using (var successfulApp = BuildTestApi(successfulLogs))
+        {
+            Assert.DoesNotContain(
+                successfulLogs.Entries,
+                entry => entry.EventId.Name == "ApplicationStarted");
+
+            await successfulApp.StartAsync();
+
+            Assert.Single(
+                successfulLogs.Entries,
+                entry => entry.EventId.Name == "ApplicationStarted");
+        }
+
+        var failedLogs = new CapturingLoggerProvider();
+        await using var failedApp = BuildTestApi(
+            failedLogs,
+            configureServices: services => services.AddHostedService<FailingHostedService>());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => failedApp.StartAsync());
+        Assert.DoesNotContain(
+            failedLogs.Entries,
+            entry => entry.EventId.Name == "ApplicationStarted");
+    }
+
+    [Fact]
+    public async Task Failure_in_middleware_before_routing_is_sanitized_exactly_once()
+    {
+        var logs = new CapturingLoggerProvider();
+        await using var app = await StartTestApiAsync(
+            logs,
+            configurePipeline: application => application.Use(
+                (HttpContext _, RequestDelegate _) =>
+                    throw new InvalidOperationException("private forwarded-header failure")));
+        using var client = app.GetTestClient();
+
+        using var response = await client.GetAsync("/items/not-routed?token=private-token");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.DoesNotContain("private", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(
+            logs.Entries,
+            entry => entry.EventId.Name == "UnhandledRequestFailure");
+        Assert.Single(
+            logs.Entries,
+            entry => entry.EventId.Name == "HttpRequestCompleted"
+                && Equals(entry.Attributes["http.response.status_code"], 500));
     }
 
     private static async Task<WebApplication> StartTestApiAsync(
         CapturingLoggerProvider logs,
         ICollection<LogRecord>? exportedLogs = null,
-        IReadOnlyDictionary<string, string?>? configuration = null)
+        IReadOnlyDictionary<string, string?>? configuration = null,
+        Action<IApplicationBuilder>? configurePipeline = null,
+        Action<IServiceCollection>? configureServices = null)
+    {
+        var app = BuildTestApi(
+            logs,
+            exportedLogs,
+            configuration,
+            configurePipeline,
+            configureServices);
+        await app.StartAsync();
+        return app;
+    }
+
+    private static WebApplication BuildTestApi(
+        CapturingLoggerProvider logs,
+        ICollection<LogRecord>? exportedLogs = null,
+        IReadOnlyDictionary<string, string?>? configuration = null,
+        Action<IApplicationBuilder>? configurePipeline = null,
+        Action<IServiceCollection>? configureServices = null)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
@@ -422,10 +520,12 @@ public sealed class ApplicationTelemetryTests
 
         builder.Services.AddProblemDetails();
         builder.Services.AddApplicationTelemetry(builder.Configuration, builder.Environment);
+        configureServices?.Invoke(builder.Services);
         var app = builder.Build();
-        app.UseRouting();
         app.UseMiddleware<RequestTelemetryMiddleware>();
         app.UseExceptionHandler();
+        configurePipeline?.Invoke(app);
+        app.UseRouting();
         app.MapGet("/items/{itemId:guid}", () => Results.NoContent());
         app.MapPost("/api/auth/refresh", () => Results.Unauthorized());
         app.MapGet(
@@ -465,8 +565,28 @@ public sealed class ApplicationTelemetryTests
                 throw new InvalidOperationException("private handler failure");
             });
         app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
-        await app.StartAsync();
         return app;
+    }
+
+    private static void AssertAllowlistedResource(
+        IEnumerable<KeyValuePair<string, object>> resourceAttributes)
+    {
+        var attributes = resourceAttributes.ToDictionary(
+            attribute => attribute.Key,
+            attribute => attribute.Value,
+            StringComparer.Ordinal);
+
+        Assert.Equal(
+            new[]
+            {
+                "deployment.environment.name",
+                "service.name",
+                "service.version",
+            },
+            attributes.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(ApplicationTelemetryOptions.DefaultServiceName, attributes["service.name"]);
+        Assert.Equal("test-version", attributes["service.version"]);
+        Assert.Equal("testing", attributes["deployment.environment.name"]);
     }
 
     private static ApplicationTelemetryOptions TestOptions() => new(
@@ -612,6 +732,14 @@ public sealed class ApplicationTelemetryTests
         string Message,
         Exception? Exception,
         IReadOnlyDictionary<string, object?> Attributes);
+
+    private sealed class FailingHostedService : IHostedService
+    {
+        public Task StartAsync(CancellationToken cancellationToken) =>
+            Task.FromException(new InvalidOperationException("Host failed to start."));
+
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
 
     private sealed class TestHostEnvironment : IHostEnvironment
     {

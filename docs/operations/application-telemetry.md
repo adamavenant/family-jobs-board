@@ -193,6 +193,11 @@ attributes:
 - `service.version`
 - `deployment.environment.name`
 
+The API constructs that resource from an empty builder. The three attributes
+above are the complete resource allowlist for both metrics and events;
+`OTEL_RESOURCE_ATTRIBUTES` and automatic/default resource detectors cannot add
+host, container, instance, household, or other attributes to exported signals.
+
 It retains only these application-provided log attributes:
 
 - `telemetry.schema`
@@ -212,6 +217,10 @@ Current stable event names are:
 - `authentication.rejected`
 - `http.request.unhandled_failure`
 - `telemetry.configuration.ignored`
+
+`application.started` is registered on the host's `ApplicationStarted`
+lifetime signal. It is emitted only after every hosted service has started
+successfully, never merely because the application pipeline was built.
 
 `reason` is emitted only on `telemetry.configuration.ignored` and is limited to
 `invalid_endpoint` or `invalid_protocol`; it is intentionally not retained in

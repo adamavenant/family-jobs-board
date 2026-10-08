@@ -51,6 +51,7 @@ internal static class TelemetryServiceCollectionExtensions
         services.AddSingleton<ApplicationTelemetry>();
         services.AddSingleton<TelemetryEventWriter>();
         services.AddSingleton<ILoggerProvider, ApplicationEventMetricsLoggerProvider>();
+        services.AddHostedService<ApplicationTelemetryLifecycleEvents>();
         services.AddExceptionHandler<SanitizedExceptionHandler>();
         services.Configure<ExceptionHandlerOptions>(exceptionHandler =>
             exceptionHandler.SuppressDiagnosticsCallback = _ => false);
@@ -78,7 +79,6 @@ internal static class TelemetryServiceCollectionExtensions
         }
 
         services.AddOpenTelemetry()
-            .ConfigureResource(resource => AddResource(resource, options))
             .WithMetrics(metrics => ConfigureMetrics(metrics, options));
 
         return services;
@@ -110,6 +110,7 @@ internal static class TelemetryServiceCollectionExtensions
         ApplicationTelemetryOptions options)
     {
         metrics
+            .SetResourceBuilder(CreateResourceBuilder(options))
             .AddMeter(ApplicationTelemetry.MeterName)
             .AddMeter(AspNetCoreDiagnosticsMeter)
             .AddMeter(AspNetCoreHostingMeter)
@@ -196,7 +197,7 @@ internal static class TelemetryServiceCollectionExtensions
     }
 
     internal static ResourceBuilder CreateResourceBuilder(ApplicationTelemetryOptions options) =>
-        AddResource(ResourceBuilder.CreateDefault(), options);
+        AddResource(ResourceBuilder.CreateEmpty(), options);
 
     private static ResourceBuilder AddResource(
         ResourceBuilder resource,

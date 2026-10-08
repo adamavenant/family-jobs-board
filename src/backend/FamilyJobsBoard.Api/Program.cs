@@ -38,9 +38,9 @@ builder.Services.AddApplicationTelemetry(builder.Configuration, builder.Environm
 
 var app = builder.Build();
 
-app.UseForwardedHeaders();
 app.UseMiddleware<RequestTelemetryMiddleware>();
 app.UseExceptionHandler();
+app.UseForwardedHeaders();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -60,13 +60,6 @@ app.MapPointRedemptionEndpoints();
 app.MapPointsLedgerEndpoints();
 app.MapCalendarEndpoints();
 app.MapTurnRotationEndpoints();
-
-var telemetryEvents = app.Services.GetRequiredService<TelemetryEventWriter>();
-telemetryEvents.ApplicationStarted();
-if (app.Services.GetRequiredService<ApplicationTelemetryOptions>().ConfigurationIssue is { } issue)
-{
-    telemetryEvents.TelemetryConfigurationIgnored(issue);
-}
 
 app.Run();
 
