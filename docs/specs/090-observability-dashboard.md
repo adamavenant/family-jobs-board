@@ -33,6 +33,11 @@ Anonymous Viewers can submit their own PromQL and LogQL through Grafana's data
 source proxy even when Explore and dashboard editing are disabled. The privacy
 boundary is therefore the collector allowlist, not the dashboard. Anything
 stored in Prometheus or Loki must be safe for every LAN visitor to query.
+Grafana is also isolated from both storage services by an internal query
+network. Its provisioned data sources can reach only a deny-by-default gateway
+that allows reviewed read/query paths and methods. Ingest, administration, and
+all other backend paths are absent, so an anonymous data-source proxy request
+cannot bypass Alloy and write directly to Prometheus or Loki.
 
 Issue #127 publishes no host ports. A later deployment issue may route only
 Grafana through `monitor.home.arpa`. Anonymous access must be revisited
@@ -58,12 +63,14 @@ Family Jobs Board API -- private OTLP --> Alloy --> Prometheus
                                           |
                                           +------> Loki
 
-LAN ingress (later issue) --> Grafana --> Prometheus and Loki
+LAN ingress (later) --> Grafana --> query-only gateway --> Prometheus (read)
+                                                    |
+                                                    +----> Loki (read)
 ```
 
-Prometheus, Loki, Alloy, Blackbox Exporter, and direct Grafana ports remain
-unpublished. A loopback-only Grafana port exists solely in the automated test
-override and must not be used for deployment.
+Prometheus, Loki, Alloy, Blackbox Exporter, the query gateway, and direct
+Grafana ports remain unpublished. A loopback-only Grafana port exists solely
+in the automated test override and must not be used for deployment.
 
 ## Application telemetry wire contract
 
@@ -80,12 +87,16 @@ The application sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317`,
 `OTEL_SERVICE_NAME=family-jobs-board-api` in its optional Compose override.
 Signal-specific paths must not be included in the gRPC/common endpoint.
 
-The collector accepts only the following resource attributes, truncating
-strings to 128 characters:
+The collector accepts only the following resource attributes. Invalid
+resource values cause the whole data point or event to be rejected rather than
+being truncated into a colliding series:
 
 - `service.name`, which must equal `family-jobs-board-api`;
-- `service.version`; and
-- `deployment.environment.name`.
+- `service.version`, which must be 1-128 ASCII letters, digits, `.`, `_`, or
+  `-`, beginning with a letter or digit (validated, then discarded before
+  export so version values cannot create series); and
+- `deployment.environment.name`, which must be one of `development`, `local`,
+  `production`, `staging`, `test`, or `testing`.
 
 All other resource and instrumentation-scope attributes are removed.
 
@@ -109,6 +120,12 @@ export so arbitrary metric metadata cannot become queryable. The allowlist is:
 
 HTTP methods use the bounded semantic-convention set `CONNECT`, `DELETE`,
 `GET`, `HEAD`, `OPTIONS`, `PATCH`, `POST`, `PUT`, `TRACE`, or `_OTHER`.
+Routes are restricted to the application's reviewed route-template allowlist;
+raw paths, query strings, new/unreviewed templates, and malformed status codes
+cause the entire point to be rejected. The request histogram must use the
+application's exact bucket boundaries (`0.005`, `0.01`, `0.025`, `0.05`,
+`0.1`, `0.25`, `0.5`, `1`, `2.5`, `5`, and `10` seconds), preventing hostile
+payloads from creating arbitrary `le` labels.
 
 The reviewed runtime names are `dotnet.assembly.count`,
 `dotnet.gc.collections`, `dotnet.gc.heap.total_allocated`,
@@ -186,7 +203,9 @@ The version-controlled `Telemetry stack health` dashboard shows:
 - privacy-safe Loki ingestion activity; and
 - Loki WAL storage use.
 
-Prometheus and Loki data sources are provisioned read-only from files. Query
+Prometheus and Loki data sources are provisioned read-only from files and point
+only at the query gateway. Its exact path-and-method allowlist permits the
+required PromQL/LogQL read APIs and denies ingest and administration. Query
 timeouts, concurrency, series/sample, entry, and line limits bound the work an
 anonymous Viewer can request. Final application and Serendipity-capacity tabs
 remain future work: they will use this contract without expanding container or
@@ -204,7 +223,9 @@ host privileges silently.
   attributes, a general console category, or an unapproved metric/event cannot
   be found in Prometheus or Loki after collection.
 - An anonymous browser is a Viewer, cannot save/administer the provisioned
-  dashboard, and receives a forbidden response from the administrative API.
+  dashboard, receives a forbidden response from the administrative API, and
+  cannot reach either storage service's OTLP ingest endpoint through Grafana's
+  data-source proxy.
 - The base Compose model publishes no ports. The verification-only override
   binds Grafana to `127.0.0.1`, never a LAN interface.
 - A clean restart preserves telemetry volumes; ordinary shutdown and removal

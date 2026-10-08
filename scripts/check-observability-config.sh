@@ -51,9 +51,9 @@ assert_jq "$validation_dir/base.json" \
   '[.services[] | (.ports // []) | length] | all(. == 0)' \
   "base configuration publishes a host port"
 assert_jq "$validation_dir/base.json" \
-  '.networks.backend.internal == true and .networks.telemetry.external == true' \
-  "backend must be internal and telemetry must be an external preflighted network"
-for service_name in alloy blackbox grafana loki prometheus; do
+  '.networks.backend.internal == true and .networks.query.internal == true and .networks.telemetry.external == true' \
+  "backend and query networks must be internal and telemetry must be an external preflighted network"
+for service_name in alloy blackbox grafana loki prometheus query-gateway; do
   assert_jq "$validation_dir/base.json" \
     ".services[\"$service_name\"].healthcheck.test != null" \
     "$service_name has no health check"
@@ -62,7 +62,7 @@ for service_name in alloy blackbox grafana loki prometheus; do
     "$service_name is missing the read-only/no-capabilities security baseline"
 done
 
-for service_name in storage-init alloy blackbox grafana loki prometheus; do
+for service_name in storage-init alloy blackbox grafana loki prometheus query-gateway; do
   assert_jq "$validation_dir/base.json" \
     ".services[\"$service_name\"].logging.driver == \"local\" and .services[\"$service_name\"].logging.options[\"max-size\"] != null and .services[\"$service_name\"].logging.options[\"max-file\"] != null" \
     "$service_name does not have bounded local container logs"
@@ -78,6 +78,9 @@ assert_jq "$validation_dir/base.json" \
   '.services.prometheus.command | index("--query.timeout=30s") != null and index("--query.max-concurrency=4") != null and index("--query.max-samples=5000000") != null' \
   "Prometheus anonymous-query limits are incomplete"
 assert_jq "$validation_dir/base.json" \
+  '(.services.grafana.networks | keys) == ["query"] and (.services["query-gateway"].networks | keys | sort) == ["backend", "query"] and (.services.prometheus.networks | keys) == ["backend"] and (.services.loki.networks | keys) == ["backend"]' \
+  "Grafana is not network-isolated behind the query gateway"
+assert_jq "$validation_dir/base.json" \
   '[.services | to_entries[] | .value.image] | all((endswith(":latest") or contains(":latest@")) | not)' \
   "a service uses a floating latest image"
 assert_jq "$validation_dir/base.json" \
@@ -86,6 +89,24 @@ assert_jq "$validation_dir/base.json" \
 
 if grep -Eq '(/var/run/docker\.sock|/var/lib/docker|/proc([/:]|$)|/sys([/:]|$))' "$validation_dir/base.json"; then
   fail "base configuration mounts a forbidden Docker or host-internals path"
+fi
+
+grep -q 'url: http://query-gateway:8080/prometheus' \
+  observability/config/grafana/provisioning/datasources/datasources.yaml \
+  || fail "Grafana Prometheus data source bypasses the query gateway"
+grep -q 'url: http://query-gateway:8080/loki' \
+  observability/config/grafana/provisioning/datasources/datasources.yaml \
+  || fail "Grafana Loki data source bypasses the query gateway"
+if grep -Eq 'url: http://(prometheus:9090|loki:3100)' \
+  observability/config/grafana/provisioning/datasources/datasources.yaml; then
+  fail "Grafana has a direct Prometheus or Loki data source"
+fi
+grep -q 'metrics_path: /grafana/metrics' observability/config/prometheus/prometheus.yaml \
+  || fail "Prometheus does not scrape Grafana through the query gateway"
+grep -q 'http://query-gateway:8080/grafana/api/health' observability/config/prometheus/prometheus.yaml \
+  || fail "Blackbox does not probe Grafana through the query gateway"
+if grep -Eq '(http://)?grafana:3000' observability/config/prometheus/prometheus.yaml; then
+  fail "a backend collector bypasses the Grafana gateway bridge"
 fi
 
 assert_jq "$validation_dir/storage.json" \
@@ -104,6 +125,9 @@ assert_jq "$validation_dir/test-ingress.json" \
 assert_jq "$validation_dir/test-ingress.json" \
   '.services.grafana.ports | length == 1 and .[0].host_ip == "127.0.0.1" and .[0].target == 3000' \
   "test Grafana ingress is not loopback-only"
+assert_jq "$validation_dir/test-ingress.json" \
+  '(.services.grafana.networks | keys | sort) == ["query", "test-ingress"] and (.services.grafana.networks.backend == null)' \
+  "test Grafana ingress bypasses query-gateway network isolation"
 
 jq -e . observability/config/grafana/dashboards/telemetry-stack-health.json >/dev/null \
   || fail "Grafana dashboard is not valid JSON"
@@ -120,6 +144,9 @@ grep -q 'retention_period: 720h' observability/config/loki/loki.yaml \
   || fail "Loki 720-hour retention is missing"
 grep -q 'working_directory: /loki/compactor' observability/config/loki/loki.yaml \
   || fail "Loki Compactor state is not on persistent storage"
+grep -Fq "sudo sh -c 'cd -- \"\$1\" && sha256sum -- *.tgz > SHA256SUMS' sh \"\$backup_dir\"" \
+  docs/operations/observability.md \
+  || fail "backup checksums do not expand inside the privileged root-owned directory"
 retired_observability_host='familydash'"."'home'"."'arpa'
 if grep -R -n "$retired_observability_host" docs observability scripts; then
   fail "retired observability hostname is still present"
@@ -145,5 +172,12 @@ docker run --rm --network none --read-only --cap-drop ALL --tmpfs /tmp:size=16m 
   -v "$repository_root/observability/config/blackbox/blackbox.yaml:/etc/blackbox_exporter/config.yaml:ro" \
   prom/blackbox-exporter:v0.28.0 \
   --config.file=/etc/blackbox_exporter/config.yaml --config.check
+
+docker run --rm --network none --read-only --cap-drop ALL --user 101:101 \
+  --tmpfs /tmp:size=16m --add-host prometheus:127.0.0.1 --add-host loki:127.0.0.1 \
+  --entrypoint /usr/sbin/nginx \
+  -v "$repository_root/observability/config/query-gateway/nginx.conf:/etc/nginx/nginx.conf:ro" \
+  nginx:1.31.5-alpine3.24 \
+  -t -c /etc/nginx/nginx.conf
 
 echo "Observability configuration checks passed."

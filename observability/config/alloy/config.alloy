@@ -35,6 +35,9 @@ otelcol.processor.filter "privacy_allowlist" {
       `metric.name == "http.server.request.duration" and metric.type != METRIC_DATA_TYPE_HISTOGRAM`,
       `metric.name == "family_jobs_board.process.start.time" and metric.type != METRIC_DATA_TYPE_GAUGE`,
       `metric.name != "http.server.request.duration" and metric.name != "family_jobs_board.process.start.time" and metric.type != METRIC_DATA_TYPE_SUM`,
+      `metric.name != "family_jobs_board.process.start.time" and metric.aggregation_temporality != AGGREGATION_TEMPORALITY_CUMULATIVE`,
+      `IsMatch(metric.name, "^(aspnetcore\\.diagnostics\\.exceptions|family_jobs_board\\.application\\.runtime_error\\.count|family_jobs_board\\.application\\.warning\\.count|family_jobs_board\\.authentication\\.rejection\\.count|dotnet\\.gc\\.collections|dotnet\\.gc\\.heap\\.total_allocated|dotnet\\.gc\\.pause\\.time|dotnet\\.jit\\.compilation\\.time|dotnet\\.jit\\.compiled_il\\.size|dotnet\\.jit\\.compiled_methods|dotnet\\.monitor\\.lock_contentions|dotnet\\.process\\.cpu\\.time|dotnet\\.thread_pool\\.work_item\\.count)$") and metric.is_monotonic == false`,
+      `IsMatch(metric.name, "^(dotnet\\.assembly\\.count|dotnet\\.gc\\.last_collection\\.heap\\.fragmentation\\.size|dotnet\\.gc\\.last_collection\\.heap\\.size|dotnet\\.gc\\.last_collection\\.memory\\.committed_size|dotnet\\.process\\.cpu\\.count|dotnet\\.process\\.memory\\.working_set|dotnet\\.timer\\.count)$") and metric.is_monotonic == true`,
     ]
   }
 
@@ -46,6 +49,96 @@ otelcol.processor.filter "privacy_allowlist" {
       `log.attributes["telemetry.schema"] != "family-jobs-board.event.v1"`,
       `log.attributes["event.name"] == nil`,
       `not IsMatch(log.attributes["event.name"], "^(application\\.started|http\\.request\\.completed|authentication\\.rejected|http\\.request\\.unhandled_failure|telemetry\\.configuration\\.ignored)$")`,
+    ]
+  }
+
+  output {
+    metrics = [otelcol.processor.filter.privacy_values.input]
+    logs    = [otelcol.processor.filter.privacy_values.input]
+  }
+}
+
+// Reject malformed values and per-signal attribute combinations before
+// transforming. Deleting a bad dimension could collapse distinct points into
+// one series, so an invalid point or event is discarded in full.
+otelcol.processor.filter "privacy_values" {
+  error_mode = "propagate"
+
+  metric_conditions {
+    context = "datapoint"
+    conditions = [
+      `resource.attributes["service.version"] == nil`,
+      `resource.attributes["service.version"] != nil and not IsString(resource.attributes["service.version"])`,
+      `IsString(resource.attributes["service.version"]) and not IsMatch(resource.attributes["service.version"], "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")`,
+      `resource.attributes["deployment.environment.name"] == nil`,
+      `resource.attributes["deployment.environment.name"] != nil and not IsString(resource.attributes["deployment.environment.name"])`,
+      `IsString(resource.attributes["deployment.environment.name"]) and not IsMatch(resource.attributes["deployment.environment.name"], "^(development|local|production|staging|test|testing)$")`,
+      `metric.name == "http.server.request.duration" and (String(datapoint.explicit_bounds) != "[0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2.5,5,10]" or Len(datapoint.bucket_counts) != 12)`,
+      `not IsMatch(metric.name, "^(http\\.server\\.request\\.duration|family_jobs_board\\.authentication\\.rejection\\.count)$") and (datapoint.attributes["http.request.method"] != nil or datapoint.attributes["http.route"] != nil or datapoint.attributes["http.response.status_code"] != nil)`,
+      `metric.name != "aspnetcore.diagnostics.exceptions" and datapoint.attributes["aspnetcore.diagnostics.exception.result"] != nil`,
+      `metric.name != "family_jobs_board.application.runtime_error.count" and datapoint.attributes["event.severity"] != nil`,
+      `not IsMatch(metric.name, "^(dotnet\\.gc\\.collections|dotnet\\.gc\\.last_collection\\.heap\\.fragmentation\\.size|dotnet\\.gc\\.last_collection\\.heap\\.size)$") and datapoint.attributes["gc.heap.generation"] != nil`,
+      `metric.name != "dotnet.process.cpu.time" and datapoint.attributes["cpu.mode"] != nil`,
+      `IsMatch(metric.name, "^(http\\.server\\.request\\.duration|family_jobs_board\\.authentication\\.rejection\\.count)$") and datapoint.attributes["http.request.method"] == nil`,
+      `datapoint.attributes["http.request.method"] != nil and not IsString(datapoint.attributes["http.request.method"])`,
+      `IsString(datapoint.attributes["http.request.method"]) and not IsMatch(datapoint.attributes["http.request.method"], "^(CONNECT|DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT|TRACE|_OTHER)$")`,
+      `metric.name == "family_jobs_board.authentication.rejection.count" and datapoint.attributes["http.route"] == nil`,
+      `datapoint.attributes["http.route"] != nil and not IsString(datapoint.attributes["http.route"])`,
+      `IsString(datapoint.attributes["http.route"]) and not IsMatch(datapoint.attributes["http.route"], "^(_unmatched|/health/(live|ready)|/api/(admin/jobs-and-points/reset|points-ledger|good-behaviour-types(/\\{id:guid\\})?|good-behaviours|turn-rotations(/\\{rotationId:guid\\})?|auth/(start|bootstrap|sign-in|refresh|logout|setup-pin)|users(/\\{memberId:guid\\}(/(restore|pin-setup|pin-reset))?)?|calendar|point-adjustments|today(/jobs)?|recurring-jobs/(daily|weekly|monthly)|jobs/\\{id:guid\\}(/(complete|approve|reject|cancel|recurring-change(/preview)?))?|point-redemptions))$")`,
+      `IsMatch(metric.name, "^(http\\.server\\.request\\.duration|family_jobs_board\\.authentication\\.rejection\\.count)$") and datapoint.attributes["http.response.status_code"] == nil`,
+      `datapoint.attributes["http.response.status_code"] != nil and not IsInt(datapoint.attributes["http.response.status_code"])`,
+      `IsInt(datapoint.attributes["http.response.status_code"]) and (datapoint.attributes["http.response.status_code"] < 100 or datapoint.attributes["http.response.status_code"] > 599)`,
+      `metric.name == "family_jobs_board.authentication.rejection.count" and IsInt(datapoint.attributes["http.response.status_code"]) and datapoint.attributes["http.response.status_code"] != 401 and datapoint.attributes["http.response.status_code"] != 403 and datapoint.attributes["http.response.status_code"] != 429`,
+      `metric.name == "family_jobs_board.authentication.rejection.count" and datapoint.attributes["http.response.status_code"] == 429 and datapoint.attributes["http.route"] != "/api/auth/sign-in"`,
+      `metric.name == "aspnetcore.diagnostics.exceptions" and datapoint.attributes["aspnetcore.diagnostics.exception.result"] == nil`,
+      `datapoint.attributes["aspnetcore.diagnostics.exception.result"] != nil and not IsString(datapoint.attributes["aspnetcore.diagnostics.exception.result"])`,
+      `IsString(datapoint.attributes["aspnetcore.diagnostics.exception.result"]) and not IsMatch(datapoint.attributes["aspnetcore.diagnostics.exception.result"], "^(handled|unhandled)$")`,
+      `metric.name == "family_jobs_board.application.runtime_error.count" and datapoint.attributes["event.severity"] == nil`,
+      `datapoint.attributes["event.severity"] != nil and not IsString(datapoint.attributes["event.severity"])`,
+      `IsString(datapoint.attributes["event.severity"]) and not IsMatch(datapoint.attributes["event.severity"], "^(critical|error)$")`,
+      `IsMatch(metric.name, "^(dotnet\\.gc\\.collections|dotnet\\.gc\\.last_collection\\.heap\\.fragmentation\\.size|dotnet\\.gc\\.last_collection\\.heap\\.size)$") and datapoint.attributes["gc.heap.generation"] == nil`,
+      `datapoint.attributes["gc.heap.generation"] != nil and not IsString(datapoint.attributes["gc.heap.generation"])`,
+      `IsString(datapoint.attributes["gc.heap.generation"]) and not IsMatch(datapoint.attributes["gc.heap.generation"], "^(gen0|gen1|gen2|loh|poh)$")`,
+      `metric.name == "dotnet.process.cpu.time" and datapoint.attributes["cpu.mode"] == nil`,
+      `datapoint.attributes["cpu.mode"] != nil and not IsString(datapoint.attributes["cpu.mode"])`,
+      `IsString(datapoint.attributes["cpu.mode"]) and not IsMatch(datapoint.attributes["cpu.mode"], "^(system|user)$")`,
+      `IsMatch(metric.name, "^(http\\.server\\.request\\.duration|family_jobs_board\\.authentication\\.rejection\\.count)$") and Len(datapoint.attributes) != 3`,
+      `metric.name == "aspnetcore.diagnostics.exceptions" and Len(datapoint.attributes) != 1`,
+      `metric.name == "family_jobs_board.application.runtime_error.count" and Len(datapoint.attributes) != 1`,
+      `IsMatch(metric.name, "^(dotnet\\.gc\\.collections|dotnet\\.gc\\.last_collection\\.heap\\.fragmentation\\.size|dotnet\\.gc\\.last_collection\\.heap\\.size)$") and Len(datapoint.attributes) != 1`,
+      `metric.name == "dotnet.process.cpu.time" and Len(datapoint.attributes) != 1`,
+      `not IsMatch(metric.name, "^(http\\.server\\.request\\.duration|family_jobs_board\\.authentication\\.rejection\\.count|aspnetcore\\.diagnostics\\.exceptions|family_jobs_board\\.application\\.runtime_error\\.count|dotnet\\.gc\\.collections|dotnet\\.gc\\.last_collection\\.heap\\.fragmentation\\.size|dotnet\\.gc\\.last_collection\\.heap\\.size|dotnet\\.process\\.cpu\\.time)$") and Len(datapoint.attributes) != 0`,
+    ]
+  }
+
+  log_conditions {
+    context = "log"
+    conditions = [
+      `resource.attributes["service.version"] == nil`,
+      `resource.attributes["service.version"] != nil and not IsString(resource.attributes["service.version"])`,
+      `IsString(resource.attributes["service.version"]) and not IsMatch(resource.attributes["service.version"], "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")`,
+      `resource.attributes["deployment.environment.name"] == nil`,
+      `resource.attributes["deployment.environment.name"] != nil and not IsString(resource.attributes["deployment.environment.name"])`,
+      `IsString(resource.attributes["deployment.environment.name"]) and not IsMatch(resource.attributes["deployment.environment.name"], "^(development|local|production|staging|test|testing)$")`,
+      `not IsMatch(log.attributes["event.name"], "^(http\\.request\\.completed|authentication\\.rejected|http\\.request\\.unhandled_failure)$") and (log.attributes["http.request.method"] != nil or log.attributes["http.route"] != nil or log.attributes["http.response.status_code"] != nil)`,
+      `log.attributes["event.name"] != "http.request.completed" and log.attributes["duration_ms"] != nil`,
+      `IsMatch(log.attributes["event.name"], "^(http\\.request\\.completed|authentication\\.rejected|http\\.request\\.unhandled_failure)$") and (log.attributes["http.request.method"] == nil or log.attributes["http.route"] == nil or log.attributes["http.response.status_code"] == nil)`,
+      `log.attributes["http.request.method"] != nil and not IsString(log.attributes["http.request.method"])`,
+      `IsString(log.attributes["http.request.method"]) and not IsMatch(log.attributes["http.request.method"], "^(CONNECT|DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT|TRACE|_OTHER)$")`,
+      `log.attributes["http.route"] != nil and not IsString(log.attributes["http.route"])`,
+      `IsString(log.attributes["http.route"]) and not IsMatch(log.attributes["http.route"], "^(_unmatched|/health/(live|ready)|/api/(admin/jobs-and-points/reset|points-ledger|good-behaviour-types(/\\{id:guid\\})?|good-behaviours|turn-rotations(/\\{rotationId:guid\\})?|auth/(start|bootstrap|sign-in|refresh|logout|setup-pin)|users(/\\{memberId:guid\\}(/(restore|pin-setup|pin-reset))?)?|calendar|point-adjustments|today(/jobs)?|recurring-jobs/(daily|weekly|monthly)|jobs/\\{id:guid\\}(/(complete|approve|reject|cancel|recurring-change(/preview)?))?|point-redemptions))$")`,
+      `log.attributes["http.response.status_code"] != nil and not IsInt(log.attributes["http.response.status_code"])`,
+      `IsInt(log.attributes["http.response.status_code"]) and (log.attributes["http.response.status_code"] < 100 or log.attributes["http.response.status_code"] > 599)`,
+      `log.attributes["event.name"] == "authentication.rejected" and IsInt(log.attributes["http.response.status_code"]) and log.attributes["http.response.status_code"] != 401 and log.attributes["http.response.status_code"] != 403 and log.attributes["http.response.status_code"] != 429`,
+      `log.attributes["event.name"] == "authentication.rejected" and log.attributes["http.response.status_code"] == 429 and log.attributes["http.route"] != "/api/auth/sign-in"`,
+      `log.attributes["event.name"] == "http.request.unhandled_failure" and IsInt(log.attributes["http.response.status_code"]) and log.attributes["http.response.status_code"] != 500`,
+      `log.attributes["event.name"] == "http.request.completed" and log.attributes["duration_ms"] == nil`,
+      `log.attributes["duration_ms"] != nil and not IsDouble(log.attributes["duration_ms"]) and not IsInt(log.attributes["duration_ms"])`,
+      `IsDouble(log.attributes["duration_ms"]) and (log.attributes["duration_ms"] < 0.0 or log.attributes["duration_ms"] > 600000.0)`,
+      `IsInt(log.attributes["duration_ms"]) and (log.attributes["duration_ms"] < 0 or log.attributes["duration_ms"] > 600000)`,
+      `log.attributes["event.name"] == "http.request.completed" and Len(log.attributes) != 6`,
+      `IsMatch(log.attributes["event.name"], "^(authentication\\.rejected|http\\.request\\.unhandled_failure)$") and Len(log.attributes) != 5`,
+      `IsMatch(log.attributes["event.name"], "^(application\\.started|telemetry\\.configuration\\.ignored)$") and Len(log.attributes) != 2`,
     ]
   }
 
@@ -80,8 +173,7 @@ otelcol.processor.transform "privacy_boundary" {
   metric_statements {
     context = "resource"
     statements = [
-      `keep_keys(resource.attributes, ["service.name", "service.version", "deployment.environment.name"])`,
-      `truncate_all(resource.attributes, 128)`,
+      `keep_keys(resource.attributes, ["service.name", "deployment.environment.name"])`,
     ]
   }
 
@@ -96,28 +188,19 @@ otelcol.processor.transform "privacy_boundary" {
   metric_statements {
     context = "datapoint"
     statements = [
-      `keep_keys(datapoint.attributes, ["http.request.method", "http.route", "http.response.status_code", "aspnetcore.diagnostics.exception.result", "event.severity", "gc.heap.generation", "cpu.mode"])`,
-      `delete_key(datapoint.attributes, "gc.heap.generation") where not IsMatch(metric.name, "^(dotnet\\.gc\\.collections|dotnet\\.gc\\.last_collection\\.heap\\.fragmentation\\.size|dotnet\\.gc\\.last_collection\\.heap\\.size)$")`,
-      `delete_key(datapoint.attributes, "gc.heap.generation") where datapoint.attributes["gc.heap.generation"] != nil and not IsString(datapoint.attributes["gc.heap.generation"])`,
-      `delete_key(datapoint.attributes, "gc.heap.generation") where datapoint.attributes["gc.heap.generation"] != nil and not IsMatch(datapoint.attributes["gc.heap.generation"], "^(gen0|gen1|gen2|loh|poh)$")`,
-      `delete_key(datapoint.attributes, "cpu.mode") where metric.name != "dotnet.process.cpu.time"`,
-      `delete_key(datapoint.attributes, "cpu.mode") where datapoint.attributes["cpu.mode"] != nil and not IsString(datapoint.attributes["cpu.mode"])`,
-      `delete_key(datapoint.attributes, "cpu.mode") where datapoint.attributes["cpu.mode"] != nil and not IsMatch(datapoint.attributes["cpu.mode"], "^(user|system)$")`,
-      `delete_key(datapoint.attributes, "aspnetcore.diagnostics.exception.result") where datapoint.attributes["aspnetcore.diagnostics.exception.result"] != nil and not IsString(datapoint.attributes["aspnetcore.diagnostics.exception.result"])`,
-      `delete_key(datapoint.attributes, "aspnetcore.diagnostics.exception.result") where datapoint.attributes["aspnetcore.diagnostics.exception.result"] != nil and not IsMatch(datapoint.attributes["aspnetcore.diagnostics.exception.result"], "^(handled|unhandled)$")`,
-      `delete_key(datapoint.attributes, "event.severity") where datapoint.attributes["event.severity"] != nil and not IsString(datapoint.attributes["event.severity"])`,
-      `delete_key(datapoint.attributes, "event.severity") where datapoint.attributes["event.severity"] != nil and not IsMatch(datapoint.attributes["event.severity"], "^(error|critical)$")`,
-      `delete_key(datapoint.attributes, "http.request.method") where datapoint.attributes["http.request.method"] != nil and not IsString(datapoint.attributes["http.request.method"])`,
-      `delete_key(datapoint.attributes, "http.request.method") where datapoint.attributes["http.request.method"] != nil and not IsMatch(datapoint.attributes["http.request.method"], "^(CONNECT|DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT|TRACE|_OTHER)$")`,
-      `truncate_all(datapoint.attributes, 128)`,
+      `keep_keys(datapoint.attributes, ["http.request.method", "http.route", "http.response.status_code"]) where IsMatch(metric.name, "^(http\\.server\\.request\\.duration|family_jobs_board\\.authentication\\.rejection\\.count)$")`,
+      `keep_keys(datapoint.attributes, ["aspnetcore.diagnostics.exception.result"]) where metric.name == "aspnetcore.diagnostics.exceptions"`,
+      `keep_keys(datapoint.attributes, ["event.severity"]) where metric.name == "family_jobs_board.application.runtime_error.count"`,
+      `keep_keys(datapoint.attributes, ["gc.heap.generation"]) where IsMatch(metric.name, "^(dotnet\\.gc\\.collections|dotnet\\.gc\\.last_collection\\.heap\\.fragmentation\\.size|dotnet\\.gc\\.last_collection\\.heap\\.size)$")`,
+      `keep_keys(datapoint.attributes, ["cpu.mode"]) where metric.name == "dotnet.process.cpu.time"`,
+      `keep_keys(datapoint.attributes, []) where not IsMatch(metric.name, "^(http\\.server\\.request\\.duration|family_jobs_board\\.authentication\\.rejection\\.count|aspnetcore\\.diagnostics\\.exceptions|family_jobs_board\\.application\\.runtime_error\\.count|dotnet\\.gc\\.collections|dotnet\\.gc\\.last_collection\\.heap\\.fragmentation\\.size|dotnet\\.gc\\.last_collection\\.heap\\.size|dotnet\\.process\\.cpu\\.time)$")`,
     ]
   }
 
   log_statements {
     context = "resource"
     statements = [
-      `keep_keys(resource.attributes, ["service.name", "service.version", "deployment.environment.name"])`,
-      `truncate_all(resource.attributes, 128)`,
+      `keep_keys(resource.attributes, ["service.name", "deployment.environment.name"])`,
     ]
   }
 
@@ -126,6 +209,7 @@ otelcol.processor.transform "privacy_boundary" {
     statements = [
       `keep_keys(scope.attributes, [])`,
       `set(scope.version, "")`,
+      `set(scope.dropped_attributes_count, 0)`,
     ]
   }
 
@@ -139,15 +223,14 @@ otelcol.processor.transform "privacy_boundary" {
       `set(log.severity_number, SEVERITY_NUMBER_WARN) where IsMatch(log.attributes["event.name"], "^(authentication\\.rejected|telemetry\\.configuration\\.ignored)$")`,
       `set(log.severity_text, "ERROR") where log.attributes["event.name"] == "http.request.unhandled_failure"`,
       `set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.attributes["event.name"] == "http.request.unhandled_failure"`,
-      `keep_keys(log.attributes, ["telemetry.schema", "event.name", "http.request.method", "http.route", "http.response.status_code", "duration_ms"])`,
-      `delete_key(log.attributes, "http.request.method") where log.attributes["http.request.method"] != nil and not IsString(log.attributes["http.request.method"])`,
-      `delete_key(log.attributes, "http.request.method") where log.attributes["http.request.method"] != nil and not IsMatch(log.attributes["http.request.method"], "^(CONNECT|DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT|TRACE|_OTHER)$")`,
-      `delete_key(log.attributes, "http.route") where log.attributes["http.route"] != nil and not IsString(log.attributes["http.route"])`,
-      `delete_key(log.attributes, "http.response.status_code") where log.attributes["http.response.status_code"] != nil and not IsInt(log.attributes["http.response.status_code"])`,
-      `delete_key(log.attributes, "duration_ms") where log.attributes["duration_ms"] != nil and not IsDouble(log.attributes["duration_ms"]) and not IsInt(log.attributes["duration_ms"])`,
-      `truncate_all(log.attributes, 128)`,
+      `keep_keys(log.attributes, ["telemetry.schema", "event.name", "http.request.method", "http.route", "http.response.status_code", "duration_ms"]) where log.attributes["event.name"] == "http.request.completed"`,
+      `keep_keys(log.attributes, ["telemetry.schema", "event.name", "http.request.method", "http.route", "http.response.status_code"]) where IsMatch(log.attributes["event.name"], "^(authentication\\.rejected|http\\.request\\.unhandled_failure)$")`,
+      `keep_keys(log.attributes, ["telemetry.schema", "event.name"]) where IsMatch(log.attributes["event.name"], "^(application\\.started|telemetry\\.configuration\\.ignored)$")`,
       `set(log.trace_id, TraceID(0x00000000000000000000000000000000))`,
       `set(log.span_id, SpanID(0x0000000000000000))`,
+      `set(log.flags, 0)`,
+      `set(log.dropped_attributes_count, 0)`,
+      `set(log.event_name, "")`,
     ]
   }
 

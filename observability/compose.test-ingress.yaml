@@ -3,7 +3,7 @@ services:
     ports:
       - "127.0.0.1:${GRAFANA_TEST_PORT:-33000}:3000"
     networks:
-      - backend
+      - query
       - test-ingress
 
 networks:

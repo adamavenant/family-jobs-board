@@ -105,7 +105,7 @@ OBSERVABILITY_PROJECT_NAME="$storage_project" \
 
 compose_test up --detach --build --wait --wait-timeout 180
 
-for service_name in alloy blackbox grafana loki prometheus; do
+for service_name in alloy blackbox grafana loki prometheus query-gateway; do
   container_id=$(compose_test ps -q "$service_name")
   [ -n "$container_id" ] || fail "$service_name container was not created"
   health=$(docker inspect --format '{{.State.Health.Status}}' "$container_id")
@@ -117,7 +117,7 @@ storage_init_id=$(compose_test ps --all -q storage-init)
 [ "$(docker inspect --format '{{.State.ExitCode}}' "$storage_init_id")" = "0" ] \
   || fail "storage initializer did not complete successfully"
 
-for service_name in alloy blackbox loki prometheus; do
+for service_name in alloy blackbox loki prometheus query-gateway; do
   container_id=$(compose_test ps -q "$service_name")
   port_bindings=$(docker inspect --format '{{json .NetworkSettings.Ports}}' "$container_id")
   printf '%s\n' "$port_bindings" | jq -e 'all(.[]; . == null)' >/dev/null \
@@ -129,6 +129,37 @@ grafana_ports=$(docker inspect --format '{{json .NetworkSettings.Ports}}' "$graf
 printf '%s\n' "$grafana_ports" | jq -e \
   'to_entries | (length == 1) and (.[0].value | length == 1 and .[0].HostIp == "127.0.0.1")' \
   >/dev/null || fail "Grafana verification ingress is not loopback-only"
+
+grafana_networks=$(docker inspect --format '{{json .NetworkSettings.Networks}}' "$grafana_id")
+printf '%s\n' "$grafana_networks" | jq -e \
+  --arg query "$test_prefix-query" \
+  --arg ingress "$test_prefix-test-ingress" \
+  'keys | sort == ([$query, $ingress] | sort)' >/dev/null \
+  || fail "Grafana is not isolated to the query and loopback-test networks"
+
+query_gateway_id=$(compose_test ps -q query-gateway)
+query_gateway_networks=$(docker inspect --format '{{json .NetworkSettings.Networks}}' "$query_gateway_id")
+printf '%s\n' "$query_gateway_networks" | jq -e \
+  --arg backend "$backend_network" \
+  --arg query "$test_prefix-query" \
+  'keys | sort == ([$backend, $query] | sort)' >/dev/null \
+  || fail "query gateway is not the only bridge between Grafana and the backends"
+
+assert_service_networks() {
+  service_name=$1
+  shift
+  expected_networks=$(printf '%s\n' "$@" | jq -Rsc 'split("\n") | map(select(length > 0)) | sort')
+  service_id=$(compose_test ps -q "$service_name")
+  actual_networks=$(docker inspect --format '{{json .NetworkSettings.Networks}}' "$service_id" \
+    | jq -c 'keys | sort')
+  [ "$actual_networks" = "$expected_networks" ] \
+    || fail "$service_name has unexpected networks: $actual_networks"
+}
+
+assert_service_networks alloy "$backend_network" "$test_network"
+assert_service_networks blackbox "$backend_network"
+assert_service_networks loki "$backend_network"
+assert_service_networks prometheus "$backend_network"
 
 docker exec --user 472:0 "$grafana_id" sh -euc '
   test -r /tmp/grafana-admin-password
@@ -179,6 +210,68 @@ curl --fail --silent --show-error "$grafana_url/api/datasources/uid/prometheus/h
 curl --fail --silent --show-error "$grafana_url/api/datasources/uid/loki/health" \
   | jq -e '.status == "OK"' >/dev/null \
   || fail "provisioned Loki data source is unhealthy"
+
+curl --fail --silent --show-error --get \
+  --data-urlencode 'query=up' \
+  "$grafana_url/api/datasources/proxy/uid/prometheus/api/v1/query" \
+  | jq -e '.status == "success"' >/dev/null \
+  || fail "anonymous Prometheus query did not traverse the query gateway"
+curl --fail --silent --show-error --get \
+  --data-urlencode 'query={service_name=~".+"}' \
+  --data-urlencode 'limit=1' \
+  "$grafana_url/api/datasources/proxy/uid/loki/loki/api/v1/query_range" \
+  | jq -e '.status == "success"' >/dev/null \
+  || fail "anonymous Loki query did not traverse the query gateway"
+
+for proxy_write_path in \
+  'prometheus/api/v1/otlp/v1/metrics' \
+  'prometheus/api/v1/write' \
+  'prometheus/api/v1/admin/tsdb/delete_series' \
+  'prometheus/-/reload' \
+  'loki/otlp/v1/logs' \
+  'loki/loki/api/v1/push'; do
+  proxy_status=$(curl --silent --show-error --output /dev/null \
+    --write-out '%{http_code}' \
+    --request POST \
+    --header 'Content-Type: application/json' \
+    --data '{}' \
+    "$grafana_url/api/datasources/proxy/uid/$proxy_write_path")
+  case "$proxy_status" in
+    403|404|405) ;;
+    *) fail "anonymous Grafana datasource proxy write returned HTTP $proxy_status for $proxy_write_path" ;;
+  esac
+done
+
+gateway_status() {
+  request_method=$1
+  request_path=$2
+  docker run --rm --network "$backend_network" \
+    --entrypoint /usr/bin/curl \
+    grafana/grafana:13.2.3 \
+    --silent --show-error --output /dev/null \
+    --write-out '%{http_code}' \
+    --request "$request_method" \
+    --header 'Content-Type: application/json' \
+    --data '{}' \
+    "http://query-gateway:8080$request_path"
+}
+
+[ "$(gateway_status POST '/prometheus/api/v1/otlp/v1/metrics')" = "404" ] \
+  || fail "query gateway exposed the Prometheus OTLP write endpoint"
+[ "$(gateway_status POST '/prometheus/api/v1/write')" = "404" ] \
+  || fail "query gateway exposed the Prometheus remote-write endpoint"
+[ "$(gateway_status POST '/prometheus/api/v1/admin/tsdb/delete_series')" = "404" ] \
+  || fail "query gateway exposed a Prometheus admin endpoint"
+[ "$(gateway_status POST '/prometheus/-/reload')" = "404" ] \
+  || fail "query gateway exposed the Prometheus reload endpoint"
+[ "$(gateway_status POST '/loki/otlp/v1/logs')" = "404" ] \
+  || fail "query gateway exposed the Loki OTLP write endpoint"
+[ "$(gateway_status POST '/loki/loki/api/v1/push')" = "404" ] \
+  || fail "query gateway exposed the Loki push endpoint"
+[ "$(gateway_status DELETE '/prometheus/api/v1/query')" = "405" ] \
+  || fail "query gateway accepted a disallowed method on a Prometheus query endpoint"
+[ "$(gateway_status PUT '/loki/loki/api/v1/query_range')" = "405" ] \
+  || fail "query gateway accepted a disallowed method on a Loki query endpoint"
 
 backend_get() {
   request_url=$1
@@ -259,7 +352,10 @@ while :; do
   ' "$test_root/application-series.json" >/dev/null; then
     break
   fi
-  [ "$attempt" -lt 30 ] || fail "allowed OTLP metrics did not reach Prometheus"
+  if [ "$attempt" -ge 30 ]; then
+    observed_metrics=$(jq -r '[.data[].__name__] | unique | join(", ")' "$test_root/application-series.json")
+    fail "allowed OTLP metrics did not reach Prometheus (observed: ${observed_metrics:-none})"
+  fi
   sleep 1
 done
 
@@ -281,13 +377,20 @@ jq -e '
       and index("_OTHER") != null
 ' "$test_root/application-series.json" >/dev/null \
   || fail "bounded HTTP-method points collapsed or were removed"
+jq -e '
+  ["0.005", "0.01", "0.025", "0.05", "0.1", "0.25", "0.5", "1", "2.5", "5", "10", "+Inf"] as $allowed
+  | [.data[] | select(.__name__ == "http_server_request_duration_seconds_bucket") | .le] as $actual
+  | ($actual | length) > 0
+    and all($actual[]; . as $value | $allowed | index($value) != null)
+' "$test_root/application-series.json" >/dev/null \
+  || fail "Prometheus retained hostile or unexpected HTTP histogram boundaries"
 
 jq -e '
   [
     "__name__", "aspnetcore_diagnostics_exception_result", "cpu_mode",
     "deployment_environment_name", "event_severity", "gc_heap_generation",
     "http_request_method", "http_response_status_code", "http_route", "job",
-    "le", "service_name", "service_version"
+    "le", "service_name"
   ] as $allowed
   | all(.data[]; all(keys[]; . as $key | $allowed | index($key) != null))
 ' "$test_root/application-series.json" >/dev/null \
@@ -295,9 +398,14 @@ jq -e '
 
 if jq -e '
   [.data[].__name__] as $names
-  | any($names[]; . == "private_household_member_count" or startswith("dotnet_exceptions"))
+  | any($names[];
+      . == "private_household_member_count"
+      or startswith("dotnet_exceptions")
+      or startswith("family_jobs_board_application_warning")
+      or startswith("family_jobs_board_application_runtime_error")
+      or startswith("family_jobs_board_process_start_time"))
 ' "$test_root/application-series.json" >/dev/null; then
-  fail "Prometheus retained a rejected metric"
+  fail "Prometheus retained a rejected metric or malformed allowed point"
 fi
 if grep -Eq 'must-not-survive|Private\.Exception|member_(id|name)|process_command_line|service_instance_id' \
   "$test_root/application-series.json"; then
@@ -343,16 +451,16 @@ jq -e '
     "deployment_environment_name", "detected_level", "duration_ms", "event_name",
     "http_request_method", "http_response_status_code", "http_route",
     "observed_timestamp", "scope_name", "scope_version", "service_name",
-    "service_version", "severity_number", "severity_text", "telemetry_schema"
+    "severity_number", "severity_text", "telemetry_schema"
   ] as $allowed
   | .data.result
   | all(.[]; all(.stream | keys[]; . as $key | $allowed | index($key) != null))
 ' "$test_root/application-logs.json" >/dev/null \
   || fail "Loki retained a non-allowlisted event field"
 
-if grep -Eq 'must-not-survive|PRIVATE|REJECTED|IdentityAudit|identity\.audit|application\.warning|member_id|request_id|session_id|trace_id|span_id|reason' \
+if grep -Eq 'must-not-survive|PRIVATE|REJECTED|IdentityAudit|identity\.audit|application\.warning|member_id|request_id|session_id|trace_id|span_id|reason|314159265|271828182|161803398|dropped_attributes_count|scope_dropped_attributes_count' \
   "$test_root/application-logs.json"; then
-  fail "Loki retained a private body, identifier, trace, or rejected event"
+  fail "Loki retained a private body, identifier, envelope field, or rejected event"
 fi
 jq -e '
   .data.result[0].stream.severity_text == "INFO"

@@ -1,8 +1,8 @@
 # Observability stack operations
 
-This runbook operates the separate Grafana/Prometheus/Loki/Alloy/Blackbox
-Compose project. It does not deploy the Family Jobs Board application, change
-DNS or reverse-proxy configuration, or expose Grafana to the LAN.
+This runbook operates the separate Grafana/Prometheus/Loki/Alloy/Blackbox/query
+gateway Compose project. It does not deploy the Family Jobs Board application,
+change DNS or reverse-proxy configuration, or expose Grafana to the LAN.
 
 ## Prepare configuration
 
@@ -75,7 +75,7 @@ images from their pinned bases:
 docker compose \
   --env-file /etc/family-jobs-board-observability/observability.env \
   -f observability/compose.yaml \
-  pull grafana prometheus storage-init
+  pull grafana prometheus query-gateway storage-init
 
 docker compose \
   --env-file /etc/family-jobs-board-observability/observability.env \
@@ -96,7 +96,8 @@ docker compose \
 ```
 
 The one-shot storage preflight and ownership initializer must exit successfully;
-Grafana, Prometheus, Loki, Alloy, and Blackbox must report healthy:
+Grafana, Prometheus, Loki, Alloy, Blackbox, and the query gateway must report
+healthy:
 
 ```sh
 docker compose \
@@ -109,6 +110,11 @@ docker compose \
 No service is reachable from the host in this issue. The
 `compose.test-ingress.yaml` file publishes Grafana only on loopback for the
 automated verification harness; never include it in a LAN deployment.
+Grafana has no route to the backend network. Its data sources use the internal
+query gateway, whose deny-by-default path-and-method allowlist exposes only
+reviewed Prometheus/Loki query APIs. OTLP ingest and backend administration stay
+reachable only from the collector/backend side, never through the anonymous
+Grafana data-source proxy.
 
 ## Stop, restart, and remove non-destructively
 
@@ -123,8 +129,8 @@ docker compose \
 ```
 
 Start the same containers with `start`, or rerun `up --detach --wait` after a
-configuration change. To remove containers and the project-private backend
-network while preserving all data, use `down` without `--volumes`:
+configuration change. To remove containers and the project-private backend and
+query networks while preserving all data, use `down` without `--volumes`:
 
 ```sh
 docker compose \
@@ -202,7 +208,7 @@ docker run --rm --network none --read-only --cap-drop ALL \
   -v "$backup_dir":/backup \
   busybox:1.37.0-uclibc tar czf /backup/alloy-data.tgz -C /source .
 
-sudo sha256sum "$backup_dir"/*.tgz | sudo tee "$backup_dir/SHA256SUMS"
+sudo sh -c 'cd -- "$1" && sha256sum -- *.tgz > SHA256SUMS' sh "$backup_dir"
 ```
 
 Restart with the production `up --detach --wait` command. Store the Grafana
