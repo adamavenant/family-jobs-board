@@ -24,8 +24,7 @@ file.
 Run the network preflight before either Compose project uses telemetry:
 
 ```sh
-set -a && . /etc/family-jobs-board-observability/observability.env && set +a
-./scripts/ensure-observability-network.sh
+sudo sh -c 'set -eu; set -a; . /etc/family-jobs-board-observability/observability.env; set +a; exec ./scripts/ensure-observability-network.sh'
 ```
 
 It creates, or validates, the external `family-jobs-board-telemetry` network as
@@ -87,8 +86,7 @@ docker compose \
 Production startup must include the bounded-storage overlay:
 
 ```sh
-set -a && . /etc/family-jobs-board-observability/observability.env && set +a
-./scripts/ensure-observability-network.sh
+sudo sh -c 'set -eu; set -a; . /etc/family-jobs-board-observability/observability.env; set +a; exec ./scripts/ensure-observability-network.sh'
 
 docker compose \
   --env-file /etc/family-jobs-board-observability/observability.env \
