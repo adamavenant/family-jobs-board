@@ -74,4 +74,12 @@ printf '%s\n' "$production_proxy" | grep -q 'published: "80"' || fail "productio
 printf '%s\n' "$production_proxy" | grep -q 'target: /etc/caddy/Caddyfile' || fail "production proxy does not mount its Caddyfile"
 printf '%s\n' "$production_api" | grep -q 'Authentication__AllowedOrigin: http://dashboard.home.arpa' || fail "production API origin is not explicit"
 
+telemetry_config=$(docker compose -f compose.yaml -f compose.telemetry.yaml config)
+printf '%s\n' "$telemetry_config" | grep -q 'name: family-jobs-board-telemetry' \
+  || fail "telemetry adapter does not use the default shared network"
+custom_telemetry_config=$(TELEMETRY_NETWORK_NAME=custom-telemetry-network \
+  docker compose -f compose.yaml -f compose.telemetry.yaml config)
+printf '%s\n' "$custom_telemetry_config" | grep -q 'name: custom-telemetry-network' \
+  || fail "telemetry adapter ignores TELEMETRY_NETWORK_NAME"
+
 echo "Compose configuration checks passed."

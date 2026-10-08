@@ -12,5 +12,5 @@ services:
 
 networks:
   telemetry:
-    name: family-jobs-board-telemetry
+    name: ${TELEMETRY_NETWORK_NAME:-family-jobs-board-telemetry}
     external: true

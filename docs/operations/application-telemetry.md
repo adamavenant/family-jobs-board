@@ -57,7 +57,9 @@ fail startup, or change `/health/live` or `/health/ready`.
 
 The base Compose files have no telemetry-network dependency. To opt in, first
 start the independently managed observability project that owns the external
-`family-jobs-board-telemetry` network, then include the adapter:
+telemetry network, then include the adapter. Both projects use
+`TELEMETRY_NETWORK_NAME`, which defaults to `family-jobs-board-telemetry`; when
+overriding it, supply the same value to both Compose commands.
 
 ```sh
 docker compose \
