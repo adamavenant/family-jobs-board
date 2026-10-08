@@ -16,6 +16,17 @@ internal sealed record ApplicationTelemetryOptions(
     string? ConfigurationIssue)
 {
     internal const string DefaultServiceName = "family-jobs-board-api";
+    internal const string DefaultDeploymentEnvironment = "production";
+
+    private static readonly HashSet<string> AllowedDeploymentEnvironments =
+    [
+        "development",
+        "local",
+        "production",
+        "staging",
+        "test",
+        "testing",
+    ];
 
     public static ApplicationTelemetryOptions FromConfiguration(
         IConfiguration configuration,
@@ -31,9 +42,9 @@ internal sealed record ApplicationTelemetryOptions(
         var serviceVersion = NormalizeResourceValue(
             configuration["OTEL_SERVICE_VERSION"],
             assemblyVersion);
-        var deploymentEnvironment = NormalizeResourceValue(
+        var deploymentEnvironment = NormalizeDeploymentEnvironment(
             configuration["Telemetry:Environment"],
-            environment.EnvironmentName.ToLowerInvariant());
+            environment.EnvironmentName);
 
         if (!TryCreateSignalExport(
                 configuration,
@@ -153,5 +164,25 @@ internal sealed record ApplicationTelemetryOptions(
                 || character is '-' or '_' or '.')
             ? trimmed
             : fallback;
+    }
+
+    private static string NormalizeDeploymentEnvironment(string? value, string hostEnvironment)
+    {
+        var fallback = TryNormalizeDeploymentEnvironment(hostEnvironment)
+            ?? DefaultDeploymentEnvironment;
+        return TryNormalizeDeploymentEnvironment(value) ?? fallback;
+    }
+
+    private static string? TryNormalizeDeploymentEnvironment(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var normalized = value.Trim().ToLowerInvariant();
+        return AllowedDeploymentEnvironments.Contains(normalized)
+            ? normalized
+            : null;
     }
 }

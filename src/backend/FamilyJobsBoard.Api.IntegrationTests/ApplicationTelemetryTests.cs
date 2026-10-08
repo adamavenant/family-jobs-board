@@ -331,6 +331,52 @@ public sealed class ApplicationTelemetryTests
         Assert.DoesNotContain(invalidValue, options.ConfigurationIssue, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("Development", "development")]
+    [InlineData("local", "local")]
+    [InlineData("PRODUCTION", "production")]
+    [InlineData(" staging ", "staging")]
+    [InlineData("test", "test")]
+    [InlineData("Testing", "testing")]
+    public void Deployment_environment_is_limited_to_the_shared_finite_vocabulary(
+        string configuredValue,
+        string expected)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Telemetry:Environment"] = configuredValue,
+            })
+            .Build();
+
+        var options = ApplicationTelemetryOptions.FromConfiguration(
+            configuration,
+            new TestHostEnvironment());
+
+        Assert.Equal(expected, options.DeploymentEnvironment);
+    }
+
+    [Fact]
+    public void Private_or_high_cardinality_deployment_environment_is_not_exported()
+    {
+        const string privateValue = "household-smith-2026-10-08";
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Telemetry:Environment"] = privateValue,
+            })
+            .Build();
+
+        var options = ApplicationTelemetryOptions.FromConfiguration(
+            configuration,
+            new TestHostEnvironment { EnvironmentName = "custom-private-host" });
+
+        Assert.Equal(
+            ApplicationTelemetryOptions.DefaultDeploymentEnvironment,
+            options.DeploymentEnvironment);
+        Assert.DoesNotContain(privateValue, options.DeploymentEnvironment, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Common_http_protobuf_endpoint_appends_signal_paths()
     {

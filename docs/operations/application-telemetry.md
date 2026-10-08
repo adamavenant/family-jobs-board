@@ -33,6 +33,12 @@ standard OpenTelemetry variables:
 | `OTEL_SERVICE_VERSION` | immutable deployed image tag/SHA |
 | `Telemetry__Environment` | stable environment name, normally `production` |
 
+`Telemetry__Environment` is normalized to one of the shared finite values
+`development`, `local`, `production`, `staging`, `test`, or `testing`. Any
+other configured value falls back to a recognized host environment, then to
+`production`. Do not place a household, host, cluster, or deployment-specific
+identifier in this field.
+
 `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` / `_PROTOCOL` and
 `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` / `_PROTOCOL` may override each signal.
 Supported protocols are `grpc` and `http/protobuf`. For a common
