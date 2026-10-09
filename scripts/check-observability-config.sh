@@ -112,7 +112,20 @@ preflight_env_load_count=$(grep -Fc \
   "sudo sh -c 'set -eu; set -a; . /etc/family-jobs-board-observability/observability.env; set +a; exec ./scripts/ensure-observability-network.sh'" \
   docs/operations/observability.md || true)
 [ "$preflight_env_load_count" = "2" ] \
-  || fail "each documented network preflight must load the root-only environment file inside a privileged shell"
+  || fail "each documented network preflight must load the environment file inside a privileged shell"
+grep -Fq 'sudo install -o root -g docker -m 750 -d /etc/family-jobs-board-observability' \
+  docs/operations/observability.md \
+  || fail "the observability environment directory is not readable by Docker operators"
+grep -Fq 'sudo install -o root -g docker -m 640 observability/environment.example' \
+  docs/operations/observability.md \
+  || fail "the observability environment file is not readable by Docker operators"
+grep -Fq 'server prometheus:9090 resolve;' observability/config/query-gateway/nginx.conf \
+  || fail "the query gateway does not dynamically resolve Prometheus after container replacement"
+grep -Fq 'server loki:3100 resolve;' observability/config/query-gateway/nginx.conf \
+  || fail "the query gateway does not dynamically resolve Loki after container replacement"
+if grep -Fq -- '    - service.version' observability/config/prometheus/prometheus.yaml; then
+  fail "Prometheus promotes a resource attribute that Alloy discards"
+fi
 
 assert_jq "$validation_dir/storage.json" \
   '.services["storage-preflight"].environment.PROMETHEUS_VOLUME_BUDGET_MIB == "2048" and .services["storage-preflight"].environment.LOKI_VOLUME_BUDGET_MIB == "4096"' \
@@ -155,6 +168,9 @@ grep -Fq "sudo sh -c 'cd -- \"\$1\" && sha256sum -- *.tgz > SHA256SUMS' sh \"\$b
 grep -Fq "sudo sh -c 'cd -- \"\$1\" && sha256sum --check SHA256SUMS' sh \"\$backup_dir\"" \
   docs/operations/observability.md \
   || fail "backup checksum verification does not run inside the privileged root-owned directory"
+backup_cap_count=$(grep -Fc -- '--cap-add DAC_READ_SEARCH' docs/operations/observability.md || true)
+[ "$backup_cap_count" = "2" ] \
+  || fail "Loki and Alloy backup commands do not have the read capability needed for service-owned data"
 retired_observability_host='familydash'"."'home'"."'arpa'
 if grep -R -n "$retired_observability_host" docs observability scripts; then
   fail "retired observability hostname is still present"

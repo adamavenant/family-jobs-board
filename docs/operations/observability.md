@@ -11,15 +11,18 @@ checkout and create a strong Grafana operator password as a separate mode-0600
 file:
 
 ```sh
-sudo install -d -m 700 /etc/family-jobs-board-observability
-sudo cp observability/environment.example \
+sudo install -o root -g docker -m 750 -d /etc/family-jobs-board-observability
+sudo install -o root -g docker -m 640 observability/environment.example \
   /etc/family-jobs-board-observability/observability.env
 sudo sh -c 'umask 077; openssl rand -base64 48 > /etc/family-jobs-board-observability/grafana-admin-password'
 ```
 
-The password is for explicit operator sign-in only. Anonymous users are
-Viewers and cannot edit dashboards or administer Grafana. Never commit either
-file.
+The environment file contains no credential; the Grafana password remains in
+its separate root-only mode-0600 file. The Compose operator must be in the
+`docker` group to read the environment file and operate the Docker daemon. A
+membership in that group already grants root-equivalent host access. Anonymous
+users are Viewers and cannot edit dashboards or administer Grafana. Never
+commit either file.
 
 Run the network preflight before either Compose project uses telemetry:
 
@@ -202,10 +205,12 @@ docker run --rm --network none --read-only --cap-drop ALL \
 docker run --rm --network none --read-only --cap-drop ALL \
   -v family-jobs-board-observability-loki-data:/source:ro \
   -v "$backup_dir":/backup \
+  --cap-add DAC_READ_SEARCH \
   busybox:1.37.0-uclibc tar czf /backup/loki-data.tgz -C /source .
 docker run --rm --network none --read-only --cap-drop ALL \
   -v family-jobs-board-observability-alloy-data:/source:ro \
   -v "$backup_dir":/backup \
+  --cap-add DAC_READ_SEARCH \
   busybox:1.37.0-uclibc tar czf /backup/alloy-data.tgz -C /source .
 
 sudo sh -c 'cd -- "$1" && sha256sum -- *.tgz > SHA256SUMS' sh "$backup_dir"

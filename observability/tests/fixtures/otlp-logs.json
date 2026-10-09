@@ -12,7 +12,7 @@
           {
             "key": "service.version",
             "value": {
-              "stringValue": "PRIVATE-VERSION-must-not-survive"
+              "stringValue": "v1.2.3-test"
             }
           },
           {
@@ -66,6 +66,24 @@
                   }
                 },
                 {
+                  "key": "service.name",
+                  "value": {
+                    "stringValue": "family-jobs-board-api"
+                  }
+                },
+                {
+                  "key": "service.version",
+                  "value": {
+                    "stringValue": "v1.2.3-test"
+                  }
+                },
+                {
+                  "key": "deployment.environment.name",
+                  "value": {
+                    "stringValue": "testing"
+                  }
+                },
+                {
                   "key": "event.name",
                   "value": {
                     "stringValue": "http.request.completed"
@@ -87,6 +105,12 @@
                   "key": "http.response.status_code",
                   "value": {
                     "intValue": "200"
+                  }
+                },
+                {
+                  "key": "http.response.status_class",
+                  "value": {
+                    "stringValue": "2xx"
                   }
                 },
                 {

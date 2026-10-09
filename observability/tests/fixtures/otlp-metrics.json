@@ -87,7 +87,7 @@
                       {
                         "key": "http.route",
                         "value": {
-                          "stringValue": "/health/ready"
+                          "stringValue": "/api/users/"
                         }
                       },
                       {
@@ -142,7 +142,7 @@
                       {
                         "key": "http.route",
                         "value": {
-                          "stringValue": "/health/ready"
+                          "stringValue": "/api/turn-rotations/"
                         }
                       },
                       {

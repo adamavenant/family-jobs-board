@@ -21,6 +21,7 @@ test_network="$test_project-telemetry"
 storage_project="$test_project-storage"
 storage_prefix="$test_prefix-storage"
 backend_network="$test_prefix-backend"
+backup_volume="$test_prefix-backup"
 
 mkdir -p \
   "$test_root/secret" \
@@ -65,6 +66,7 @@ cleanup() {
       -f observability/compose.storage-bounds.yaml \
       down --volumes --remove-orphans >/dev/null 2>&1 || true
   docker network rm "$test_network" >/dev/null 2>&1 || true
+  docker volume rm "$backup_volume" >/dev/null 2>&1 || true
   rm -rf "$test_root"
   exit "$cleanup_status"
 }
@@ -306,9 +308,61 @@ jq -e '(.data.result[0].value[1] | tonumber) == 1677721600' "$test_root/retentio
 
 timestamp_nanos="$(date +%s)000000000"
 jq --arg ts "$timestamp_nanos" '
-  (.resourceLogs[].scopeLogs[].logRecords[] | .timeUnixNano, .observedTimeUnixNano) = $ts
+  (.resourceLogs[0].scopeLogs[0].logRecords[0] as $real
+    | .resourceLogs[0].scopeLogs[0].logRecords += [
+        ($real
+          | .timeUnixNano = $ts
+          | .observedTimeUnixNano = $ts
+          | .body.stringValue = "PRIVATE BAD STATUS CLASS MUST NOT SURVIVE"
+          | .attributes |= map(if .key == "http.response.status_class"
+                              then .value.stringValue = "PRIVATE-STATUS"
+                              else . end)),
+        ($real
+          | .timeUnixNano = $ts
+          | .observedTimeUnixNano = $ts
+          | .body.stringValue = "HTTP authentication rejected."
+          | .attributes |= map(if .key == "event.name" then .value.stringValue = "authentication.rejected"
+                              elif .key == "http.response.status_code" then .value.intValue = "401"
+                              elif .key == "http.response.status_class" then .value.stringValue = "4xx"
+                              elif .key == "duration_ms" then empty
+                              else . end)),
+        ($real
+          | .timeUnixNano = $ts
+          | .observedTimeUnixNano = $ts
+          | .body.stringValue = "Unhandled request failure."
+          | .attributes |= map(if .key == "event.name" then .value.stringValue = "http.request.unhandled_failure"
+                              elif .key == "http.response.status_code" then .value.intValue = "500"
+                              elif .key == "http.response.status_class" then .value.stringValue = "5xx"
+                              elif .key == "duration_ms" then empty
+                              else . end)),
+        ($real
+          | .timeUnixNano = $ts
+          | .observedTimeUnixNano = $ts
+          | .body.stringValue = "Application started."
+          | .attributes |= map(select(.key as $key | ["telemetry.schema", "service.name", "service.version", "deployment.environment.name", "event.name"] | index($key) != null)
+                              | if .key == "event.name" then .value.stringValue = "application.started"
+                                else . end)),
+        ($real
+          | .timeUnixNano = $ts
+          | .observedTimeUnixNano = $ts
+          | .body.stringValue = "Invalid telemetry exporter configuration was ignored."
+          | .attributes |= map(select(.key as $key | ["telemetry.schema", "service.name", "service.version", "deployment.environment.name", "event.name"] | index($key) != null)
+                              | if .key == "event.name" then .value.stringValue = "telemetry.configuration.ignored"
+                                else . end)
+          | .attributes += [{"key":"reason","value":{"stringValue":"invalid_endpoint"}}])
+      ])
+  | (.resourceLogs[].scopeLogs[].logRecords[] | .timeUnixNano, .observedTimeUnixNano) = $ts
 ' observability/tests/fixtures/otlp-logs.json > "$test_root/fixtures/otlp-logs.json"
 jq --arg ts "$timestamp_nanos" '
+  (.resourceMetrics[0].scopeMetrics[0].metrics[0].histogram.dataPoints[0] as $matched
+    | .resourceMetrics[0].scopeMetrics[0].metrics[0].histogram.dataPoints += [
+        ($matched
+          | .attributes |= map(select(.key != "http.route")
+                              | if .key == "http.response.status_code"
+                                then .value.intValue = "404"
+                                else . end))
+      ])
+  |
   (.resourceMetrics[].scopeMetrics[].metrics[] |
     (.histogram.dataPoints[]?, .gauge.dataPoints[]?, .sum.dataPoints[]?) |
     .timeUnixNano) = $ts
@@ -330,6 +384,20 @@ for signal in logs metrics; do
     "http://alloy:4318/v1/$signal" \
     | jq -e '.partialSuccess == {}' >/dev/null \
     || fail "Alloy rejected the synthetic OTLP $signal fixture"
+done
+
+# Verify the read-only backup recipe can read service-owned Loki and Alloy data
+# while writing archives to a root-owned host directory.
+docker volume create "$backup_volume" >/dev/null
+for service_name in loki alloy; do
+  docker run --rm --network none --read-only --cap-drop ALL \
+    --cap-add DAC_READ_SEARCH \
+    -v "$test_prefix-$service_name-data:/source:ro" \
+    -v "$backup_volume:/backup" \
+    busybox:1.37.0-uclibc tar czf "/backup/$service_name-data.tgz" -C /source .
+  docker run --rm --network none -v "$backup_volume:/backup:ro" \
+    busybox:1.37.0-uclibc test -s "/backup/$service_name-data.tgz" \
+    || fail "$service_name backup archive was not written"
 done
 
 attempt=0
@@ -378,6 +446,17 @@ jq -e '
 ' "$test_root/application-series.json" >/dev/null \
   || fail "bounded HTTP-method points collapsed or were removed"
 jq -e '
+  [.data[] | select(.__name__ == "http_server_request_duration_seconds_count") | .http_route] as $routes
+  | ($routes | index("/api/users/")) != null
+    and ($routes | index("/api/turn-rotations/")) != null
+    and any(.data[];
+      .__name__ == "http_server_request_duration_seconds_count"
+      and .http_request_method == "GET"
+      and .http_response_status_code == "404"
+      and .http_route == null)
+' "$test_root/application-series.json" >/dev/null \
+  || fail "group-root or unmatched-route request points were dropped"
+jq -e '
   ["0.005", "0.01", "0.025", "0.05", "0.1", "0.25", "0.5", "1", "2.5", "5", "10", "+Inf"] as $allowed
   | [.data[] | select(.__name__ == "http_server_request_duration_seconds_bucket") | .le] as $actual
   | ($actual | length) > 0
@@ -424,7 +503,7 @@ while :; do
     --entrypoint /usr/bin/curl \
     grafana/grafana:13.2.3 \
     --fail --silent --show-error --get \
-    --data-urlencode 'query={service_name="family-jobs-board-api"}' \
+    --data-urlencode 'query={service_name="family-jobs-board-api"} | event_name="http.request.completed"' \
     --data-urlencode 'limit=20' \
     http://loki:3100/loki/api/v1/query_range \
     > "$test_root/application-logs.json"
@@ -436,13 +515,15 @@ while :; do
 done
 
 jq -e '
-  .data.result[0]
-  | .stream.service_name == "family-jobs-board-api"
-    and .stream.scope_name == "FamilyJobsBoard.Telemetry"
-    and .stream.telemetry_schema == "family-jobs-board.event.v1"
-    and .stream.event_name == "http.request.completed"
-    and .stream.http_request_method == "_OTHER"
-    and .values[0][1] == "http.request.completed"
+  .data.result as $result
+  | ($result | length == 1)
+    and ($result[0].values | length == 1)
+    and $result[0].stream.service_name == "family-jobs-board-api"
+    and $result[0].stream.scope_name == "FamilyJobsBoard.Telemetry"
+    and $result[0].stream.telemetry_schema == "family-jobs-board.event.v1"
+    and $result[0].stream.event_name == "http.request.completed"
+    and $result[0].stream.http_request_method == "_OTHER"
+    and $result[0].values[0][1] == "http.request.completed"
 ' "$test_root/application-logs.json" >/dev/null \
   || fail "Loki did not store the sanitized event contract"
 
@@ -467,5 +548,20 @@ jq -e '
   and .data.result[0].stream.severity_number == "9"
 ' "$test_root/application-logs.json" >/dev/null \
   || fail "Loki did not canonicalize the accepted event severity"
+
+for event_name in authentication.rejected http.request.unhandled_failure application.started telemetry.configuration.ignored; do
+  docker run --rm --network "$backend_network" \
+    --entrypoint /usr/bin/curl \
+    grafana/grafana:13.2.3 \
+    --fail --silent --show-error --get \
+    --data-urlencode "query={service_name=\"family-jobs-board-api\"} | event_name=\"$event_name\"" \
+    --data-urlencode 'limit=10' \
+    http://loki:3100/loki/api/v1/query_range \
+    > "$test_root/event-$event_name.json"
+  jq -e --arg event_name "$event_name" \
+    '.data.result | length == 1 and .[0].stream.event_name == $event_name and (.[0].values | length == 1)' \
+    "$test_root/event-$event_name.json" >/dev/null \
+    || fail "Alloy did not accept and sanitize the real $event_name attribute shape"
+done
 
 echo "Observability integration checks passed: services healthy, ports private, anonymous Viewer restricted, retention active, and hostile OTLP sanitized."
