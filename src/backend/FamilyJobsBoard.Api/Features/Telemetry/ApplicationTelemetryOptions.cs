@@ -39,7 +39,7 @@ internal sealed record ApplicationTelemetryOptions(
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion.Split('+', 2)[0]
             ?? "unknown";
-        var serviceVersion = NormalizeResourceValue(
+        var serviceVersion = NormalizeServiceVersion(
             configuration["OTEL_SERVICE_VERSION"],
             assemblyVersion);
         var deploymentEnvironment = NormalizeDeploymentEnvironment(
@@ -168,6 +168,14 @@ internal sealed record ApplicationTelemetryOptions(
             && trimmed.All(character => char.IsAsciiLetterOrDigit(character)
                 || character is '-' or '_' or '.')
             ? trimmed
+            : fallback;
+    }
+
+    private static string NormalizeServiceVersion(string? value, string fallback)
+    {
+        var normalized = NormalizeResourceValue(value, fallback);
+        return normalized.Length > 0 && char.IsAsciiLetterOrDigit(normalized[0])
+            ? normalized
             : fallback;
     }
 

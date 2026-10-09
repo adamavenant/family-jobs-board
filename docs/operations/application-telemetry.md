@@ -138,7 +138,7 @@ runtime fix rather than graphing them as counters or applying `rate`/`increase`.
 
 ASP.NET Core supplies the matched route template, not the raw URL. For example,
 all `/api/jobs/<guid>/complete` requests aggregate under
-`/api/jobs/{jobId:guid}/complete`. Unmatched URLs have no `http.route` label and
+`/api/jobs/{id:guid}/complete`. Unmatched URLs have no `http.route` label and
 therefore aggregate into one method/status series. Query strings are never a
 label. The metric view also drops scheme, network protocol, original unknown
 methods, and error type. Unknown HTTP methods use the framework's bounded

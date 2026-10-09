@@ -5,6 +5,7 @@ namespace FamilyJobsBoard.Api.Features.Telemetry;
 internal sealed class TelemetryEventWriter
 {
     internal const string Schema = "family-jobs-board.event.v1";
+    internal const double MaximumEventDurationMilliseconds = 600_000;
 
     private static readonly EventId ApplicationStartedEvent = new(2000, "ApplicationStarted");
     private static readonly EventId RequestCompletedEvent = new(2001, "HttpRequestCompleted");
@@ -51,7 +52,9 @@ internal sealed class TelemetryEventWriter
                 TelemetryDimensions.StatusClass(statusCode)),
             new KeyValuePair<string, object?>(
                 "duration_ms",
-                Math.Round(durationMilliseconds, 3)));
+                Math.Min(
+                    Math.Round(durationMilliseconds, 3),
+                    MaximumEventDurationMilliseconds)));
     }
 
     public void AuthenticationRejected(string method, string route, int statusCode)

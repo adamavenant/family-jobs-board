@@ -397,6 +397,88 @@ public sealed class ApplicationTelemetryTests
     }
 
     [Theory]
+    [InlineData("1", "1")]
+    [InlineData("v1.2.3_release-4", "v1.2.3_release-4")]
+    [InlineData(".v1.2.3", null)]
+    [InlineData("-release", null)]
+    [InlineData("_release", null)]
+    public void Service_version_requires_an_alphanumeric_first_character(
+        string configuredValue,
+        string? expected)
+    {
+        var fallback = ApplicationTelemetryOptions.FromConfiguration(
+            new ConfigurationBuilder().Build(),
+            new TestHostEnvironment()).ServiceVersion;
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["OTEL_SERVICE_VERSION"] = configuredValue,
+            })
+            .Build();
+
+        var options = ApplicationTelemetryOptions.FromConfiguration(
+            configuration,
+            new TestHostEnvironment());
+
+        Assert.Equal(expected ?? fallback, options.ServiceVersion);
+    }
+
+    [Fact]
+    public void Service_version_preserves_the_128_character_limit()
+    {
+        var fallback = ApplicationTelemetryOptions.FromConfiguration(
+            new ConfigurationBuilder().Build(),
+            new TestHostEnvironment()).ServiceVersion;
+        var validBoundary = $"v{new string('1', 127)}";
+        var invalidBoundary = $"v{new string('1', 128)}";
+
+        var validOptions = ApplicationTelemetryOptions.FromConfiguration(
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["OTEL_SERVICE_VERSION"] = validBoundary,
+                })
+                .Build(),
+            new TestHostEnvironment());
+        var invalidOptions = ApplicationTelemetryOptions.FromConfiguration(
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["OTEL_SERVICE_VERSION"] = invalidBoundary,
+                })
+                .Build(),
+            new TestHostEnvironment());
+
+        Assert.Equal(validBoundary, validOptions.ServiceVersion);
+        Assert.Equal(fallback, invalidOptions.ServiceVersion);
+    }
+
+    [Theory]
+    [InlineData(599999.999, 599999.999)]
+    [InlineData(600000, 600000)]
+    [InlineData(600000.001, 600000)]
+    [InlineData(900000, 600000)]
+    public void Request_event_duration_is_capped_at_the_collector_boundary(
+        double measuredDurationMilliseconds,
+        double expectedEventDurationMilliseconds)
+    {
+        var logs = new CapturingLoggerProvider();
+        using var loggerFactory = LoggerFactory.Create(logging => logging.AddProvider(logs));
+        var events = new TelemetryEventWriter(loggerFactory, TestOptions());
+
+        events.RequestCompleted(
+            "GET",
+            "/items/{itemId:guid}",
+            StatusCodes.Status204NoContent,
+            measuredDurationMilliseconds);
+
+        var requestEvent = Assert.Single(
+            logs.Entries,
+            entry => entry.EventId.Name == "HttpRequestCompleted");
+        Assert.Equal(expectedEventDurationMilliseconds, requestEvent.Attributes["duration_ms"]);
+    }
+
+    [Theory]
     [InlineData("Development", "development")]
     [InlineData("local", "local")]
     [InlineData("PRODUCTION", "production")]
