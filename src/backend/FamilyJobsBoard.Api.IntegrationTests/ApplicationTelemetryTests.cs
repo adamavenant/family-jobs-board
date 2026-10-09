@@ -6,7 +6,6 @@ using FamilyJobsBoard.Api.Features.Telemetry;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -217,6 +216,17 @@ public sealed class ApplicationTelemetryTests
         Assert.DoesNotContain("private", serializedExportedLogs, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("IdentityAudit", serializedExportedLogs, StringComparison.Ordinal);
 
+        var diagnostic = Assert.Single(
+            logs.Entries,
+            entry => entry.Category == ApplicationEventMetricsLoggerProvider.ExceptionHandlerCategory);
+        Assert.NotNull(diagnostic.Exception);
+        Assert.Contains("private-reason", diagnostic.Exception.Message, StringComparison.Ordinal);
+        var identityAudit = Assert.Single(
+            logs.Entries,
+            entry => entry.Category == ApplicationEventMetricsLoggerProvider.IdentityAuditCategory);
+        Assert.Contains("TraceId", identityAudit.ScopeAttributes.Keys);
+        Assert.Contains("SpanId", identityAudit.ScopeAttributes.Keys);
+
         var runtimeMetrics = exportedMetrics
             .Where(metric => metric.MeterName == "System.Runtime")
             .ToArray();
@@ -244,32 +254,50 @@ public sealed class ApplicationTelemetryTests
             ["OTEL_SERVICE_VERSION"] = "unavailable-exporter-test",
         };
 
-        await using var factory = new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder =>
-            {
-                builder.UseEnvironment("Testing");
-                builder.ConfigureAppConfiguration(settings =>
-                    settings.AddInMemoryCollection(configuration));
-                builder.ConfigureLogging(logging =>
-                {
-                    logging.ClearProviders();
-                    logging.AddProvider(logs);
-                });
-            });
-        using var client = factory.CreateClient();
+        await using var app = await StartTestApiAsync(logs, configuration: configuration);
+        using var client = app.GetTestClient();
 
         using var response = await client.GetAsync("/health/live");
         using var householdOperation = await client.PostAsync("/api/auth/refresh", null);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, householdOperation.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, householdOperation.StatusCode);
         var requestLog = Assert.Single(
             logs.Entries,
             entry => entry.EventId.Name == "HttpRequestCompleted"
                 && Equals(entry.Attributes["http.route"], "/health/live"));
         Assert.Equal("/health/live", requestLog.Attributes["http.route"]);
-        var provider = factory.Services.GetRequiredService<MeterProvider>();
+        var provider = app.Services.GetRequiredService<MeterProvider>();
         _ = provider.ForceFlush(1_000);
+        Assert.NotNull(
+            app.Services
+                .GetRequiredService<ApplicationTelemetryOptions>()
+                .LogsExport);
+        Assert.Single(
+            app.Services
+                .GetServices<ILoggerProvider>()
+                .OfType<OpenTelemetryLoggerProvider>());
+    }
+
+    [Fact]
+    public async Task Handled_failure_preserves_the_original_route_in_production_pipeline_order()
+    {
+        var logs = new CapturingLoggerProvider();
+        await using var app = await StartTestApiAsync(logs);
+        using var client = app.GetTestClient();
+
+        using var response = await client.GetAsync($"/controlled-failure/{Guid.NewGuid():D}");
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Single(
+            logs.Entries,
+            entry => entry.EventId.Name == "UnhandledRequestFailure"
+                && Equals(entry.Attributes["http.route"], "/controlled-failure/{itemId:guid}"));
+        Assert.Single(
+            logs.Entries,
+            entry => entry.EventId.Name == "HttpRequestCompleted"
+                && Equals(entry.Attributes["http.route"], "/controlled-failure/{itemId:guid}")
+                && Equals(entry.Attributes["http.response.status_code"], 500));
     }
 
     [Fact]
@@ -297,6 +325,43 @@ public sealed class ApplicationTelemetryTests
             safeEvents,
             entry => entry.EventId.Name == "HttpRequestCompleted"
                 && Equals(entry.Attributes["http.route"], "/response-started-failure"));
+    }
+
+    [Fact]
+    public void Kestrel_application_error_is_not_counted_after_the_safe_failure_event()
+    {
+        var exportedMetrics = new List<Metric>();
+        using var telemetry = new ApplicationTelemetry();
+        using var metricProvider = TelemetryServiceCollectionExtensions
+            .ConfigureMetrics(Sdk.CreateMeterProviderBuilder(), TestOptions())
+            .AddInMemoryExporter(exportedMetrics)
+            .Build();
+        using var loggerFactory = LoggerFactory.Create(logging =>
+            logging.AddProvider(new ApplicationEventMetricsLoggerProvider(telemetry)));
+        var events = new TelemetryEventWriter(loggerFactory, TestOptions());
+        var logger = loggerFactory.CreateLogger(
+            ApplicationEventMetricsLoggerProvider.KestrelCategory);
+
+        events.UnhandledRequestFailure("GET", "/response-started-failure");
+        logger.LogError(
+            new EventId(
+                ApplicationEventMetricsLoggerProvider.KestrelApplicationErrorEventId,
+                "ApplicationError"),
+            new InvalidOperationException("private duplicate diagnostic"),
+            "Connection processing ended abnormally.");
+        Assert.True(metricProvider.ForceFlush(10_000));
+        Assert.Equal(
+            1,
+            SumCounter(exportedMetrics, "family_jobs_board.application.runtime_error.count"));
+
+        exportedMetrics.Clear();
+        logger.LogError(
+            new EventId(14, "OtherKestrelError"),
+            "A distinct Kestrel failure occurred.");
+        Assert.True(metricProvider.ForceFlush(10_000));
+        Assert.Equal(
+            2,
+            SumCounter(exportedMetrics, "family_jobs_board.application.runtime_error.count"));
     }
 
     [Theory]
@@ -417,6 +482,35 @@ public sealed class ApplicationTelemetryTests
 
         Assert.Equal("http://metrics:4318/custom-metrics", options.MetricsExport?.Endpoint.ToString());
         Assert.Equal("http://logs:4318/custom-logs", options.LogsExport?.Endpoint.ToString());
+    }
+
+    [Fact]
+    public void Whitespace_signal_overrides_fall_back_to_common_otlp_configuration()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["OTEL_EXPORTER_OTLP_ENDPOINT"] = "http://alloy:4318/collector",
+                ["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf",
+                ["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"] = " ",
+                ["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"] = "\t",
+                ["OTEL_EXPORTER_OTLP_METRICS_PROTOCOL"] = "",
+                ["OTEL_EXPORTER_OTLP_LOGS_PROTOCOL"] = "  ",
+            })
+            .Build();
+
+        var options = ApplicationTelemetryOptions.FromConfiguration(
+            configuration,
+            new TestHostEnvironment());
+
+        Assert.Equal(
+            "http://alloy:4318/collector/v1/metrics",
+            options.MetricsExport?.Endpoint.ToString());
+        Assert.Equal(
+            "http://alloy:4318/collector/v1/logs",
+            options.LogsExport?.Endpoint.ToString());
+        Assert.Equal(OtlpExportProtocol.HttpProtobuf, options.MetricsExport?.Protocol);
+        Assert.Equal(OtlpExportProtocol.HttpProtobuf, options.LogsExport?.Protocol);
     }
 
     [Fact]
@@ -545,8 +639,6 @@ public sealed class ApplicationTelemetryTests
         });
         builder.WebHost.UseTestServer();
         builder.Logging.ClearProviders();
-        builder.Logging.Configure(options =>
-            options.ActivityTrackingOptions = ActivityTrackingOptions.None);
         builder.Logging.AddProvider(logs);
         if (configuration is not null)
         {
@@ -568,10 +660,10 @@ public sealed class ApplicationTelemetryTests
         builder.Services.AddApplicationTelemetry(builder.Configuration, builder.Environment);
         configureServices?.Invoke(builder.Services);
         var app = builder.Build();
+        app.UseRouting();
         app.UseMiddleware<RequestTelemetryMiddleware>();
         app.UseExceptionHandler();
         configurePipeline?.Invoke(app);
-        app.UseRouting();
         app.MapGet("/items/{itemId:guid}", () => Results.NoContent());
         app.MapPost("/api/auth/refresh", () => Results.Unauthorized());
         app.MapGet(
@@ -724,13 +816,17 @@ public sealed class ApplicationTelemetryTests
         IReadOnlyDictionary<string, string> Tags,
         long Count);
 
-    private sealed class CapturingLoggerProvider : ILoggerProvider
+    private sealed class CapturingLoggerProvider : ILoggerProvider, ISupportExternalScope
     {
         private readonly ConcurrentQueue<CapturedLogEntry> _entries = new();
+        private IExternalScopeProvider _scopeProvider = new LoggerExternalScopeProvider();
 
         public IReadOnlyCollection<CapturedLogEntry> Entries => _entries.ToArray();
 
         public ILogger CreateLogger(string categoryName) => new CaptureLogger(this, categoryName);
+
+        public void SetScopeProvider(IExternalScopeProvider scopeProvider) =>
+            _scopeProvider = scopeProvider;
 
         public void Dispose()
         {
@@ -740,7 +836,8 @@ public sealed class ApplicationTelemetryTests
             CapturingLoggerProvider provider,
             string categoryName) : ILogger
         {
-            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull =>
+                provider._scopeProvider.Push(state);
 
             public bool IsEnabled(LogLevel logLevel) => true;
 
@@ -760,13 +857,30 @@ public sealed class ApplicationTelemetryTests
                     }
                 }
 
+                var scopeAttributes = new Dictionary<string, object?>(StringComparer.Ordinal);
+                provider._scopeProvider.ForEachScope(
+                    static (scope, attributes) =>
+                    {
+                        if (scope is not IEnumerable<KeyValuePair<string, object?>> scopeValues)
+                        {
+                            return;
+                        }
+
+                        foreach (var value in scopeValues)
+                        {
+                            attributes[value.Key] = value.Value;
+                        }
+                    },
+                    scopeAttributes);
+
                 provider._entries.Enqueue(new(
                     categoryName,
                     logLevel,
                     eventId,
                     formatter(state, exception),
                     exception,
-                    attributes));
+                    attributes,
+                    scopeAttributes));
             }
         }
     }
@@ -777,7 +891,8 @@ public sealed class ApplicationTelemetryTests
         EventId EventId,
         string Message,
         Exception? Exception,
-        IReadOnlyDictionary<string, object?> Attributes);
+        IReadOnlyDictionary<string, object?> Attributes,
+        IReadOnlyDictionary<string, object?> ScopeAttributes);
 
     private sealed class FailingHostedService : IHostedService
     {

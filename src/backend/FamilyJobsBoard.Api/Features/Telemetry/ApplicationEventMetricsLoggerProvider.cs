@@ -7,17 +7,21 @@ internal sealed class ApplicationEventMetricsLoggerProvider(ApplicationTelemetry
     internal const string IdentityAuditCategory = "IdentityAudit";
     internal const string ExceptionHandlerCategory =
         "Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMiddleware";
+    internal const string KestrelCategory = "Microsoft.AspNetCore.Server.Kestrel";
+    internal const int KestrelApplicationErrorEventId = 13;
 
     public ILogger CreateLogger(string categoryName) =>
         categoryName is IdentityAuditCategory or ExceptionHandlerCategory
             ? NoopLogger.Instance
-            : new ApplicationEventMetricsLogger(telemetry);
+            : new ApplicationEventMetricsLogger(categoryName, telemetry);
 
     public void Dispose()
     {
     }
 
-    private sealed class ApplicationEventMetricsLogger(ApplicationTelemetry telemetry) : ILogger
+    private sealed class ApplicationEventMetricsLogger(
+        string categoryName,
+        ApplicationTelemetry telemetry) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
@@ -30,6 +34,12 @@ internal sealed class ApplicationEventMetricsLoggerProvider(ApplicationTelemetry
             Exception? exception,
             Func<TState, Exception?, string> formatter)
         {
+            if (categoryName == KestrelCategory
+                && eventId.Id == KestrelApplicationErrorEventId)
+            {
+                return;
+            }
+
             if (logLevel == LogLevel.Warning)
             {
                 telemetry.RecordWarning();

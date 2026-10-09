@@ -14,13 +14,9 @@ using FamilyJobsBoard.Api.Features.TurnRotations;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.ClearProviders();
-builder.Logging.Configure(options => options.ActivityTrackingOptions = ActivityTrackingOptions.None);
-builder.Logging.AddFilter(
-    ApplicationEventMetricsLoggerProvider.ExceptionHandlerCategory,
-    LogLevel.None);
 builder.Logging.AddJsonConsole(options =>
 {
-    options.IncludeScopes = false;
+    options.IncludeScopes = true;
     options.TimestampFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
     options.UseUtcTimestamp = true;
 });

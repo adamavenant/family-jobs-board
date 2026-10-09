@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Routing;
 
 namespace FamilyJobsBoard.Api.Features.Telemetry;
@@ -27,7 +28,9 @@ internal static class TelemetryDimensions
 
     public static string Route(HttpContext context)
     {
-        var route = (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText;
+        var endpoint = context.GetEndpoint()
+            ?? context.Features.Get<IExceptionHandlerFeature>()?.Endpoint;
+        var route = (endpoint as RouteEndpoint)?.RoutePattern.RawText;
         return !string.IsNullOrWhiteSpace(route) && route.Length <= 160
             ? route
             : "_unmatched";

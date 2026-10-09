@@ -66,6 +66,8 @@ printf '%s\n' "$production_api" | grep -q 'image: ghcr.io/adamavenant/family-job
 printf '%s\n' "$production_web" | grep -q 'image: ghcr.io/adamavenant/family-jobs-board-web:deployment-image-tag' || fail "production web image is not selected by IMAGE_TAG"
 printf '%s\n' "$production_migrate$production_api$production_web" | grep -q '^    build:' && fail "production application images include build instructions"
 printf '%s\n' "$production_api" | grep -q '^    ports:' && fail "production API is published"
+printf '%s\n' "$production_api" | grep -q 'max-size: 10m' || fail "production API logs are not size-bounded"
+printf '%s\n' "$production_api" | grep -q 'max-file: "3"' || fail "production API log history is not bounded"
 printf '%s\n' "$production_db" | grep -q '^    ports:' && fail "production database is published"
 printf '%s\n' "$production_web" | grep -q '^    ports:' && fail "production web container is published directly"
 printf '%s\n' "$production_proxy" | grep -q 'image: caddy:2.11.4-alpine' || fail "production proxy does not use the expected Caddy image"

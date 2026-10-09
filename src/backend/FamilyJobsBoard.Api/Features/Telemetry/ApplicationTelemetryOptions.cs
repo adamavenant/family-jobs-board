@@ -87,10 +87,11 @@ internal sealed record ApplicationTelemetryOptions(
         signalExport = null;
         configurationIssue = null;
 
-        var signalEndpointValue = configuration[$"OTEL_EXPORTER_OTLP_{signalName}_ENDPOINT"];
-        var commonEndpointValue = configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
+        var signalEndpointValue = NonWhitespace(
+            configuration[$"OTEL_EXPORTER_OTLP_{signalName}_ENDPOINT"]);
+        var commonEndpointValue = NonWhitespace(configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
         var endpointValue = signalEndpointValue ?? commonEndpointValue;
-        if (string.IsNullOrWhiteSpace(endpointValue))
+        if (endpointValue is null)
         {
             return true;
         }
@@ -101,8 +102,9 @@ internal sealed record ApplicationTelemetryOptions(
             return false;
         }
 
-        var protocolValue = configuration[$"OTEL_EXPORTER_OTLP_{signalName}_PROTOCOL"]
-            ?? configuration["OTEL_EXPORTER_OTLP_PROTOCOL"]
+        var protocolValue = NonWhitespace(
+                configuration[$"OTEL_EXPORTER_OTLP_{signalName}_PROTOCOL"])
+            ?? NonWhitespace(configuration["OTEL_EXPORTER_OTLP_PROTOCOL"])
             ?? "grpc";
         var protocol = protocolValue switch
         {
@@ -117,7 +119,7 @@ internal sealed record ApplicationTelemetryOptions(
         }
 
         if (protocol == OtlpExportProtocol.HttpProtobuf
-            && string.IsNullOrWhiteSpace(signalEndpointValue))
+            && signalEndpointValue is null)
         {
             endpoint = AppendSignalPath(endpoint, httpSignalPath);
         }
@@ -141,6 +143,9 @@ internal sealed record ApplicationTelemetryOptions(
         endpoint = null!;
         return false;
     }
+
+    private static string? NonWhitespace(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
 
     private static Uri AppendSignalPath(Uri endpoint, string signalPath)
     {

@@ -74,6 +74,11 @@ does not make an OTLP receiver or diagnostic endpoint reachable through the
 Family Jobs Board proxy. Starting the application without this override keeps
 it independent of the collector and its network.
 
+The API writes one structured completion event per request, including health
+checks. Its Docker `json-file` output is therefore capped at three 10 MB files
+by the base Compose model. Keep an equivalent bounded log policy when deploying
+the API outside that model.
+
 ## Metric contract
 
 All metric names, types, units, and exported label keys are fixed below. Metric
@@ -92,9 +97,10 @@ trace IDs and filtered attributes cannot travel as exemplar metadata.
 The severity counters deliberately exclude `IdentityAudit`: its sign-in
 rejection warning is an expected authentication outcome and its structured
 fields contain protected identifiers. They also exclude the framework exception
-handler category whose duplicate raw exception log is suppressed. General log
-records are never OTLP-exported; only their aggregate severity changes the
-counter.
+handler category and Kestrel event 13 (`ApplicationError`) because those local
+diagnostic records describe failures already counted by the sanitized event.
+General log records are never OTLP-exported; only their aggregate severity
+changes the counter.
 
 The exact .NET 10 `System.Runtime` export contract is below. `Sum` and
 `non-monotonic sum` are the OpenTelemetry SDK aggregations produced by the
@@ -159,17 +165,21 @@ authentication outcomes never increment runtime errors.
 
 Counters and histogram state reset when the process restarts. Prometheus stores
 the time series across that reset and uses reset-aware `rate`/`increase`
-functions. The process-start gauge and the `service.version` resource attribute
-make restarts and deployments visible without a container name or ID.
+functions. The process-start gauge makes restarts visible without a container
+name or ID. The API emits `service.version` to the collector so it can validate
+the bounded deployment value, but the anonymous collector discards it before
+Prometheus or Loki storage to prevent unbounded deployment labels.
 
 ## Safe structured-event contract
 
-Console output uses the .NET JSON formatter with UTC timestamps. Safe event
-attributes are written as structured log state, while ambient logging scopes
-are disabled so ASP.NET request/connection IDs cannot be inherited. A separate
-OpenTelemetry logging provider uses an exact category filter, so only records
-satisfying both of these conditions leave the API over OTLP and may enter
-anonymous Loki:
+Console output uses the .NET JSON formatter with UTC timestamps and retains
+normal structured scopes and activity correlation for protected operational
+and identity-audit diagnostics. Safe event attributes are written as structured
+log state, and the safe writer clears its ambient activity while emitting so
+its console and OTLP records do not inherit trace/span IDs. A separate
+OpenTelemetry logging provider disables scopes and uses an exact category
+filter, so only records satisfying both of these conditions leave the API over
+OTLP and may enter anonymous Loki:
 
 - logger category exactly `FamilyJobsBoard.Telemetry`; and
 - `telemetry.schema` exactly `family-jobs-board.event.v1`.
@@ -198,11 +208,14 @@ OTLP envelope (timestamps, severity, instrumentation scope) and these resource
 attributes:
 
 - `service.name`
-- `service.version`
 - `deployment.environment.name`
 
-The API constructs that resource from an empty builder. The three attributes
-above are the complete resource allowlist for both metrics and events;
+The API also sends its bounded `service.version` resource value. The collector
+validates that value and then discards it before anonymous storage.
+
+The API constructs its resource from an empty builder. `service.name`,
+`service.version`, and `deployment.environment.name` are its complete emitted
+resource allowlist for both metrics and events;
 `OTEL_RESOURCE_ATTRIBUTES` and automatic/default resource detectors cannot add
 host, container, instance, household, or other attributes to exported signals.
 
@@ -245,7 +258,10 @@ clears trace/span fields as defense in depth.
 
 Unhandled exceptions are converted to a fixed RFC Problem Details response.
 The exception object, type, message, stack, request body, raw URL, query string,
-headers, cookies, and payload are not passed to the safe event logger.
+headers, cookies, and payload are not passed to the safe event logger or OTLP.
+The standard exception-handler diagnostic remains in the protected local console
+stream with its exception and stack trace so an operator can investigate a 500;
+the anonymous collector must never ingest general container stdout.
 
 ## Privacy and review checklist
 
