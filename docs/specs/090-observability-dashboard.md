@@ -111,7 +111,7 @@ export so arbitrary metric metadata cannot become queryable. The allowlist is:
 | Instrument | Kind | Allowed data-point attributes |
 | --- | --- | --- |
 | `http.server.request.duration` | Histogram, seconds | `http.request.method`, `http.route`, `http.response.status_code` |
-| `aspnetcore.diagnostics.exceptions` | Counter | `aspnetcore.diagnostics.exception.result` (`handled` or `unhandled`) |
+| `aspnetcore.diagnostics.exceptions` | Counter | `aspnetcore.diagnostics.exception.result` (`handled`, `unhandled`, `skipped`, or `aborted`) |
 | `family_jobs_board.application.runtime_error.count` | Counter | `event.severity` (`error` or `critical`) |
 | `family_jobs_board.application.warning.count` | Counter | None |
 | `family_jobs_board.authentication.rejection.count` | Counter | `http.request.method`, `http.route`, `http.response.status_code` |
@@ -167,7 +167,9 @@ canonicalised from the accepted event name. Only the schema, event name,
 coarse route template, HTTP method,
 HTTP status code, and numeric duration may remain as log attributes; all other
 fields, including the application's optional configuration `reason`, are
-dropped. General API console output, Docker logs, IdentityAudit records, raw
+dropped. `duration_ms` is accepted from zero through 600,000 milliseconds,
+inclusive, matching the application's ten-minute clamp; larger values are
+rejected. General API console output, Docker logs, IdentityAudit records, raw
 exceptions, request/response bodies, tokens, cookies, PINs, connection strings,
 and household content never enter Loki.
 

@@ -363,6 +363,90 @@
         },
         {
           "scope": {
+            "name": "Microsoft.AspNetCore.Diagnostics",
+            "version": "PRIVATE SCOPE VERSION MUST NOT SURVIVE"
+          },
+          "metrics": [
+            {
+              "name": "aspnetcore.diagnostics.exceptions",
+              "description": "Stable ASP.NET Core exception outcomes",
+              "unit": "{exception}",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asInt": "1",
+                    "attributes": [
+                      {
+                        "key": "aspnetcore.diagnostics.exception.result",
+                        "value": {
+                          "stringValue": "handled"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asInt": "1",
+                    "attributes": [
+                      {
+                        "key": "aspnetcore.diagnostics.exception.result",
+                        "value": {
+                          "stringValue": "unhandled"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asInt": "1",
+                    "attributes": [
+                      {
+                        "key": "aspnetcore.diagnostics.exception.result",
+                        "value": {
+                          "stringValue": "skipped"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asInt": "1",
+                    "attributes": [
+                      {
+                        "key": "aspnetcore.diagnostics.exception.result",
+                        "value": {
+                          "stringValue": "aborted"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asInt": "1",
+                    "attributes": [
+                      {
+                        "key": "aspnetcore.diagnostics.exception.result",
+                        "value": {
+                          "stringValue": "PRIVATE-RESULT-must-not-survive"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "scope": {
             "name": "FamilyJobsBoard.Api",
             "version": "1.0.0"
           },

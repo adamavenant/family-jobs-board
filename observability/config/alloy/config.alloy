@@ -92,7 +92,7 @@ otelcol.processor.filter "privacy_values" {
       `metric.name == "family_jobs_board.authentication.rejection.count" and datapoint.attributes["http.response.status_code"] == 429 and datapoint.attributes["http.route"] != "/api/auth/sign-in"`,
       `metric.name == "aspnetcore.diagnostics.exceptions" and datapoint.attributes["aspnetcore.diagnostics.exception.result"] == nil`,
       `datapoint.attributes["aspnetcore.diagnostics.exception.result"] != nil and not IsString(datapoint.attributes["aspnetcore.diagnostics.exception.result"])`,
-      `IsString(datapoint.attributes["aspnetcore.diagnostics.exception.result"]) and not IsMatch(datapoint.attributes["aspnetcore.diagnostics.exception.result"], "^(handled|unhandled)$")`,
+      `IsString(datapoint.attributes["aspnetcore.diagnostics.exception.result"]) and not IsMatch(datapoint.attributes["aspnetcore.diagnostics.exception.result"], "^(handled|unhandled|skipped|aborted)$")`,
       `metric.name == "family_jobs_board.application.runtime_error.count" and datapoint.attributes["event.severity"] == nil`,
       `datapoint.attributes["event.severity"] != nil and not IsString(datapoint.attributes["event.severity"])`,
       `IsString(datapoint.attributes["event.severity"]) and not IsMatch(datapoint.attributes["event.severity"], "^(critical|error)$")`,

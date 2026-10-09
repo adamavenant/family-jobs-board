@@ -308,6 +308,26 @@ jq -e '(.data.result[0].value[1] | tonumber) == 1677721600' "$test_root/retentio
 
 timestamp_nanos="$(date +%s)000000000"
 jq --arg ts "$timestamp_nanos" '
+  def version_boundary_resource($version; $environment):
+    .resourceLogs[0]
+    | .resource.attributes |= map(
+        if .key == "service.version" then .value.stringValue = $version
+        elif .key == "deployment.environment.name" then .value.stringValue = $environment
+        else . end)
+    | .scopeLogs = [
+        (.scopeLogs[0]
+          | .logRecords = [
+              (.logRecords[0]
+                | .body.stringValue = "Application started."
+                | .attributes |= map(
+                    select(.key as $key | ["telemetry.schema", "service.name", "service.version", "deployment.environment.name", "event.name"] | index($key) != null)
+                    | if .key == "service.version" then .value.stringValue = $version
+                      elif .key == "deployment.environment.name" then .value.stringValue = $environment
+                      elif .key == "event.name" then .value.stringValue = "application.started"
+                      else . end))
+            ])
+      ];
+
   (.resourceLogs[0].scopeLogs[0].logRecords[0] as $real
     | .resourceLogs[0].scopeLogs[0].logRecords += [
         ($real
@@ -316,6 +336,20 @@ jq --arg ts "$timestamp_nanos" '
           | .body.stringValue = "PRIVATE BAD STATUS CLASS MUST NOT SURVIVE"
           | .attributes |= map(if .key == "http.response.status_class"
                               then .value.stringValue = "PRIVATE-STATUS"
+                              else . end)),
+        ($real
+          | .timeUnixNano = $ts
+          | .observedTimeUnixNano = $ts
+          | .body.stringValue = "HTTP request completed."
+          | .attributes |= map(if .key == "duration_ms"
+                              then .value.doubleValue = 600000.0
+                              else . end)),
+        ($real
+          | .timeUnixNano = $ts
+          | .observedTimeUnixNano = $ts
+          | .body.stringValue = "PRIVATE OVER-LIMIT DURATION MUST NOT SURVIVE"
+          | .attributes |= map(if .key == "duration_ms"
+                              then .value.doubleValue = 600000.001
                               else . end)),
         ($real
           | .timeUnixNano = $ts
@@ -351,6 +385,12 @@ jq --arg ts "$timestamp_nanos" '
                                 else . end)
           | .attributes += [{"key":"reason","value":{"stringValue":"invalid_endpoint"}}])
       ])
+  | .resourceLogs += [
+      version_boundary_resource("1.release-4"; "test"),
+      version_boundary_resource(".release"; "development"),
+      version_boundary_resource("-release"; "staging"),
+      version_boundary_resource("_release"; "local")
+    ]
   | (.resourceLogs[].scopeLogs[].logRecords[] | .timeUnixNano, .observedTimeUnixNano) = $ts
 ' observability/tests/fixtures/otlp-logs.json > "$test_root/fixtures/otlp-logs.json"
 jq --arg ts "$timestamp_nanos" '
@@ -414,6 +454,7 @@ while :; do
   if jq -e '
     [.data[].__name__] as $names
     | ($names | index("http_server_request_duration_seconds_count") != null)
+      and any($names[]; startswith("aspnetcore_diagnostics_exceptions"))
       and ($names | index("dotnet_process_cpu_count") != null)
       and any($names[]; startswith("dotnet_gc_collections"))
       and any($names[]; startswith("dotnet_process_cpu_time"))
@@ -427,6 +468,15 @@ while :; do
   sleep 1
 done
 
+jq -e '
+  [.data[]
+    | select(.__name__ | startswith("aspnetcore_diagnostics_exceptions"))
+    | .aspnetcore_diagnostics_exception_result] as $results
+  | ($results | length) == 4
+    and (["handled", "unhandled", "skipped", "aborted"]
+      | all(.[]; . as $result | $results | index($result) != null))
+' "$test_root/application-series.json" >/dev/null \
+  || fail "stable ASP.NET Core exception outcomes were dropped or widened"
 jq -e '
   [.data[] | select(.__name__ | startswith("dotnet_gc_collections")) | .gc_heap_generation]
     | index("gen0") != null and index("gen1") != null
@@ -507,7 +557,7 @@ while :; do
     --data-urlencode 'limit=20' \
     http://loki:3100/loki/api/v1/query_range \
     > "$test_root/application-logs.json"
-  if jq -e '.data.result | length == 1' "$test_root/application-logs.json" >/dev/null; then
+  if jq -e '[.data.result[].values[]] | length == 2' "$test_root/application-logs.json" >/dev/null; then
     break
   fi
   [ "$attempt" -lt 30 ] || fail "sanitized OTLP event did not reach Loki"
@@ -516,16 +566,17 @@ done
 
 jq -e '
   .data.result as $result
-  | ($result | length == 1)
-    and ($result[0].values | length == 1)
-    and $result[0].stream.service_name == "family-jobs-board-api"
-    and $result[0].stream.scope_name == "FamilyJobsBoard.Telemetry"
-    and $result[0].stream.telemetry_schema == "family-jobs-board.event.v1"
-    and $result[0].stream.event_name == "http.request.completed"
-    and $result[0].stream.http_request_method == "_OTHER"
-    and $result[0].values[0][1] == "http.request.completed"
+  | ([ $result[].values[] ] | length == 2)
+    and all($result[];
+      .stream.service_name == "family-jobs-board-api"
+      and .stream.scope_name == "FamilyJobsBoard.Telemetry"
+      and .stream.telemetry_schema == "family-jobs-board.event.v1"
+      and .stream.event_name == "http.request.completed"
+      and .stream.http_request_method == "_OTHER"
+      and all(.values[]; .[1] == "http.request.completed"))
+    and ([ $result[].stream.duration_ms | tonumber ] | sort) == [125, 600000]
 ' "$test_root/application-logs.json" >/dev/null \
-  || fail "Loki did not store the sanitized event contract"
+  || fail "Loki did not enforce the sanitized event and duration boundary contract"
 
 jq -e '
   [
@@ -544,8 +595,9 @@ if grep -Eq 'must-not-survive|PRIVATE|REJECTED|IdentityAudit|identity\.audit|app
   fail "Loki retained a private body, identifier, envelope field, or rejected event"
 fi
 jq -e '
-  .data.result[0].stream.severity_text == "INFO"
-  and .data.result[0].stream.severity_number == "9"
+  all(.data.result[];
+    .stream.severity_text == "INFO"
+    and .stream.severity_number == "9")
 ' "$test_root/application-logs.json" >/dev/null \
   || fail "Loki did not canonicalize the accepted event severity"
 
@@ -558,10 +610,23 @@ for event_name in authentication.rejected http.request.unhandled_failure applica
     --data-urlencode 'limit=10' \
     http://loki:3100/loki/api/v1/query_range \
     > "$test_root/event-$event_name.json"
-  jq -e --arg event_name "$event_name" \
-    '.data.result | length == 1 and .[0].stream.event_name == $event_name and (.[0].values | length == 1)' \
-    "$test_root/event-$event_name.json" >/dev/null \
-    || fail "Alloy did not accept and sanitize the real $event_name attribute shape"
+  if [ "$event_name" = "application.started" ]; then
+    jq -e --arg event_name "$event_name" '
+      [.data.result[] | .values[]] as $values
+      | [.data.result[].stream.deployment_environment_name] as $environments
+      | ($values | length) == 2
+        and ($environments | sort) == ["test", "testing"]
+        and all(.data.result[];
+          .stream.event_name == $event_name
+          and (.values | length) == 1)
+    ' "$test_root/event-$event_name.json" >/dev/null \
+      || fail "Alloy did not accept alphanumeric-leading and reject punctuation-leading service versions"
+  else
+    jq -e --arg event_name "$event_name" \
+      '.data.result | length == 1 and .[0].stream.event_name == $event_name and (.[0].values | length == 1)' \
+      "$test_root/event-$event_name.json" >/dev/null \
+      || fail "Alloy did not accept and sanitize the real $event_name attribute shape"
+  fi
 done
 
 echo "Observability integration checks passed: services healthy, ports private, anonymous Viewer restricted, retention active, and hostile OTLP sanitized."
