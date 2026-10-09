@@ -1,0 +1,328 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "family-jobs-board-api"
+            }
+          },
+          {
+            "key": "service.version",
+            "value": {
+              "stringValue": "v1.2.3-test"
+            }
+          },
+          {
+            "key": "deployment.environment.name",
+            "value": {
+              "stringValue": "testing"
+            }
+          },
+          {
+            "key": "service.instance.id",
+            "value": {
+              "stringValue": "must-not-survive"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {
+            "name": "FamilyJobsBoard.Telemetry",
+            "version": "PRIVATE SCOPE VERSION MUST NOT SURVIVE",
+            "droppedAttributesCount": 161803398,
+            "attributes": [
+              {
+                "key": "scope.secret",
+                "value": {
+                  "stringValue": "must-not-survive"
+                }
+              }
+            ]
+          },
+          "logRecords": [
+            {
+              "timeUnixNano": "0",
+              "observedTimeUnixNano": "0",
+              "severityNumber": 13,
+              "severityText": "PRIVATE SEVERITY MUST NOT SURVIVE",
+              "body": {
+                "stringValue": "PRIVATE BODY MUST BE REPLACED"
+              },
+              "traceId": "1234567890abcdef1234567890abcdef",
+              "spanId": "1234567890abcdef",
+              "flags": 314159265,
+              "droppedAttributesCount": 271828182,
+              "eventName": "PRIVATE-EVENT-NAME-must-not-survive",
+              "attributes": [
+                {
+                  "key": "telemetry.schema",
+                  "value": {
+                    "stringValue": "family-jobs-board.event.v1"
+                  }
+                },
+                {
+                  "key": "service.name",
+                  "value": {
+                    "stringValue": "family-jobs-board-api"
+                  }
+                },
+                {
+                  "key": "service.version",
+                  "value": {
+                    "stringValue": "v1.2.3-test"
+                  }
+                },
+                {
+                  "key": "deployment.environment.name",
+                  "value": {
+                    "stringValue": "testing"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "http.request.completed"
+                  }
+                },
+                {
+                  "key": "http.request.method",
+                  "value": {
+                          "stringValue": "_OTHER"
+                  }
+                },
+                {
+                  "key": "http.route",
+                  "value": {
+                    "stringValue": "/health/ready"
+                  }
+                },
+                {
+                  "key": "http.response.status_code",
+                  "value": {
+                    "intValue": "200"
+                  }
+                },
+                {
+                  "key": "http.response.status_class",
+                  "value": {
+                    "stringValue": "2xx"
+                  }
+                },
+                {
+                  "key": "duration_ms",
+                  "value": {
+                    "doubleValue": 125.0
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "0",
+              "observedTimeUnixNano": "0",
+              "severityNumber": 9,
+              "severityText": "Information",
+              "body": {
+                "stringValue": "HOSTILE ALLOWED KEY ON WRONG EVENT"
+              },
+              "attributes": [
+                {
+                  "key": "telemetry.schema",
+                  "value": {
+                    "stringValue": "family-jobs-board.event.v1"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "application.started"
+                  }
+                },
+                {
+                  "key": "member.id",
+                  "value": {
+                    "stringValue": "PRIVATE-WRONG-EVENT-KEY-must-not-survive"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "0",
+              "observedTimeUnixNano": "0",
+              "severityNumber": 9,
+              "severityText": "Information",
+              "body": {
+                "stringValue": "HOSTILE RAW ROUTE IN ALLOWED KEY"
+              },
+              "attributes": [
+                {
+                  "key": "telemetry.schema",
+                  "value": {
+                    "stringValue": "family-jobs-board.event.v1"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "http.request.completed"
+                  }
+                },
+                {
+                  "key": "http.request.method",
+                  "value": {
+                    "stringValue": "GET"
+                  }
+                },
+                {
+                  "key": "http.route",
+                  "value": {
+                    "stringValue": "/api/users/PRIVATE-GUID?token=must-not-survive"
+                  }
+                },
+                {
+                  "key": "http.response.status_code",
+                  "value": {
+                    "intValue": "200"
+                  }
+                },
+                {
+                  "key": "duration_ms",
+                  "value": {
+                    "doubleValue": 1.0
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "0",
+              "observedTimeUnixNano": "0",
+              "severityNumber": 13,
+              "severityText": "Warn",
+              "body": {
+                "stringValue": "REJECTED UNAPPROVED EVENT BODY"
+              },
+              "attributes": [
+                {
+                  "key": "telemetry.schema",
+                  "value": {
+                    "stringValue": "family-jobs-board.event.v1"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "application.warning"
+                  }
+                },
+                {
+                  "key": "member.id",
+                  "value": {
+                    "stringValue": "must-not-survive"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "scope": {
+            "name": "IdentityAudit",
+            "version": "1.0.0"
+          },
+          "logRecords": [
+            {
+              "timeUnixNano": "0",
+              "observedTimeUnixNano": "0",
+              "severityNumber": 17,
+              "severityText": "Error",
+              "body": {
+                "stringValue": "REJECTED IDENTITY BODY"
+              },
+              "attributes": [
+                {
+                  "key": "telemetry.schema",
+                  "value": {
+                    "stringValue": "family-jobs-board.event.v1"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "identity.audit"
+                  }
+                },
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "must-not-survive"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "family-jobs-board-api"
+            }
+          },
+          {
+            "key": "service.version",
+            "value": {
+              "stringValue": "v1.2.3-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-must-not-survive"
+            }
+          },
+          {
+            "key": "deployment.environment.name",
+            "value": {
+              "stringValue": "test"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {
+            "name": "FamilyJobsBoard.Telemetry",
+            "version": "1.0.0"
+          },
+          "logRecords": [
+            {
+              "timeUnixNano": "0",
+              "observedTimeUnixNano": "0",
+              "severityNumber": 9,
+              "severityText": "Information",
+              "body": {
+                "stringValue": "INVALID RESOURCE METADATA"
+              },
+              "attributes": [
+                {
+                  "key": "telemetry.schema",
+                  "value": {
+                    "stringValue": "family-jobs-board.event.v1"
+                  }
+                },
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "application.started"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

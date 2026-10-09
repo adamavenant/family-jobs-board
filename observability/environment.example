@@ -1,0 +1,12 @@
+# Absolute path to a mode-0600 file containing a strong Grafana operator password.
+GRAFANA_ADMIN_PASSWORD_FILE=/etc/family-jobs-board-observability/grafana-admin-password
+
+# Stable cross-project network used only for application-to-Alloy OTLP traffic.
+# Create it with scripts/ensure-observability-network.sh before starting either
+# Compose project. Both projects treat it as external, so `down` cannot remove it.
+TELEMETRY_NETWORK_NAME=family-jobs-board-telemetry
+
+# Required only with compose.storage-bounds.yaml. Each directory must already
+# exist and be the root of its own local, POSIX filesystem with the stated cap.
+PROMETHEUS_DATA_DIR=/srv/family-jobs-board-observability/prometheus
+LOKI_DATA_DIR=/srv/family-jobs-board-observability/loki
