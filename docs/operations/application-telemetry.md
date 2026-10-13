@@ -52,6 +52,12 @@ verbatim and therefore must include their complete receiver path. Invalid
 endpoint/protocol configuration disables both exporters and produces one
 sanitized warning; the configured value is never logged.
 
+The Compose adapter defaults to Alloy's gRPC listener at `http://alloy:4317`.
+When using `http/protobuf`, also change the common endpoint to
+`http://alloy:4318`; changing only the protocol would send HTTP traffic to the
+gRPC listener. Signal-specific HTTP endpoints likewise use port `4318` and
+include their complete receiver path.
+
 The metric reader exports every 30 seconds on a background worker and bounds
 each attempt to five seconds. Safe logs use a bounded 2,048-record background
 queue, batches of at most 512, a five-second schedule, and a five-second export
@@ -186,8 +192,10 @@ and identity-audit diagnostics. Safe event attributes are written as structured
 log state, and the safe writer clears its ambient activity while emitting so
 its console and OTLP records do not inherit trace/span IDs. A separate
 OpenTelemetry logging provider disables scopes and uses an exact category
-filter, so only records satisfying both of these conditions leave the API over
-OTLP and may enter anonymous Loki:
+filter, so only records from `FamilyJobsBoard.Telemetry` leave the API over the
+private OTLP connection. The collector then requires the exact schema before a
+record can enter anonymous Loki. Both conditions must therefore hold before
+anonymous storage:
 
 - logger category exactly `FamilyJobsBoard.Telemetry`; and
 - `telemetry.schema` exactly `family-jobs-board.event.v1`.
