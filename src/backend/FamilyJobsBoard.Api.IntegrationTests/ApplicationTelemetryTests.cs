@@ -566,6 +566,22 @@ public sealed class ApplicationTelemetryTests
     }
 
     [Fact]
+    public void Http_protobuf_exporter_uses_an_exporter_owned_client()
+    {
+        var exporter = new OtlpExporterOptions();
+
+        TelemetryServiceCollectionExtensions.ConfigureOtlpExporter(
+            exporter,
+            new(
+                new Uri("http://alloy:4318/v1/logs"),
+                OtlpExportProtocol.HttpProtobuf));
+
+        Assert.NotNull(exporter.HttpClientFactory);
+        using var client = exporter.HttpClientFactory();
+        Assert.Equal(TimeSpan.FromSeconds(5), client.Timeout);
+    }
+
+    [Fact]
     public void Signal_specific_http_endpoints_are_used_without_path_rewriting()
     {
         var configuration = new ConfigurationBuilder()

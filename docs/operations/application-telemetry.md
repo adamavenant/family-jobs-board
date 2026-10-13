@@ -154,18 +154,22 @@ availability, but exclude the stable route templates `/health/live` and
 `/health/ready` from household-traffic panels. This is route-template
 filtering, never raw-path or query-string matching.
 
-### Exact-once failure semantics
+### Failure signal semantics
 
-One controlled unhandled request produces exactly:
+The telemetry instrumentation for one controlled unhandled request produces:
 
-1. one `runtime_error.count{event.severity="error"}` increment;
+1. one `runtime_error.count{event.severity="error"}` increment for the sanitized
+   failure event;
 2. one `aspnetcore.diagnostics.exceptions{aspnetcore.diagnostics.exception.result="handled"}` increment;
 3. one `http.server.request.duration` sample with status `500`; and
 4. one sanitized Error event plus the normal request-completed event.
 
 These are intentional views of the same incident, not independent errors.
-Dashboard panels must not add them together. Warning events and 4xx client or
-authentication outcomes never increment runtime errors.
+Framework and application components can emit additional Error/Critical records
+for the same incident, and each such record increments `runtime_error.count`.
+Dashboard panels must therefore use the HTTP duration histogram's `500` samples
+to count failed requests, and must not add these views together. Warning events
+and 4xx client or authentication outcomes never increment runtime errors.
 
 Counters and histogram state reset when the process restarts. Prometheus stores
 the time series across that reset and uses reset-aware `rate`/`increase`

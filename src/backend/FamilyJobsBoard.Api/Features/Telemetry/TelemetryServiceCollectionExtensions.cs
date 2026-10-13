@@ -1,6 +1,7 @@
 using System.Diagnostics.Metrics;
 using Microsoft.AspNetCore.Diagnostics;
 using OpenTelemetry;
+using OpenTelemetry.Exporter;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -64,9 +65,7 @@ internal static class TelemetryServiceCollectionExtensions
                 loggerOptions => loggerOptions.AddOtlpExporter(
                     (exporter, processor) =>
                     {
-                        exporter.Endpoint = logsExport.Endpoint;
-                        exporter.Protocol = logsExport.Protocol;
-                        exporter.TimeoutMilliseconds = 5_000;
+                        ConfigureOtlpExporter(exporter, logsExport);
                         processor.ExportProcessorType = ExportProcessorType.Batch;
                         processor.BatchExportProcessorOptions = new()
                         {
@@ -123,15 +122,33 @@ internal static class TelemetryServiceCollectionExtensions
             metrics.AddOtlpExporter(
                 (exporter, reader) =>
                 {
-                    exporter.Endpoint = metricsExport.Endpoint;
-                    exporter.Protocol = metricsExport.Protocol;
-                    exporter.TimeoutMilliseconds = 5_000;
+                    ConfigureOtlpExporter(exporter, metricsExport);
                     reader.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds = 30_000;
                     reader.PeriodicExportingMetricReaderOptions.ExportTimeoutMilliseconds = 5_000;
                 });
         }
 
         return metrics;
+    }
+
+    internal static void ConfigureOtlpExporter(
+        OtlpExporterOptions exporter,
+        OtlpSignalExportOptions signalExport)
+    {
+        exporter.Endpoint = signalExport.Endpoint;
+        exporter.Protocol = signalExport.Protocol;
+        exporter.TimeoutMilliseconds = 5_000;
+
+        if (signalExport.Protocol == OtlpExportProtocol.HttpProtobuf)
+        {
+            // The exporter may flush after the host service provider has begun
+            // disposal. An exporter-owned client keeps that final HTTP batch
+            // independent of IHttpClientFactory's lifetime.
+            exporter.HttpClientFactory = static () => new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(5),
+            };
+        }
     }
 
     private static MetricStreamConfiguration CreateMetricView(Instrument instrument)
