@@ -33,6 +33,10 @@ standard OpenTelemetry variables:
 | `OTEL_SERVICE_VERSION` | immutable deployed image tag/SHA |
 | `Telemetry__Environment` | stable environment name, normally `production` |
 
+`service.name` is a fixed privacy-contract identifier. The API always emits
+`family-jobs-board-api`; any other `OTEL_SERVICE_NAME` value is ignored so it
+cannot silently fall outside the collector allowlist.
+
 `Telemetry__Environment` is normalized to one of the shared finite values
 `development`, `local`, `production`, `staging`, `test`, or `testing`. Any
 other configured value falls back to a recognized host environment, then to

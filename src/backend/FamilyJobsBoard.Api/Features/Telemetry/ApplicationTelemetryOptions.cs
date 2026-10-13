@@ -32,9 +32,10 @@ internal sealed record ApplicationTelemetryOptions(
         IConfiguration configuration,
         IHostEnvironment environment)
     {
-        var serviceName = NormalizeResourceValue(
-            configuration["OTEL_SERVICE_NAME"],
-            DefaultServiceName);
+        // The collector privacy contract is intentionally bound to one exact
+        // service name. Ignore overrides so a syntactically valid alternate
+        // value cannot silently discard every exported signal.
+        var serviceName = DefaultServiceName;
         var assemblyVersion = typeof(Program).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion.Split('+', 2)[0]

@@ -397,6 +397,26 @@ public sealed class ApplicationTelemetryTests
     }
 
     [Theory]
+    [InlineData("family-jobs-board-api")]
+    [InlineData("valid-but-unreviewed")]
+    [InlineData(" other-service ")]
+    public void Service_name_is_fixed_to_the_privacy_reviewed_value(string configuredValue)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["OTEL_SERVICE_NAME"] = configuredValue,
+            })
+            .Build();
+
+        var options = ApplicationTelemetryOptions.FromConfiguration(
+            configuration,
+            new TestHostEnvironment());
+
+        Assert.Equal(ApplicationTelemetryOptions.DefaultServiceName, options.ServiceName);
+    }
+
+    [Theory]
     [InlineData("1", "1")]
     [InlineData("v1.2.3_release-4", "v1.2.3_release-4")]
     [InlineData(".v1.2.3", null)]
