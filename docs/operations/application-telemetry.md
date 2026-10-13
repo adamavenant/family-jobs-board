@@ -198,6 +198,11 @@ The application-emitted safe-state allowlist is:
 - `duration_ms`
 - `reason`
 
+For `http.request.completed`, `duration_ms` is bounded to the inclusive range
+`0`–`600000` before the event is emitted. This keeps the anonymous event
+contract finite; the `http.server.request.duration` histogram remains uncapped
+and records the actual request duration.
+
 The JSON console record includes its numeric .NET `EventId`; `event.name` is the
 stable named identity on both transports. OpenTelemetry .NET 1.19 does not put
 the .NET `EventId` on the stable OTLP wire, so Loki correlation must use
@@ -249,7 +254,7 @@ anonymous Loki. Any other event name, reason, or attribute is outside this
 contract and must be dropped by the collector.
 
 Request correlation in the anonymous stream means the bounded method, route
-template, status, version, and time window. It intentionally does **not** use a
+template, status, and time window. It intentionally does **not** use a
 trace ID, span ID, request ID, session ID, member/job ID, container ID, or
 client IP. The event writer clears the ambient activity while emitting each
 safe record, the OTLP logger excludes scopes and formatted state, distributed
