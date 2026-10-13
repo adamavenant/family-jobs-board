@@ -151,10 +151,10 @@ raw-URL, and free-text dimensions are never retained.
 
 ### Noteworthy events
 
-The application OTLP logger filters to the exact
-`FamilyJobsBoard.Telemetry` category before export. The collector does not rely
-on that upstream filter: it independently validates the instrumentation scope
-and versioned schema before anonymous storage.
+The paired application-telemetry contract requires its OTLP logger to filter
+to the exact `FamilyJobsBoard.Telemetry` category before export. The collector
+does not rely on that upstream filter: it independently validates the
+instrumentation scope and versioned schema before anonymous storage.
 
 Loki accepts an OTLP log record only when all of these are true:
 
