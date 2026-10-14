@@ -17,7 +17,7 @@ internal static class TodayEndpoints
             .WithName("GetToday")
             .WithSummary("Get the authenticated family member's daily board.")
             .WithDescription(
-                "Returns the child-owned or adult household view for the optional household-local date and adult-only child filter.");
+                "Returns the child-owned or adult household view for the optional household-local date and adult-only child filter. undoGracePeriodSeconds is the household's undo time, so every device delays saving actions by the same amount.");
 
         group.MapPost("/jobs/{id:guid}/complete", CompleteJobAsync)
             .WithName("CompleteJob")
@@ -726,7 +726,8 @@ internal static class TodayEndpoints
             board.WhoseTurns
                 .Select(turn => new WhoseTurnResponse(
                     turn.RotationId, turn.Question, turn.ChildId, turn.ChildDisplayName))
-                .ToArray());
+                .ToArray(),
+            board.UndoGracePeriodSeconds);
     }
 
     private static RecurringJobResponse MapRecurringCreation(RecurringJobCreation creation)

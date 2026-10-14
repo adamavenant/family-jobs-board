@@ -1,4 +1,5 @@
 using FamilyJobsBoard.Application.Clock;
+using FamilyJobsBoard.Application.Settings;
 using FamilyJobsBoard.Application.TurnRotations;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Jobs;
@@ -11,15 +12,18 @@ public sealed class TodayBoardService
     private readonly ITodayBoardRepository _repository;
     private readonly IHouseholdClock _clock;
     private readonly TurnRotationService _turnRotationService;
+    private readonly HouseholdSettingsService _householdSettingsService;
 
     public TodayBoardService(
         ITodayBoardRepository repository,
         IHouseholdClock clock,
-        TurnRotationService turnRotationService)
+        TurnRotationService turnRotationService,
+        HouseholdSettingsService householdSettingsService)
     {
         _repository = repository;
         _clock = clock;
         _turnRotationService = turnRotationService;
+        _householdSettingsService = householdSettingsService;
     }
 
     public DateOnly CurrentDate => _clock.Today;
@@ -120,6 +124,7 @@ public sealed class TodayBoardService
             .Select(turn => new TodayWhoseTurn(
                 turn.RotationId, turn.Question, turn.ChildId, turn.ChildDisplayName))
             .ToArray();
+        var settings = await _householdSettingsService.GetAsync(cancellationToken);
 
         return new TodayBoard(
             MapMember(viewer),
@@ -136,7 +141,8 @@ public sealed class TodayBoardService
                     : null)).ToArray(),
             pointsBalance,
             householdVisibleJobs.Count(job => job.Status == JobStatus.PendingApproval),
-            whoseTurns);
+            whoseTurns,
+            settings.UndoGracePeriodSeconds);
     }
 
     public async Task<TodayJob> CompleteAsync(
