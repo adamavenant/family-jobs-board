@@ -71,6 +71,7 @@ import {
   whoseTurnLoader,
 } from "../features/whoseTurn/whoseTurnRoute";
 import { calendarLoader } from "../features/calendar/calendarRoute";
+import { approvalsLoader } from "../features/approvals/approvalsRoute";
 import { CalendarPage } from "../features/calendar/CalendarPage";
 import { pointsLedgerLoader } from "../features/points/pointsLedgerRoute";
 import { PointsLedgerPage } from "../features/points/PointsLedgerPage";
@@ -1262,6 +1263,10 @@ export const routes: RouteObject[] = [
     path: "/calendar",
     loader: calendarLoader,
     Component: CalendarPage,
+  },
+  {
+    path: "/approvals",
+    loader: approvalsLoader,
   },
   {
     path: "/points",

@@ -97,6 +97,11 @@ public sealed class CalendarService
                         rejectionByJobId.GetValueOrDefault(job.Id)))
                     .ToArray());
 
+        // The review count is household-wide: it ignores the child filter and the visible range.
+        var pendingApprovalJobs = await _repository.GetPendingApprovalJobsAsync(
+            children.Select(child => child.Id).ToArray(),
+            cancellationToken);
+
         var focusedMonth = new DateOnly(anchorDate.Year, anchorDate.Month, 1);
         var days = new List<CalendarDay>();
         for (var current = rangeStart; current <= rangeEnd; current = current.AddDays(1))
@@ -118,6 +123,7 @@ public sealed class CalendarService
             rangeStart,
             rangeEnd,
             selectedChild?.Id,
+            pendingApprovalJobs.Count,
             days);
     }
 

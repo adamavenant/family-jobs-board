@@ -8,6 +8,7 @@ import { RecurringJobForm } from "./RecurringJobForm";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { FamilyMembersPanel } from "../identity/FamilyMembersPanel";
 import { AdminDataResetPanel } from "../administration/AdminDataResetPanel";
+import { ApprovalsReview, ApprovalsTrigger } from "../approvals/ApprovalsPanel";
 import {
   addDays,
   boardHref,
@@ -41,193 +42,190 @@ export function TodayPage({ board }: { board: TodayBoard }) {
     month: "long",
   }).format(new Date(`${board.date}T12:00:00`));
   return (
-    <main>
-      <header className="hero">
-        <div className="hero__toolbar">
-          <p className="eyebrow">Family Jobs Board</p>
-          <div className="hero__actions">
-            {board.viewer.isAdult ? (
-              <>
-                <Link className="calendar-link" to="/calendar">
-                  Calendar
-                </Link>
-                <Link className="points-link" to="/points">
-                  Points
-                </Link>
-              </>
-            ) : null}
-            <IdentityControls viewer={board.viewer} />
-            <ThemeToggle />
-          </div>
-        </div>
-        <div className="hero__content">
-          <div>
-            <h1>Good day, {board.viewer.displayName}!</h1>
-            <p className="hero__date">
-              {formattedDate}
-              {isToday ? <span>Today</span> : null}
-            </p>
-          </div>
-          <div className="hero__stats">
-            {board.viewer.isAdult ? (
-              <div
-                className="hero__balance"
-                aria-label={`${board.pendingApprovalCount} jobs awaiting review`}
-              >
-                <strong>{board.pendingApprovalCount}</strong>
-                <span>awaiting review</span>
-              </div>
-            ) : (
-              <Link
-                className="hero__balance"
-                to="/points"
-                aria-label={`${formatBalance(board.pointsBalance ?? 0)} points earned. See how you earned them`}
-              >
-                <strong>{formatBalance(board.pointsBalance ?? 0)}</strong>
-                <span>points earned</span>
-              </Link>
-            )}
-            <div
-              className="hero__count"
-              aria-label={`${board.jobs.length} jobs on this day`}
-            >
-              <strong>{board.jobs.length}</strong>
-              <span>jobs this day</span>
+    <ApprovalsReview currentDate={currentDate}>
+      <main>
+        <header className="hero">
+          <div className="hero__toolbar">
+            <p className="eyebrow">Family Jobs Board</p>
+            <div className="hero__actions">
+              {board.viewer.isAdult ? (
+                <>
+                  <Link className="calendar-link" to="/calendar">
+                    Calendar
+                  </Link>
+                  <Link className="points-link" to="/points">
+                    Points
+                  </Link>
+                </>
+              ) : null}
+              <IdentityControls viewer={board.viewer} />
+              <ThemeToggle />
             </div>
           </div>
-        </div>
-      </header>
-
-      {board.viewer.isAdult ? (
-        <div className="grown-up-toolbox">
-          <FamilyMembersPanel currentMemberId={board.viewer.id} />
-          <AddJobForm
-            key={board.date}
-            children={children}
-            currentDate={currentDate}
-            selectedDate={board.date}
-            selectedChildId={board.selectedChildId}
-          />
-          <RecurringJobForm children={children} today={currentDate} />
-          <GoodBehavioursPanel children={children} />
-          <PointAdjustmentsPanel children={children} />
-          <RedeemRewardPanel children={children} />
-          <WhoseTurnPanel children={children} currentDate={currentDate} />
-          <AdminDataResetPanel />
-        </div>
-      ) : null}
-
-      <section className="board" aria-labelledby="today-heading">
-        {board.viewer.isAdult ? (
-          <nav className="child-filter" aria-label="Filter agenda by child">
-            <span>Show jobs for</span>
+          <div className="hero__content">
             <div>
-              <Link
-                to={boardHref(board.date, currentDate, null)}
-                aria-current={
-                  board.selectedChildId === null ? "page" : undefined
-                }
-              >
-                All children
-              </Link>
-              {children.map((child) => (
+              <h1>Good day, {board.viewer.displayName}!</h1>
+              <p className="hero__date">
+                {formattedDate}
+                {isToday ? <span>Today</span> : null}
+              </p>
+            </div>
+            <div className="hero__stats">
+              {board.viewer.isAdult ? (
+                <ApprovalsTrigger count={board.pendingApprovalCount} />
+              ) : (
                 <Link
-                  key={child.id}
-                  to={boardHref(board.date, currentDate, child.id)}
+                  className="hero__balance"
+                  to="/points"
+                  aria-label={`${formatBalance(board.pointsBalance ?? 0)} points earned. See how you earned them`}
+                >
+                  <strong>{formatBalance(board.pointsBalance ?? 0)}</strong>
+                  <span>points earned</span>
+                </Link>
+              )}
+              <div
+                className="hero__count"
+                aria-label={`${board.jobs.length} jobs on this day`}
+              >
+                <strong>{board.jobs.length}</strong>
+                <span>jobs this day</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {board.viewer.isAdult ? (
+          <div className="grown-up-toolbox">
+            <FamilyMembersPanel currentMemberId={board.viewer.id} />
+            <AddJobForm
+              key={board.date}
+              children={children}
+              currentDate={currentDate}
+              selectedDate={board.date}
+              selectedChildId={board.selectedChildId}
+            />
+            <RecurringJobForm children={children} today={currentDate} />
+            <GoodBehavioursPanel children={children} />
+            <PointAdjustmentsPanel children={children} />
+            <RedeemRewardPanel children={children} />
+            <WhoseTurnPanel children={children} currentDate={currentDate} />
+            <AdminDataResetPanel />
+          </div>
+        ) : null}
+
+        <section className="board" aria-labelledby="today-heading">
+          {board.viewer.isAdult ? (
+            <nav className="child-filter" aria-label="Filter agenda by child">
+              <span>Show jobs for</span>
+              <div>
+                <Link
+                  to={boardHref(board.date, currentDate, null)}
                   aria-current={
-                    board.selectedChildId === child.id ? "page" : undefined
+                    board.selectedChildId === null ? "page" : undefined
                   }
                 >
-                  {child.displayName}
+                  All children
                 </Link>
-              ))}
-            </div>
-          </nav>
-        ) : null}
-        <nav className="date-navigation" aria-label="Daily agenda">
-          <Link
-            to={boardHref(
-              addDays(board.date, -1),
-              currentDate,
-              board.selectedChildId,
-            )}
-          >
-            ← Previous day
-          </Link>
-          {!isToday ? (
+                {children.map((child) => (
+                  <Link
+                    key={child.id}
+                    to={boardHref(board.date, currentDate, child.id)}
+                    aria-current={
+                      board.selectedChildId === child.id ? "page" : undefined
+                    }
+                  >
+                    {child.displayName}
+                  </Link>
+                ))}
+              </div>
+            </nav>
+          ) : null}
+          <nav className="date-navigation" aria-label="Daily agenda">
             <Link
-              to={boardHref(currentDate, currentDate, board.selectedChildId)}
+              to={boardHref(
+                addDays(board.date, -1),
+                currentDate,
+                board.selectedChildId,
+              )}
             >
-              Today
+              ← Previous day
             </Link>
-          ) : (
-            <span aria-current="date">Today</span>
-          )}
-          <Link
-            to={boardHref(
-              addDays(board.date, 1),
-              currentDate,
-              board.selectedChildId,
+            {!isToday ? (
+              <Link
+                to={boardHref(currentDate, currentDate, board.selectedChildId)}
+              >
+                Today
+              </Link>
+            ) : (
+              <span aria-current="date">Today</span>
             )}
-          >
-            Next day →
-          </Link>
-        </nav>
-        <div className="board__heading">
-          <div>
-            <p className="eyebrow">
-              {board.viewer.isAdult ? "Household list" : "Your list"}
-            </p>
-            <h2 id="today-heading">
-              {board.viewer.isAdult
-                ? selectedChild
-                  ? `${selectedChild.displayName}’s jobs`
+            <Link
+              to={boardHref(
+                addDays(board.date, 1),
+                currentDate,
+                board.selectedChildId,
+              )}
+            >
+              Next day →
+            </Link>
+          </nav>
+          <div className="board__heading">
+            <div>
+              <p className="eyebrow">
+                {board.viewer.isAdult ? "Household list" : "Your list"}
+              </p>
+              <h2 id="today-heading">
+                {board.viewer.isAdult
+                  ? selectedChild
+                    ? `${selectedChild.displayName}’s jobs`
+                    : isToday
+                      ? "Family jobs"
+                      : "Family agenda"
                   : isToday
-                    ? "Family jobs"
-                    : "Family agenda"
-                : isToday
-                  ? "Today’s jobs"
-                  : "Your jobs"}
-            </h2>
+                    ? "Today’s jobs"
+                    : "Your jobs"}
+              </h2>
+            </div>
+            <p>
+              {board.viewer.isAdult
+                ? "Assign jobs and review each child’s completed work."
+                : "Finish a job to send it for a grown-up to approve."}
+            </p>
           </div>
-          <p>
-            {board.viewer.isAdult
-              ? "Assign jobs and review each child’s completed work."
-              : "Finish a job to send it for a grown-up to approve."}
-          </p>
-        </div>
 
-        {board.whoseTurns.map((turn) => (
-          <WhoseTurnCard
-            key={turn.rotationId}
-            whoseTurn={turn}
-            date={board.date}
-            isToday={isToday}
-          />
-        ))}
-        {board.whoseTurns.length === 0 && board.viewer.isAdult ? (
-          <p className="whose-turn-card whose-turn-card--unset">
-            Whose Turn Is It? isn’t set up yet. Configure it in the tools above.
-          </p>
+          {board.whoseTurns.map((turn) => (
+            <WhoseTurnCard
+              key={turn.rotationId}
+              whoseTurn={turn}
+              date={board.date}
+              isToday={isToday}
+            />
+          ))}
+          {board.whoseTurns.length === 0 && board.viewer.isAdult ? (
+            <p className="whose-turn-card whose-turn-card--unset">
+              Whose Turn Is It? isn’t set up yet. Configure it in the tools
+              above.
+            </p>
+          ) : null}
+
+          {board.jobs.length === 0 ? (
+            <p className="board__empty">
+              {selectedChild
+                ? `No jobs are scheduled for ${selectedChild.displayName} on this day.`
+                : "No jobs are scheduled for this day."}
+            </p>
+          ) : (
+            <Agenda jobs={board.jobs} isAdult={board.viewer.isAdult} />
+          )}
+        </section>
+
+        {!board.viewer.isAdult ? (
+          <div className="grown-up-toolbox">
+            <GoodBehaviourTypesList />
+          </div>
         ) : null}
-
-        {board.jobs.length === 0 ? (
-          <p className="board__empty">
-            {selectedChild
-              ? `No jobs are scheduled for ${selectedChild.displayName} on this day.`
-              : "No jobs are scheduled for this day."}
-          </p>
-        ) : (
-          <Agenda jobs={board.jobs} isAdult={board.viewer.isAdult} />
-        )}
-      </section>
-
-      {!board.viewer.isAdult ? (
-        <div className="grown-up-toolbox">
-          <GoodBehaviourTypesList />
-        </div>
-      ) : null}
-    </main>
+      </main>
+    </ApprovalsReview>
   );
 }
 
