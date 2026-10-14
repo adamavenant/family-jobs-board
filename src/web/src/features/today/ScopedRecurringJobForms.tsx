@@ -358,7 +358,7 @@ function ScopeReview({
         name="intent"
         value="previewRecurringJobChange"
         onClick={() => {
-          if (applied?.success) {
+          if (applied?.queued) {
             setRequestId(safeRequestId());
           }
           setPreviewedRevision(formRevision);
@@ -429,11 +429,6 @@ function ScopeReview({
       {preview?.error || applied?.error ? (
         <p role="alert" className="error-message">
           {preview?.error ?? applied?.error}
-        </p>
-      ) : null}
-      {applied?.success && applied.impact ? (
-        <p role="status" className="success-message">
-          Saved. {impactSummary(applied.impact)}
         </p>
       ) : null}
     </div>

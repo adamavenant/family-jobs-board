@@ -4,34 +4,31 @@ import { useFetcher } from "react-router";
 import type {
   AppActionResult,
   FamilyMembersActionResult,
+  FamilyMembersLoaderData,
 } from "../../app/routes";
 import type { FamilyMember } from "../../api/members";
-import { useSuccessToast } from "../../app/SuccessToast";
+import { formText } from "../../app/actionDescriptions";
+import { useUndoQueue } from "../../app/undoQueue";
+import type { QueuedAction } from "../../app/undoQueue";
+
+const memberIntents = new Set([
+  "createMember",
+  "updateMember",
+  "deactivateMember",
+  "restoreMember",
+]);
 
 export function FamilyMembersPanel({
   currentMemberId,
 }: {
   currentMemberId: string;
 }) {
-  const family = useFetcher<FamilyMembersActionResult>();
-  const { showSuccess } = useSuccessToast();
-  const members = family.data?.members ?? [];
+  const family = useFetcher<FamilyMembersLoaderData>();
+  const { actions } = useUndoQueue();
+  const members = showQueuedMemberChanges(family.data?.members ?? [], actions);
   const hasLoadedMembers = family.data?.members !== undefined;
-  const affected = members.find(
-    (member) => member.id === family.data?.affectedMemberId,
-  );
-  const active = members.filter((member) => member.isActive);
-  const inactive = members.filter((member) => !member.isActive);
-  const success = actionSuccess(
-    family.data?.intent,
-    family.data?.error ? undefined : affected,
-  );
-
-  useEffect(() => {
-    if (family.state === "idle" && success) {
-      showSuccess(success);
-    }
-  }, [family.state, showSuccess, success]);
+  const active = members.filter(({ member }) => member.isActive);
+  const inactive = members.filter(({ member }) => !member.isActive);
 
   return (
     <details
@@ -61,7 +58,7 @@ export function FamilyMembersPanel({
               ready to choose their PIN.
             </p>
           </div>
-          {hasLoadedMembers ? <CreateMemberForm fetcher={family} /> : null}
+          {hasLoadedMembers ? <CreateMemberForm /> : null}
         </div>
 
         {!hasLoadedMembers && family.data?.error ? (
@@ -78,14 +75,21 @@ export function FamilyMembersPanel({
         ) : (
           <>
             <ul className="family-member-list" aria-label="Family members">
-              {active.map((member) => (
+              {active.map(({ member, queued }) => (
                 <FamilyMemberCard
                   key={`${member.id}-${member.isActive}`}
                   member={member}
                   currentMemberId={currentMemberId}
-                  fetcher={family}
+                  queued={queued}
                 />
               ))}
+              {actions
+                .filter(
+                  (action) => action.formData.get("intent") === "createMember",
+                )
+                .map((action) => (
+                  <AddingMemberCard key={action.id} form={action.formData} />
+                ))}
             </ul>
             <section
               className="inactive-family-members"
@@ -100,12 +104,12 @@ export function FamilyMembersPanel({
                   className="family-member-list family-member-list--inactive"
                   aria-label="Inactive family members"
                 >
-                  {inactive.map((member) => (
+                  {inactive.map(({ member, queued }) => (
                     <FamilyMemberCard
                       key={`${member.id}-${member.isActive}`}
                       member={member}
                       currentMemberId={currentMemberId}
-                      fetcher={family}
+                      queued={queued}
                     />
                   ))}
                 </ul>
@@ -122,25 +126,73 @@ export function FamilyMembersPanel({
   );
 }
 
-function CreateMemberForm({
-  fetcher,
-}: {
-  fetcher: ReturnType<typeof useFetcher<FamilyMembersActionResult>>;
-}) {
+/** Members as they will be once queued profile changes are saved. */
+function showQueuedMemberChanges(
+  members: FamilyMember[],
+  actions: readonly QueuedAction[],
+): { member: FamilyMember; queued: boolean }[] {
+  return members.map((member) => {
+    const form = actions.find(
+      (action) =>
+        memberIntents.has(String(action.formData.get("intent"))) &&
+        action.formData.get("memberId") === member.id,
+    )?.formData;
+    switch (form?.get("intent")) {
+      case "deactivateMember":
+        return { member: { ...member, isActive: false }, queued: true };
+      case "restoreMember":
+        return { member: { ...member, isActive: true }, queued: true };
+      case "updateMember": {
+        const firstName = formText(form!, "firstName").trim();
+        const nickname = formText(form!, "nickname").trim() || null;
+        return {
+          member: {
+            ...member,
+            firstName,
+            surname: formText(form!, "surname").trim(),
+            nickname,
+            displayName: nickname ?? firstName,
+          },
+          queued: true,
+        };
+      }
+      default:
+        return { member, queued: false };
+    }
+  });
+}
+
+function AddingMemberCard({ form }: { form: FormData }) {
+  const firstName = formText(form, "firstName").trim();
+  const nickname = formText(form, "nickname").trim();
+  return (
+    <li className="family-member--queued">
+      <div className="family-member-list__identity">
+        <strong>{nickname || firstName}</strong>
+        <span>
+          {firstName} {formText(form, "surname").trim()}
+        </span>
+      </div>
+      <div className="family-member-list__status">
+        <span>{form.get("role") === "adult" ? "Grown-up" : "Child"}</span>
+        <span className="status--not-set">Being added</span>
+      </div>
+    </li>
+  );
+}
+
+function CreateMemberForm() {
+  const fetcher = useFetcher<FamilyMembersActionResult>();
   const formRef = useRef<HTMLFormElement>(null);
   const error =
     fetcher.data?.intent === "createMember" ? fetcher.data.error : undefined;
-  const createdMemberId =
-    fetcher.data?.intent === "createMember" && !fetcher.data.error
-      ? fetcher.data.affectedMemberId
-      : undefined;
   const submitting = fetcher.state === "submitting";
 
   useEffect(() => {
-    if (fetcher.state === "idle" && createdMemberId) {
+    if (fetcher.state === "idle" && fetcher.data?.queued) {
       formRef.current?.reset();
     }
-  }, [createdMemberId, fetcher.state]);
+  }, [fetcher.data, fetcher.state]);
 
   return (
     <fetcher.Form
@@ -189,12 +241,13 @@ function CreateMemberForm({
 function FamilyMemberCard({
   member,
   currentMemberId,
-  fetcher,
+  queued,
 }: {
   member: FamilyMember;
   currentMemberId: string;
-  fetcher: ReturnType<typeof useFetcher<FamilyMembersActionResult>>;
+  queued: boolean;
 }) {
+  const fetcher = useFetcher<FamilyMembersActionResult>();
   const handoff = useFetcher<AppActionResult>();
   const editDetailsRef = useRef<HTMLDetailsElement>(null);
   const editFormRef = useRef<HTMLFormElement>(null);
@@ -205,18 +258,17 @@ function FamilyMemberCard({
     handoff.data?.intent === "beginPinReset"
       ? handoff.data.error
       : undefined;
-  const memberAction =
-    fetcher.data?.affectedMemberId === member.id ? fetcher.data : undefined;
-  const mutationError =
-    memberAction?.intent !== "createMember" ? memberAction?.error : undefined;
-  const submitting = fetcher.state !== "idle";
+  const memberAction = fetcher.data;
+  const mutationError = memberAction?.error;
+  // A queued change can still be undone; until then the profile is locked.
+  const submitting = fetcher.state !== "idle" || queued;
   const fullName = [member.firstName, member.surname].filter(Boolean).join(" ");
 
   useEffect(() => {
     if (
       fetcher.state === "idle" &&
       memberAction?.intent === "updateMember" &&
-      !memberAction.error
+      memberAction.queued
     ) {
       editFormRef.current?.reset();
       if (editDetailsRef.current) {
@@ -322,6 +374,7 @@ function FamilyMemberCard({
         <fetcher.Form method="post" action="/family" ref={editFormRef}>
           <input type="hidden" name="intent" value="updateMember" />
           <input type="hidden" name="memberId" value={member.id} />
+          <input type="hidden" name="memberName" value={member.displayName} />
           <label>
             <span>First name</span>
             <input
@@ -380,6 +433,11 @@ function FamilyMemberCard({
               <fetcher.Form method="post" action="/family">
                 <input type="hidden" name="intent" value="deactivateMember" />
                 <input type="hidden" name="memberId" value={member.id} />
+                <input
+                  type="hidden"
+                  name="memberName"
+                  value={member.displayName}
+                />
                 <button
                   type="submit"
                   className="button--danger"
@@ -403,6 +461,7 @@ function FamilyMemberCard({
             type="button"
             className="button--quiet family-member-deactivate"
             onClick={() => setConfirmingDeactivation(true)}
+            disabled={queued}
           >
             Deactivate profile
           </button>
@@ -415,6 +474,7 @@ function FamilyMemberCard({
         >
           <input type="hidden" name="intent" value="restoreMember" />
           <input type="hidden" name="memberId" value={member.id} />
+          <input type="hidden" name="memberName" value={member.displayName} />
           {memberAction?.intent === "restoreMember" && mutationError ? (
             <p className="error-message" role="alert">
               {mutationError}
@@ -427,26 +487,4 @@ function FamilyMemberCard({
       )}
     </li>
   );
-}
-
-function actionSuccess(
-  intent: FamilyMembersActionResult["intent"],
-  member: FamilyMember | undefined,
-): string | undefined {
-  if (!member) {
-    return undefined;
-  }
-
-  switch (intent) {
-    case "createMember":
-      return `${member.displayName} was added. Set up their PIN now or come back later.`;
-    case "updateMember":
-      return `${member.displayName}'s profile was updated.`;
-    case "deactivateMember":
-      return `${member.displayName}'s profile is inactive. Their history is still here.`;
-    case "restoreMember":
-      return `${member.displayName}'s profile was restored.`;
-    default:
-      return undefined;
-  }
 }
