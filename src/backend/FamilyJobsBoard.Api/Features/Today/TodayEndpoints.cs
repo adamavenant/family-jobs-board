@@ -725,7 +725,19 @@ internal static class TodayEndpoints
             board.PendingApprovalCount,
             board.WhoseTurns
                 .Select(turn => new WhoseTurnResponse(
-                    turn.RotationId, turn.Question, turn.ChildId, turn.ChildDisplayName))
+                    turn.RotationId,
+                    turn.Question,
+                    turn.ChildId,
+                    turn.ChildDisplayName,
+                    turn.AdvanceMode,
+                    turn.TurnTaken,
+                    turn.CanTakeTurn,
+                    turn.UndoableTurn is null
+                        ? null
+                        : new WhoseTurnTakenTurnResponse(
+                            turn.UndoableTurn.TurnId,
+                            turn.UndoableTurn.ChildId,
+                            turn.UndoableTurn.ChildDisplayName)))
                 .ToArray());
     }
 

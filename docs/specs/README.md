@@ -26,7 +26,7 @@ into the phase table above:
 
 | Feature | Specification status |
 | --- | --- |
-| Whose Turn Is It? daily household rotation | Implemented with issue #112: `080-whose-turn-rotation.md` |
+| Whose Turn Is It? household rotations | Daily rotations implemented with issue #112 and tick-to-advance rotations with issue #135: `080-whose-turn-rotation.md` |
 
 ## Phase 7 historical exception
 

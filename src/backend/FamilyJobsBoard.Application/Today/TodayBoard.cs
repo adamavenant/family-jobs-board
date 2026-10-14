@@ -1,3 +1,5 @@
+using FamilyJobsBoard.Application.TurnRotations;
+
 namespace FamilyJobsBoard.Application.Today;
 
 public sealed record TodayBoard(
@@ -15,7 +17,11 @@ public sealed record TodayWhoseTurn(
     Guid RotationId,
     string Question,
     Guid ChildId,
-    string ChildDisplayName);
+    string ChildDisplayName,
+    string AdvanceMode,
+    bool TurnTaken,
+    bool CanTakeTurn,
+    TurnRotationTakenTurn? UndoableTurn);
 
 public sealed record TodayMember(
     Guid Id,

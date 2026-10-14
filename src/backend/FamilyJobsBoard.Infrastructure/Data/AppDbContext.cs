@@ -53,6 +53,8 @@ public sealed class AppDbContext : DbContext
 
     public DbSet<TurnRotationRevision> TurnRotationRevisions => Set<TurnRotationRevision>();
 
+    public DbSet<TakenTurn> TakenTurns => Set<TakenTurn>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);

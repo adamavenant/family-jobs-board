@@ -6,6 +6,7 @@ public sealed record TurnRotationConfigurationResponse(
     string Question,
     IReadOnlyList<Guid> ParticipantChildIds,
     Guid FirstChildId,
+    string AdvanceMode,
     Guid CreatedByMemberId,
     DateTimeOffset CreatedAtUtc);
 
@@ -15,10 +16,13 @@ public sealed record TurnRotationTurnResponse(
     Guid ChildId,
     string ChildDisplayName);
 
+public sealed record TurnRotationChildResponse(Guid ChildId, string ChildDisplayName);
+
 public sealed record TurnRotationSummaryResponse(
     Guid RotationId,
     TurnRotationConfigurationResponse? Current,
-    IReadOnlyList<TurnRotationTurnResponse> UpcomingTurns);
+    IReadOnlyList<TurnRotationTurnResponse> UpcomingTurns,
+    IReadOnlyList<TurnRotationChildResponse> UpNext);
 
 public sealed record TurnRotationOverviewResponse(
     IReadOnlyList<TurnRotationSummaryResponse> Rotations);
@@ -27,4 +31,18 @@ public sealed record SaveTurnRotationRequest(
     IReadOnlyList<Guid>? ParticipantChildIds,
     Guid? FirstChildId,
     DateOnly? EffectiveFrom,
-    string? Question);
+    string? Question,
+    string? AdvanceMode);
+
+public sealed record TakeTurnRequest(Guid? ChildId);
+
+public sealed record TakenTurnResponse(
+    Guid Id,
+    Guid RotationId,
+    DateOnly Date,
+    Guid ChildId,
+    string ChildDisplayName,
+    Guid RecordedByMemberId,
+    DateTimeOffset RecordedAtUtc,
+    Guid? UndoneByMemberId,
+    DateTimeOffset? UndoneAtUtc);

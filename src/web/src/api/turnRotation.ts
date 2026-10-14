@@ -1,40 +1,30 @@
 import createClient from "openapi-fetch";
 
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
 import { authenticatedFetch } from "./auth";
 
-export interface TurnRotationConfiguration {
-  id: string;
-  effectiveFrom: string;
-  question: string;
-  participantChildIds: string[];
-  firstChildId: string;
-  createdByMemberId: string;
-  createdAtUtc: string;
-}
+export type TurnAdvanceMode = "daily" | "whenTicked";
 
-export interface TurnRotationTurn {
-  date: string;
-  question: string;
-  childId: string;
-  childDisplayName: string;
-}
+export type TurnRotationConfiguration =
+  components["schemas"]["TurnRotationConfigurationResponse"];
 
-export interface TurnRotationSummary {
-  rotationId: string;
-  current: TurnRotationConfiguration | null;
-  upcomingTurns: TurnRotationTurn[];
-}
+export type TurnRotationTurn =
+  components["schemas"]["TurnRotationTurnResponse"];
 
-export interface TurnRotationOverview {
-  rotations: TurnRotationSummary[];
-}
+export type TurnRotationSummary =
+  components["schemas"]["TurnRotationSummaryResponse"];
+
+export type TurnRotationOverview =
+  components["schemas"]["TurnRotationOverviewResponse"];
+
+export type TakenTurn = components["schemas"]["TakenTurnResponse"];
 
 export interface SaveTurnRotationInput {
   participantChildIds: string[];
   firstChildId: string;
   effectiveFrom: string;
   question: string | null;
+  advanceMode: TurnAdvanceMode;
 }
 
 export class TurnRotationApiError extends Error {
@@ -84,6 +74,40 @@ export async function endTurnRotation(
   if (!data) {
     throw new TurnRotationApiError(
       problemMessage(error, "That rotation couldn't be ended."),
+    );
+  }
+
+  return data;
+}
+
+export async function takeTurn(
+  rotationId: string,
+  childId: string,
+): Promise<TakenTurn> {
+  const { data, error } = await apiClient().POST(
+    "/api/turn-rotations/{rotationId}/turns",
+    { params: { path: { rotationId } }, body: { childId } },
+  );
+  if (!data) {
+    throw new TurnRotationApiError(
+      problemMessage(error, "That turn couldn't be ticked off."),
+    );
+  }
+
+  return data;
+}
+
+export async function undoTurn(
+  rotationId: string,
+  turnId: string,
+): Promise<TakenTurn> {
+  const { data, error } = await apiClient().DELETE(
+    "/api/turn-rotations/{rotationId}/turns/{turnId}",
+    { params: { path: { rotationId, turnId } } },
+  );
+  if (!data) {
+    throw new TurnRotationApiError(
+      problemMessage(error, "That turn couldn't be unticked."),
     );
   }
 
