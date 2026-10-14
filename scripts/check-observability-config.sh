@@ -22,6 +22,7 @@ mkdir -p "$validation_dir/prometheus" "$validation_dir/loki"
 export GRAFANA_ADMIN_PASSWORD_FILE="$validation_dir/grafana-admin-password"
 export PROMETHEUS_DATA_DIR="$validation_dir/prometheus"
 export LOKI_DATA_DIR="$validation_dir/loki"
+export DOCKER_GID=0
 
 docker compose \
   -f observability/compose.yaml \
@@ -51,9 +52,9 @@ assert_jq "$validation_dir/base.json" \
   '[.services[] | (.ports // []) | length] | all(. == 0)' \
   "base configuration publishes a host port"
 assert_jq "$validation_dir/base.json" \
-  '.networks.backend.internal == true and .networks.query.internal == true and .networks.telemetry.external == true' \
-  "backend and query networks must be internal and telemetry must be an external preflighted network"
-for service_name in alloy blackbox grafana loki prometheus query-gateway; do
+  '.networks.backend.internal == true and .networks.query.internal == true and .networks.probes.internal != true and .networks.telemetry.external == true and .networks["docker-api"] == null' \
+  "backend, query, probe, and telemetry networks do not have the required isolation"
+for service_name in alloy blackbox container-exporter grafana loki node-exporter prometheus query-gateway; do
   assert_jq "$validation_dir/base.json" \
     ".services[\"$service_name\"].healthcheck.test != null" \
     "$service_name has no health check"
@@ -62,7 +63,7 @@ for service_name in alloy blackbox grafana loki prometheus query-gateway; do
     "$service_name is missing the read-only/no-capabilities security baseline"
 done
 
-for service_name in storage-init alloy blackbox grafana loki prometheus query-gateway; do
+for service_name in storage-init alloy blackbox container-exporter grafana loki node-exporter prometheus query-gateway; do
   assert_jq "$validation_dir/base.json" \
     ".services[\"$service_name\"].logging.driver == \"local\" and .services[\"$service_name\"].logging.options[\"max-size\"] != null and .services[\"$service_name\"].logging.options[\"max-file\"] != null" \
     "$service_name does not have bounded local container logs"
@@ -81,14 +82,32 @@ assert_jq "$validation_dir/base.json" \
   '(.services.grafana.networks | keys) == ["query"] and (.services["query-gateway"].networks | keys | sort) == ["backend", "query"] and (.services.prometheus.networks | keys) == ["backend"] and (.services.loki.networks | keys) == ["backend"]' \
   "Grafana is not network-isolated behind the query gateway"
 assert_jq "$validation_dir/base.json" \
+  '(.services["container-exporter"].networks | keys) == ["backend"] and (.services.blackbox.networks | keys | sort) == ["backend", "probes"] and (.services["node-exporter"].networks | keys) == ["backend"]' \
+  "host collectors do not have the required least-privilege network boundaries"
+assert_jq "$validation_dir/base.json" \
+  '.services["node-exporter"].privileged != true and .services["container-exporter"].privileged != true' \
+  "a host collector is privileged"
+assert_jq "$validation_dir/base.json" \
+  '[.services | to_entries[] | select(any(.value.volumes[]?; .source == "/var/run/docker.sock")) | .key] == ["container-exporter"]' \
+  "the Docker socket is mounted outside the privacy-bounded container exporter"
+assert_jq "$validation_dir/base.json" \
+  '(.services["container-exporter"].volumes[] | select(.source == "/var/run/docker.sock") | .read_only) == true and .services["container-exporter"].environment.DOCKER_API_URL == "unix:///var/run/docker.sock"' \
+  "the Docker socket bind mount is not read-only"
+assert_jq "$validation_dir/base.json" \
+  '(.services["node-exporter"].command | index("--collector.disable-defaults") != null) and (.services["node-exporter"].command | index("--collector.cpu") != null) and (.services["node-exporter"].command | index("--collector.filesystem") != null) and (.services["node-exporter"].command | index("--collector.loadavg") != null) and (.services["node-exporter"].command | index("--collector.meminfo") != null) and (.services["node-exporter"].command | index("--collector.stat") != null)' \
+  "node-exporter does not use the approved collector allowlist"
+assert_jq "$validation_dir/base.json" \
+  '[.services["node-exporter"].command[] | select(startswith("--collector.")) | select(startswith("--collector.filesystem.") | not)] | sort == ["--collector.cpu", "--collector.disable-defaults", "--collector.filesystem", "--collector.loadavg", "--collector.meminfo", "--collector.stat"]' \
+  "node-exporter enables a collector outside the exact approved allowlist"
+assert_jq "$validation_dir/base.json" \
   '[.services | to_entries[] | .value.image] | all((endswith(":latest") or contains(":latest@")) | not)' \
   "a service uses a floating latest image"
 assert_jq "$validation_dir/base.json" \
   '[.services | to_entries[] | .value.image] | all(test(":[^/:]+$"))' \
   "a service image is not version tagged"
 
-if grep -Eq '(/var/run/docker\.sock|/var/lib/docker|/proc([/:]|$)|/sys([/:]|$))' "$validation_dir/base.json"; then
-  fail "base configuration mounts a forbidden Docker or host-internals path"
+if grep -q '/var/lib/docker' "$validation_dir/base.json"; then
+  fail "base configuration mounts Docker's data directory"
 fi
 
 grep -q 'url: http://query-gateway:8080/prometheus' \
@@ -153,6 +172,26 @@ jq -e \
   '.uid == "telemetry-stack-health" and .editable == false and (.panels | length >= 6) and all(.panels[]; .datasource.uid != null)' \
   observability/config/grafana/dashboards/telemetry-stack-health.json >/dev/null \
   || fail "Grafana health dashboard is incomplete or editable"
+jq -e . observability/config/grafana/dashboards/server-and-service-health.json >/dev/null \
+  || fail "Grafana server and service health dashboard is not valid JSON"
+jq -e \
+  '.uid == "server-and-service-health"
+   and .title == "Server and service health"
+   and .editable == false
+   and (.panels | length >= 15)
+   and all(.panels[]; .datasource.uid == "prometheus")
+   and ([.panels[].targets[].expr] | index("family_jobs_board_container_present") != null)
+   and ([.panels[].targets[].expr] | index("family_jobs_board_container_state") != null)
+   and ([.panels[].targets[].expr] | index("family_jobs_board_container_collector_success") != null)
+   and ([.panels[] | select(.title == "Container Docker health") | .fieldConfig.defaults.thresholds.steps[-1]] == [{"color":"green","value":1}])
+   and ([.panels[] | select(.title == "Deployed images") | .targets[].legendFormat] | all(contains("{{image_id}}")))' \
+  observability/config/grafana/dashboards/server-and-service-health.json >/dev/null \
+  || fail "Grafana server and service health dashboard is incomplete or editable"
+if jq -r '.. | .expr? // empty' \
+  observability/config/grafana/dashboards/server-and-service-health.json \
+  | grep -Eq '(container_(name|id|environment|mount|command|label)|docker_container_(name|id|environment|mount|command|label))'; then
+  fail "server dashboard requests forbidden container inventory fields"
+fi
 
 grep -q 'time: 30d' observability/config/prometheus/prometheus.yaml \
   || fail "Prometheus 30-day retention is missing"
@@ -203,5 +242,7 @@ docker run --rm --network none --read-only --cap-drop ALL --user 101:101 \
   -v "$repository_root/observability/config/query-gateway/nginx.conf:/etc/nginx/nginx.conf:ro" \
   nginx:1.31.5-alpine3.24 \
   -t -c /etc/nginx/nginx.conf
+
+python3 -m unittest discover -v -s observability/container-exporter -p 'test_*.py'
 
 echo "Observability configuration checks passed."
