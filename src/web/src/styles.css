@@ -2210,3 +2210,175 @@ button.hero__balance[aria-expanded="true"] {
 .approvals-panel__job-summary span {
   font-size: 0.85rem;
 }
+
+:root {
+  --kitten-fur: #f0a95b;
+  --kitten-stripe: #c97a35;
+  --kitten-ear: #f6b8b0;
+  --kitten-line: #4a3428;
+}
+:root[data-theme="dark"] {
+  --kitten-fur: #e8a25a;
+  --kitten-stripe: #b86c2c;
+  --kitten-ear: #f2a99f;
+  --kitten-line: #2b1d15;
+}
+.kitten__fur {
+  fill: var(--kitten-fur);
+}
+.kitten__ear,
+.kitten__cheek,
+.kitten__nose {
+  fill: var(--kitten-ear);
+}
+.kitten__cheek {
+  opacity: 0.7;
+}
+.kitten__eye {
+  fill: var(--kitten-line);
+}
+.kitten__shine {
+  fill: #fff;
+}
+.kitten__stripe,
+.kitten__line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+.kitten__stripe {
+  stroke: var(--kitten-stripe);
+  stroke-width: 2.5;
+}
+.kitten__line {
+  stroke: var(--kitten-line);
+  stroke-width: 1.5;
+}
+
+/* Focused controls never sit under the pinned date bar. */
+html:has(.floating-date-bar) {
+  scroll-padding-top: 88px;
+}
+.floating-date-bar {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 800;
+  padding-top: env(safe-area-inset-top);
+  background: color-mix(in srgb, var(--page) 92%, transparent);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 8px 24px var(--shadow);
+  backdrop-filter: blur(8px);
+  animation: floating-date-bar-in 160ms ease-out;
+}
+.floating-date-bar__inner {
+  width: min(1120px, calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.floating-date-bar__kitten {
+  flex: 0 0 auto;
+}
+.floating-date-bar__date {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0;
+  color: var(--text);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.floating-date-bar__today {
+  padding: 2px 8px;
+  color: var(--success-text);
+  background: var(--success-bg);
+  border-radius: 999px;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+.floating-date-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.floating-date-bar__step,
+.floating-date-bar__review {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.floating-date-bar__step:hover,
+.floating-date-bar__step:focus-visible,
+.floating-date-bar__review:hover {
+  border-color: var(--accent);
+}
+.floating-date-bar__step:focus-visible {
+  outline: 4px solid var(--focus);
+  outline-offset: 3px;
+}
+.floating-date-bar__review {
+  color: var(--button-text);
+  background: var(--button);
+  border-color: var(--button);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+.floating-date-bar__review strong {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.floating-date-bar__review span {
+  font-size: 0.85rem;
+}
+@keyframes floating-date-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .floating-date-bar {
+    animation: none;
+  }
+}
+@media (max-width: 560px) {
+  .floating-date-bar__inner {
+    width: min(100% - 24px, 1120px);
+    gap: 8px;
+  }
+  .floating-date-bar__kitten {
+    width: 32px;
+    height: 32px;
+  }
+  .floating-date-bar__date {
+    font-size: 0.9rem;
+  }
+  .floating-date-bar__step {
+    padding: 0;
+  }
+  .floating-date-bar__review span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}

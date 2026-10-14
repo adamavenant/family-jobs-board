@@ -63,6 +63,98 @@ for (const viewport of viewports) {
   }
 }
 
+for (const viewport of viewports) {
+  for (const isAdult of [true, false]) {
+    const viewer = isAdult ? "grown-up" : "child";
+
+    test(`the ${viewer} board pins its date on a ${viewport.name} without hiding focused controls`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({
+        width: viewport.width,
+        height: viewport.height,
+      });
+      await page.route("**/api/**", async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        if (!path.startsWith("/api/")) {
+          return route.continue();
+        }
+        if (path === "/api/auth/refresh") {
+          return isAdult
+            ? json(route, auth(addieId, "Addie", "adult"))
+            : json(route, auth(fredsterId, "Fredster", "child"));
+        }
+        if (path === "/api/today") {
+          return json(route, { ...board(isAdult), jobs: manyJobs() });
+        }
+        return problem(route, 404);
+      });
+
+      await page.goto("/");
+      const pinned = page.getByRole("navigation", { name: "Pinned day" });
+      await expect(pinned).toHaveCount(0);
+
+      await page.mouse.wheel(0, 900);
+      await expect(pinned).toBeVisible();
+      await expect(pinned.getByText("Sun, Sep 6")).toBeVisible();
+      await expect(pinned.getByText("Today")).toBeVisible();
+      await expect(
+        pinned.getByRole("button", { name: /awaiting review/ }),
+      ).toHaveCount(isAdult ? 1 : 0);
+      await expect(pinned).toBeInViewport({ ratio: 1 });
+      await expectNoSidewaysScroll(page);
+
+      // Find the control Tab reaches next, park it just under the bar, then Tab onto it.
+      await page
+        .locator(".job-card :is(button, summary):visible")
+        .nth(3)
+        .focus();
+      await page.keyboard.press("Tab");
+      const next = await page.evaluateHandle(() => document.activeElement!);
+      await page.keyboard.press("Shift+Tab");
+      await next.evaluate((element) => {
+        const top = element.getBoundingClientRect().top + window.scrollY;
+        window.scrollTo(0, top - 10);
+      });
+      await page.keyboard.press("Tab");
+      expect(
+        await next.evaluate((element) => element === document.activeElement),
+      ).toBe(true);
+      const barBottom = await pinned.evaluate(
+        (element) => element.getBoundingClientRect().bottom,
+      );
+      const focusedTop = await next.evaluate(
+        (element) => element.getBoundingClientRect().top,
+      );
+      expect(focusedTop).toBeGreaterThanOrEqual(barBottom);
+
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await expect(pinned).toHaveCount(0);
+    });
+  }
+}
+
+function manyJobs(): TodayResponse["jobs"] {
+  return Array.from({ length: 8 }, (_, index) => ({
+    id: `00000000-0000-4000-8000-00000000000${index}`,
+    childId: fredsterId,
+    childDisplayName: "Fredster",
+    name: `Chore ${index + 1}`,
+    description: "A job long enough to give the board some height.",
+    points: 2,
+    scheduledDate: "2026-09-06",
+    agendaPeriod: "morning",
+    scheduledTime: null,
+    recurringJobSeriesId: null,
+    recurrenceFrequency: null,
+    status: "open",
+    completedAtUtc: null,
+    approvedAtUtc: null,
+    latestRejection: null,
+    recurrence: null,
+  }));
+}
+
 async function expectNoSidewaysScroll(page: Page) {
   const { scrollWidth, clientWidth } = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
