@@ -4,4 +4,5 @@ public enum JobReviewOutcome
 {
     Approved = 0,
     Rejected = 1,
+    ApprovalReversed = 2,
 }

@@ -231,7 +231,7 @@ public sealed class PointsLedgerServiceTests
             DateTimeOffset awardedAtUtc,
             string? recordedBy = null) =>
             _records.Add(new PointsLedgerRecord(
-                Guid.NewGuid(), child.Id, name, amount, awardedAtUtc, recordedBy));
+                Guid.NewGuid(), child.Id, name, amount, awardedAtUtc, recordedBy, false));
 
         public IEnumerable<PointsLedgerRecord> Ordered() =>
             _records.OrderByDescending(record => record.AwardedAtUtc).ThenByDescending(record => record.Id);

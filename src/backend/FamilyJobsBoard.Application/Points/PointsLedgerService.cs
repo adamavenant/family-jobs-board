@@ -107,7 +107,8 @@ public sealed class PointsLedgerService
                 record.Amount,
                 balanceAfter,
                 record.AwardedAtUtc,
-                record.RecordedByDisplayName));
+                record.RecordedByDisplayName,
+                record.IsApprovalReversal));
         }
 
         return lines;

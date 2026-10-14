@@ -277,8 +277,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.NotNull(childJob);
         var decidedAtUtc = new DateTimeOffset(2026, 9, 7, 8, 0, 0, TimeSpan.Zero);
 
-        adultJob.MarkComplete(decidedAtUtc);
-        adultJob.Approve(decidedAtUtc);
+        adultJob.CompleteForChild(decidedAtUtc);
         await adultRepository.AddReviewDecisionAsync(
             new JobReviewDecision(
                 Guid.NewGuid(),
@@ -292,6 +291,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 Guid.NewGuid(),
                 adultJob.ChildId,
                 adultJob.Id,
+                adultJob.ApprovalCount,
                 adultJob.Points,
                 decidedAtUtc),
             CancellationToken.None);
@@ -335,8 +335,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var decidedAtUtc = new DateTimeOffset(2026, 9, 7, 8, 0, 0, TimeSpan.Zero);
 
         childJob.MarkComplete(decidedAtUtc);
-        adultJob.MarkComplete(decidedAtUtc.AddSeconds(1));
-        adultJob.Approve(decidedAtUtc.AddSeconds(1));
+        adultJob.CompleteForChild(decidedAtUtc.AddSeconds(1));
         await adultRepository.AddReviewDecisionAsync(
             new JobReviewDecision(
                 Guid.NewGuid(),
@@ -350,6 +349,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 Guid.NewGuid(),
                 adultJob.ChildId,
                 adultJob.Id,
+                adultJob.ApprovalCount,
                 adultJob.Points,
                 decidedAtUtc.AddSeconds(1)),
             CancellationToken.None);

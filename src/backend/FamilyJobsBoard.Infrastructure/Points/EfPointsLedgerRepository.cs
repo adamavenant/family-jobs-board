@@ -111,7 +111,8 @@ public sealed class EfPointsLedgerRepository : IPointsLedgerRepository
                 redemption => new RecordedSource(redemption.Reward, redemption.RedeemedByMemberId),
                 cancellationToken);
 
-        // Job approvals don't record the deciding adult yet, so job awards have no recorder.
+        // Job decisions don't record the deciding adult yet, so job awards and their
+        // reversals have no recorder. A reversal is named after its job, like its award.
         var sources = entries.ToDictionary(
             entry => entry.Id,
             entry => entry switch
@@ -145,7 +146,8 @@ public sealed class EfPointsLedgerRepository : IPointsLedgerRepository
                     entry.AwardedAtUtc,
                     source.RecordedByMemberId is { } recorderId
                         ? recorderNames.GetValueOrDefault(recorderId)
-                        : null);
+                        : null,
+                    entry.IsApprovalReversal);
             })
             .ToArray();
     }

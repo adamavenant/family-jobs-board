@@ -1,3 +1,4 @@
+using FamilyJobsBoard.Application.Points;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Domain.Points;
@@ -66,11 +67,32 @@ public interface ITodayBoardRepository
 
     Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Adds a job's ledger entry: an approval's award or the reversal that takes it back.
+    /// </summary>
     Task AddPointsAwardAsync(PointsLedgerEntry entry, CancellationToken cancellationToken);
+
+    /// <summary>The job's award for its <paramref name="approvalNumber"/>th approval, if any.</summary>
+    Task<PointsLedgerEntry?> GetJobAwardAsync(
+        Guid jobId,
+        int approvalNumber,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Starts a transaction holding the child's points lock, which every use case that removes
+    /// points takes. Reads and writes made before it is committed belong to that transaction.
+    /// </summary>
+    Task<IChildPointsLock> LockChildPointsAsync(Guid childId, CancellationToken cancellationToken);
 
     Task AddReviewDecisionAsync(
         JobReviewDecision decision,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Persists pending changes. Throws <see cref="JobStateConflictException"/> when a job
+    /// changed concurrently, <see cref="DuplicateJobPointsAwardException"/> when the approval
+    /// was already awarded, and <see cref="DuplicateJobApprovalReversalException"/> when the
+    /// award was already reversed.
+    /// </summary>
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

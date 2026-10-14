@@ -91,7 +91,7 @@ public sealed class PointAdjustmentTests
     public void Job_and_behaviour_awards_cannot_be_negative()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new PointsLedgerEntry(
-            Guid.NewGuid(), Child, Guid.NewGuid(), -1, Now));
+            Guid.NewGuid(), Child, Guid.NewGuid(), 1, -1, Now));
         Assert.Throws<ArgumentOutOfRangeException>(() => PointsLedgerEntry.ForGoodBehaviour(
             Guid.NewGuid(), Child, Guid.NewGuid(), -1, Now));
     }

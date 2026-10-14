@@ -6,10 +6,16 @@ public sealed class PointsLedgerEntry
     {
     }
 
+    /// <summary>
+    /// A job's points award for its <paramref name="approvalNumber"/>th approval. A job is
+    /// only approved again after its previous approval was reversed, so each approval awards
+    /// once and a job has at most one award that hasn't been reversed.
+    /// </summary>
     public PointsLedgerEntry(
         Guid id,
         Guid childId,
         Guid jobId,
+        int approvalNumber,
         int amount,
         DateTimeOffset awardedAtUtc)
         : this(id, childId, EnsureAward(amount), awardedAtUtc)
@@ -19,7 +25,15 @@ public sealed class PointsLedgerEntry
             throw new ArgumentException("A points award needs a source job.", nameof(jobId));
         }
 
+        if (approvalNumber < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(approvalNumber),
+                "A job award belongs to an approval, numbered from 1.");
+        }
+
         JobId = jobId;
+        JobApprovalNumber = approvalNumber;
     }
 
     private PointsLedgerEntry(
@@ -50,6 +64,12 @@ public sealed class PointsLedgerEntry
 
     public Guid? JobId { get; private set; }
 
+    /// <summary>Which approval of the job a job award is for; null for every other entry.</summary>
+    public int? JobApprovalNumber { get; private set; }
+
+    /// <summary>The job award an approval reversal takes back; null for every other entry.</summary>
+    public Guid? ReversedEntryId { get; private set; }
+
     public Guid? GoodBehaviourId { get; private set; }
 
     public Guid? PointAdjustmentId { get; private set; }
@@ -59,6 +79,8 @@ public sealed class PointsLedgerEntry
     public int Amount { get; private set; }
 
     public DateTimeOffset AwardedAtUtc { get; private set; }
+
+    public bool IsApprovalReversal => ReversedEntryId is not null;
 
     public static PointsLedgerEntry ForGoodBehaviour(
         Guid id,
@@ -137,6 +159,27 @@ public sealed class PointsLedgerEntry
         return new PointsLedgerEntry(id, childId, -points, redeemedAtUtc)
         {
             PointRedemptionId = pointRedemptionId,
+        };
+    }
+
+    /// <summary>
+    /// Takes back a job award whose approval was reversed: a new entry for the same job and
+    /// child with the opposite amount. The award itself is never changed.
+    /// </summary>
+    public static PointsLedgerEntry ForApprovalReversal(
+        Guid id,
+        PointsLedgerEntry award,
+        DateTimeOffset reversedAtUtc)
+    {
+        if (award.JobId is null || award.IsApprovalReversal)
+        {
+            throw new ArgumentException("Only a job award can be reversed.", nameof(award));
+        }
+
+        return new PointsLedgerEntry(id, award.ChildId, -award.Amount, reversedAtUtc)
+        {
+            JobId = award.JobId,
+            ReversedEntryId = award.Id,
         };
     }
 
