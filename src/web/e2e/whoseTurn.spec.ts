@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import type { Route } from "@playwright/test";
 
+import { saveQueuedAction } from "./undo";
+
 const addieId = "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c";
 const albaId = "c8318644-906d-420c-89f4-d5672e2c9b71";
 const benId = "38692edf-3474-45a5-b979-5fb206f34c59";
@@ -79,8 +81,9 @@ test("an adult runs several whose-turn rotations side by side", async ({
   await first.getByLabel("First turn").selectOption(albaId);
   await first.getByRole("button", { name: "Add rotation" }).click();
   await expect(
-    page.getByText("Whose Turn Is It? rotation saved."),
+    page.getByText("Started “Who is Pink today?” from 2026-09-21"),
   ).toBeVisible();
+  await saveQueuedAction(page);
 
   const second = page.getByRole("form", { name: "Add a rotation" });
   await second.getByLabel("Alba").check();
@@ -88,6 +91,7 @@ test("an adult runs several whose-turn rotations side by side", async ({
   await second.getByLabel("First turn").selectOption(benId);
   await second.getByLabel("Question (optional)").fill("Who sits next to Mum?");
   await second.getByRole("button", { name: "Add rotation" }).click();
+  await saveQueuedAction(page);
 
   const pink = page.locator(".whose-turn-card").filter({
     hasText: "Who is Pink today?",

@@ -11,8 +11,42 @@ export function UndoToasts() {
     return null;
   }
 
+  return <ToastStack waiting={waiting} notices={notices} />;
+}
+
+function ToastStack({
+  waiting,
+  notices,
+}: {
+  waiting: QueuedAction[];
+  notices: readonly ToastNotice[];
+}) {
+  const stack = useRef<HTMLElement>(null);
+
+  // Leave room below the page so content under the stack can scroll into view.
+  useEffect(() => {
+    const element = stack.current;
+    const root = document.documentElement;
+    if (!element || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      root.style.setProperty(
+        "--toast-stack-height",
+        // The stack's height plus its gap above the bottom of the screen.
+        `${Math.ceil(element.getBoundingClientRect().height) + 24}px`,
+      );
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--toast-stack-height");
+    };
+  }, []);
+
   return (
-    <section className="toast-stack" aria-label="Notifications">
+    <section className="toast-stack" aria-label="Notifications" ref={stack}>
       {notices.map((notice) => (
         <NoticeToast key={notice.id} notice={notice} />
       ))}

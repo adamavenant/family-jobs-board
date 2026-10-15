@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import type { Route } from "@playwright/test";
 
+import { saveQueuedAction } from "./undo";
+
 const addieId = "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c";
 const fredsterId = "754de05d-b6f6-4626-bbad-79e2079cc5c3";
 const harrieId = "e22facf5-69ce-45ce-9dad-306eef1852c9";
@@ -259,7 +261,8 @@ test("a grown-up creates a child and hands over PIN setup on a phone", async ({
   await createForm.getByLabel("Surname", { exact: true }).fill("Avenant");
   await createForm.getByLabel("Nickname (optional)").fill("Harrie");
   await addButton.click();
-  await expect(page.getByText(/Harrie was added/)).toBeVisible();
+  await expect(page.getByText("Added Harrie as a child")).toBeVisible();
+  await saveQueuedAction(page);
   await page.getByRole("button", { name: "Set up PIN now" }).click();
   await expect(
     page.getByRole("heading", { name: "Over to Harrie" }),
@@ -327,10 +330,12 @@ test("a grown-up assigns one job to both children on a tablet", async ({
   await expect(
     page.getByRole("heading", { name: "Make the beds" }),
   ).toHaveCount(2);
-  expect(submittedChildIds).toEqual([fredsterId, harrieId]);
+  expect(submittedChildIds).toEqual([]);
+  await saveQueuedAction(page);
   await expect(
     page.getByRole("button", { name: "Mark as done for Harrie" }),
   ).toBeVisible();
+  expect(submittedChildIds).toEqual([fredsterId, harrieId]);
 });
 
 test("a grown-up browses and schedules a job on the next day", async ({
@@ -459,6 +464,10 @@ test("a grown-up edits and cancels one job occurrence on a phone", async ({
     page.getByRole("heading", { name: "Feed and water the cat" }),
   ).toBeVisible();
   await expect(page.getByText("Evening · 18:15")).toBeVisible();
+  await saveQueuedAction(page);
+  await expect(
+    page.getByRole("button", { name: "Dismiss and save now" }),
+  ).toHaveCount(0);
 
   const updatedCard = page
     .getByRole("heading", { name: "Feed and water the cat" })
@@ -469,6 +478,7 @@ test("a grown-up edits and cancels one job occurrence on a phone", async ({
     .getByLabel("Cancellation reason (optional)")
     .fill("Plans changed.");
   await updatedCard.getByRole("button", { name: "Cancel this job" }).click();
+  await saveQueuedAction(page);
 
   await expect(
     page.getByText("No jobs are scheduled for this day."),
@@ -549,15 +559,16 @@ test("a grown-up assigns a recurring schedule to one child on a phone", async ({
   ).not.toBeChecked();
   await form.getByLabel("Daily job name").fill("Feed the fish");
   await form.getByRole("button", { name: "Create daily job" }).click();
+  await expect(
+    page.getByText("Created daily job “Feed the fish” for Fredster"),
+  ).toBeVisible();
+  await saveQueuedAction(page);
 
   await expect(
     page.getByRole("heading", { name: "Feed the fish" }),
   ).toBeVisible();
   expect(submittedChildIds).toEqual([fredsterId]);
   expect(pageErrors).toEqual([]);
-  await expect(
-    page.getByText("Daily job created through 2026-11-01."),
-  ).toBeVisible();
 });
 
 test("a grown-up changes a daily schedule to weekdays for all future jobs", async ({
@@ -642,7 +653,14 @@ test("a grown-up changes a daily schedule to weekdays for all future jobs", asyn
   await card.getByLabel(/All Future/).check();
   await card.getByRole("button", { name: "Confirm changes" }).click();
 
-  await expect(card.getByText("Saved. 12 updated · 4 cancelled")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Saved changes to “Empty school bags” (this and later jobs)",
+    ),
+  ).toBeVisible();
+  expect(appliedChange).toBeNull();
+  await saveQueuedAction(page);
+  await expect.poll(() => appliedChange).toMatchObject({ scope: "allFuture" });
   expect(appliedChange).toMatchObject({
     scope: "allFuture",
     frequency: "weekly",
@@ -922,21 +940,25 @@ for (const viewport of [
     await childProfile.getByLabel("First name").fill("Frederick");
     await childProfile.getByLabel("Nickname (optional)").fill("Freddie");
     await childProfile.getByRole("button", { name: "Save profile" }).click();
-    await expect(
-      page.getByText("Freddie's profile was updated."),
-    ).toBeVisible();
+    await expect(page.getByText("Saved Freddie’s profile")).toBeVisible();
 
     const editedProfile = activeList
       .getByRole("listitem")
       .filter({ hasText: "Freddie" });
     const editPanel = editedProfile.locator("details.family-member-edit");
     await expect(editPanel).not.toHaveAttribute("open", "");
-    const toast = page.locator(".status-toast");
+    const toast = page.locator(".undo-toast");
     const toastBox = await toast.boundingBox();
     expect(toastBox).not.toBeNull();
     expect((toastBox?.y ?? 0) + (toastBox?.height ?? 0)).toBeGreaterThanOrEqual(
       viewport.height - 40,
     );
+    expect(toastBox?.x ?? -1).toBeGreaterThanOrEqual(0);
+    expect((toastBox?.x ?? 0) + (toastBox?.width ?? 0)).toBeLessThanOrEqual(
+      viewport.width,
+    );
+    await saveQueuedAction(page);
+    await expect(toast).toHaveCount(0);
 
     await editedProfile.getByText("Edit profile").click();
     await expect(editedProfile.getByLabel("First name")).toHaveValue(
@@ -955,15 +977,16 @@ for (const viewport of [
     await editedProfile
       .getByRole("button", { name: "Yes, deactivate" })
       .click();
+    await expect(page.getByText("Deactivated Freddie’s profile")).toBeVisible();
+    await saveQueuedAction(page);
 
     const inactiveList = page.getByRole("list", {
       name: "Inactive family members",
     });
     await expect(inactiveList.getByText("Freddie")).toBeVisible();
     await inactiveList.getByRole("button", { name: "Restore profile" }).click();
-    await expect(
-      page.getByText("Freddie's profile was restored."),
-    ).toBeVisible();
+    await expect(page.getByText("Restored Freddie’s profile")).toBeVisible();
+    await saveQueuedAction(page);
     await expect(activeList.getByText("Freddie")).toBeVisible();
   });
 }
