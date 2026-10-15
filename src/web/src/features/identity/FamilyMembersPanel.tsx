@@ -260,8 +260,9 @@ function FamilyMemberCard({
       : undefined;
   const memberAction = fetcher.data;
   const mutationError = memberAction?.error;
+  const busy = fetcher.state !== "idle";
   // A queued change can still be undone; until then the profile is locked.
-  const submitting = fetcher.state !== "idle" || queued;
+  const submitting = busy || queued;
   const fullName = [member.firstName, member.surname].filter(Boolean).join(" ");
 
   useEffect(() => {
@@ -407,7 +408,7 @@ function FamilyMemberCard({
             </p>
           ) : null}
           <button type="submit" disabled={submitting}>
-            {submitting ? "Saving…" : "Save profile"}
+            {busy ? "Saving…" : "Save profile"}
           </button>
         </fetcher.Form>
       </details>
@@ -443,7 +444,7 @@ function FamilyMemberCard({
                   className="button--danger"
                   disabled={submitting}
                 >
-                  {submitting ? "Deactivating…" : "Yes, deactivate"}
+                  {busy ? "Deactivating…" : "Yes, deactivate"}
                 </button>
               </fetcher.Form>
               <button
@@ -481,7 +482,7 @@ function FamilyMemberCard({
             </p>
           ) : null}
           <button type="submit" disabled={submitting}>
-            {submitting ? "Restoring…" : "Restore profile"}
+            {busy ? "Restoring…" : "Restore profile"}
           </button>
         </fetcher.Form>
       )}

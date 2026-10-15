@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { RouterContextProvider } from "react-router";
 import { routes } from "./routes";
+import { undoQueue } from "./undoQueue";
 import { createDailyRecurringJob } from "../api/today";
 
 vi.mock("../api/today", async (importOriginal) => ({
@@ -39,8 +40,7 @@ it("preserves an explicitly supplied request ID without generating another", asy
     startDate: "2026-09-14",
   }))
     form.set(key, value);
-  const action = routes[0]?.action;
-  if (typeof action !== "function") throw new Error("Missing route action");
+  const action = boardAction();
   await action({
     request: new Request("http://dashboard.home.arpa", {
       method: "POST",
@@ -51,6 +51,8 @@ it("preserves an explicitly supplied request ID without generating another", asy
     pattern: "/",
     context: new RouterContextProvider(),
   });
+  expect(createDailyRecurringJob).not.toHaveBeenCalled();
+  await undoQueue.flush();
   expect(createDailyRecurringJob).toHaveBeenCalledWith(
     expect.objectContaining({
       requestId: "11111111-1111-4111-8111-111111111111",
@@ -61,9 +63,7 @@ it("preserves an explicitly supplied request ID without generating another", asy
 async function submitRecurring(entries: [string, string][]) {
   const form = new FormData();
   for (const [key, value] of entries) form.append(key, value);
-  const action = routes[0]?.action;
-  if (typeof action !== "function") throw new Error("Missing route action");
-  return action({
+  return boardAction()({
     request: new Request("http://dashboard.home.arpa", {
       method: "POST",
       body: form,
@@ -107,15 +107,16 @@ it("rotates take-turns children so the chosen first turn leads", async () => {
     ["childIds", "c"],
     ["firstTurnChildId", "b"],
   ]);
+  expect(result).toEqual(
+    expect.objectContaining({ intent: "addRecurring", queued: true }),
+  );
+  await undoQueue.flush();
 
   expect(createDailyRecurringJob).toHaveBeenCalledWith(
     expect.objectContaining({
       childIds: ["b", "c", "a"],
       assignmentMode: "takeTurns",
     }),
-  );
-  expect(result).toEqual(
-    expect.objectContaining({ success: true, takesTurns: true }),
   );
 });
 
@@ -145,3 +146,11 @@ it("refuses a first turn that is not one of the selected children", async () => 
     }),
   );
 });
+
+function boardAction() {
+  const action = routes[0]?.children?.find(
+    (route) => route.path === "/",
+  )?.action;
+  if (typeof action !== "function") throw new Error("Missing route action");
+  return action;
+}

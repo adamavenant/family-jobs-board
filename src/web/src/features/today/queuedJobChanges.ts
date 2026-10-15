@@ -30,7 +30,11 @@ export function showQueuedJobChanges(
     }
 
     const changed = applyQueuedChange(job, form);
-    if (changed && changed.scheduledDate === board.date) {
+    const movedAway =
+      changed !== null &&
+      changed.scheduledDate !== job.scheduledDate &&
+      changed.scheduledDate !== board.date;
+    if (changed && !movedAway) {
       jobs.push({ job: changed, queued: true, adding: false });
     }
   }
@@ -125,11 +129,7 @@ function applyQueuedChange(job: TodayJob, form: FormData): TodayJob | null {
   }
 }
 
-function withEdits(
-  job: TodayJob,
-  form: FormData,
-  canMove: boolean,
-): TodayJob {
+function withEdits(job: TodayJob, form: FormData, canMove: boolean): TodayJob {
   const points = Number(formText(form, "points"));
   const frequency = form.get("frequency");
   return {
@@ -144,7 +144,9 @@ function withEdits(
     scheduledTime: formText(form, "scheduledTime") || null,
     recurrenceFrequency:
       job.recurringJobSeriesId &&
-      (frequency === "daily" || frequency === "weekly" || frequency === "monthly")
+      (frequency === "daily" ||
+        frequency === "weekly" ||
+        frequency === "monthly")
         ? frequency
         : job.recurrenceFrequency,
   };

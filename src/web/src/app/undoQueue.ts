@@ -31,6 +31,8 @@ export interface ToastNotice {
   readonly id: string;
   readonly tone: "success" | "error";
   readonly message: string;
+  /** A failed save that can be sent again exactly as it was queued. */
+  readonly canRetry: boolean;
 }
 
 export interface UndoQueueSnapshot {
@@ -66,6 +68,8 @@ export interface UndoQueue {
   setGracePeriodSeconds(seconds: number | undefined): void;
   connect(revalidate: () => Promise<unknown> | void): () => void;
   notify(message: string): void;
+  /** Sends a failed action again with the same request, then revalidates. */
+  retry(noticeId: string): void;
   dismissNotice(id: string): void;
   subscribe(listener: () => void): () => void;
   getSnapshot(): UndoQueueSnapshot;
@@ -75,6 +79,8 @@ export interface UndoQueue {
 
 export function createUndoQueue(): UndoQueue {
   const entries = new Map<string, Entry>();
+  // Failed saves by the id of the error notice that offers to try again.
+  const failed = new Map<string, Entry>();
   const listeners = new Set<() => void>();
   let notices: ToastNotice[] = [];
   let snapshot: UndoQueueSnapshot = { actions: [], notices };
@@ -116,7 +122,12 @@ export function createUndoQueue(): UndoQueue {
       try {
         await entry.commit();
       } catch (error) {
-        addNotice("error", `Not saved: ${entry.action.description}. ${entry.failure(error)}`);
+        const noticeId = addNotice(
+          "error",
+          `Not saved: ${entry.action.description}. ${entry.failure(error)}`,
+          true,
+        );
+        failed.set(noticeId, entry);
       }
       try {
         // Show the server's state, whether the action was saved or refused.
@@ -129,13 +140,26 @@ export function createUndoQueue(): UndoQueue {
     return entry.saved;
   }
 
-  function addNotice(tone: ToastNotice["tone"], message: string) {
+  function addNotice(
+    tone: ToastNotice["tone"],
+    message: string,
+    canRetry = false,
+  ): string {
     nextId += 1;
+    const id = `notice-${nextId}`;
     // One success message at a time, as before; every error stays until dismissed.
     notices = [
-      ...notices.filter((notice) => tone === "error" || notice.tone === "error"),
-      { id: `notice-${nextId}`, tone, message },
+      ...notices.filter(
+        (notice) => tone === "error" || notice.tone === "error",
+      ),
+      { id, tone, message, canRetry },
     ];
+    return id;
+  }
+
+  function removeNotice(id: string) {
+    failed.delete(id);
+    notices = notices.filter((notice) => notice.id !== id);
   }
 
   return {
@@ -227,8 +251,24 @@ export function createUndoQueue(): UndoQueue {
       addNotice("success", message);
       emit();
     },
+    retry(noticeId) {
+      const previous = failed.get(noticeId);
+      if (!previous) {
+        return;
+      }
+
+      removeNotice(noticeId);
+      nextId += 1;
+      const entry: Entry = {
+        action: { ...previous.action, id: `undo-${nextId}` },
+        commit: previous.commit,
+        failure: previous.failure,
+      };
+      entries.set(entry.action.id, entry);
+      void save(entry);
+    },
     dismissNotice(id) {
-      notices = notices.filter((notice) => notice.id !== id);
+      removeNotice(id);
       emit();
     },
     subscribe(listener) {
@@ -241,6 +281,7 @@ export function createUndoQueue(): UndoQueue {
     reset() {
       entries.forEach((entry) => clearTimeout(entry.timer));
       entries.clear();
+      failed.clear();
       notices = [];
       gracePeriodMs = defaultUndoGracePeriodSeconds * 1000;
       revalidate = undefined;

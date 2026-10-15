@@ -8,22 +8,29 @@ import {
   logGoodBehaviour,
   updateGoodBehaviourType,
 } from "../../api/goodBehaviours";
-import type {
-  GoodBehaviourType,
-  LoggedGoodBehaviour,
-} from "../../api/goodBehaviours";
+import type { GoodBehaviourType } from "../../api/goodBehaviours";
+import {
+  pointsText,
+  quoted,
+  selectedChildNames,
+} from "../../app/actionDescriptions";
 import { createRequestId } from "../../app/requestId";
+import { queueUndoableAction } from "../../app/undoQueue";
 
-export interface GoodBehavioursActionResult {
-  intent?: "createType" | "updateType" | "deleteType" | "logBehaviour";
+export interface GoodBehavioursLoaderData {
   types?: GoodBehaviourType[] | undefined;
-  affectedTypeId?: string | undefined;
-  message?: string | undefined;
-  logged?: LoggedGoodBehaviour | undefined;
   error?: string | undefined;
 }
 
-export async function goodBehavioursLoader(): Promise<GoodBehavioursActionResult> {
+export interface GoodBehavioursActionResult {
+  intent?: "createType" | "updateType" | "deleteType" | "logBehaviour";
+  affectedTypeId?: string | undefined;
+  /** Set when the change passed validation and waits behind an undo toast. */
+  queued?: true;
+  error?: string | undefined;
+}
+
+export async function goodBehavioursLoader(): Promise<GoodBehavioursLoaderData> {
   try {
     return { types: await getGoodBehaviourTypes() };
   } catch (error) {
@@ -48,65 +55,63 @@ export async function goodBehavioursAction({
   }
 
   const typeId = text(form, "typeId");
-  try {
-    if (intent === "createType" || intent === "updateType") {
-      const input = typeInput(form);
-      if (input === null || (intent === "updateType" && !typeId)) {
-        return {
-          intent,
-          affectedTypeId: typeId || undefined,
-          types: await reloadTypes(),
-          error: "Check the good behaviour details.",
-        };
-      }
-
-      const saved =
-        intent === "createType"
-          ? await createGoodBehaviourType(input)
-          : await updateGoodBehaviourType(typeId, input);
+  const failure = (error: unknown) =>
+    errorMessage(error, "That good behaviour change couldn't be saved.");
+  if (intent === "createType" || intent === "updateType") {
+    const input = typeInput(form);
+    if (input === null || (intent === "updateType" && !typeId)) {
       return {
         intent,
-        types: await getGoodBehaviourTypes(),
-        affectedTypeId: saved.id,
-        message:
-          intent === "createType"
-            ? `Added ${saved.name}.`
-            : `Saved ${saved.name}.`,
+        affectedTypeId: typeId || undefined,
+        error: "Check the good behaviour details.",
       };
     }
 
-    if (intent === "deleteType") {
-      if (!typeId) {
-        return { intent, error: "Choose a good behaviour." };
-      }
-
-      await deleteGoodBehaviourType(typeId);
-      return {
-        intent,
-        types: await getGoodBehaviourTypes(),
-        affectedTypeId: typeId,
-        message: "Good behaviour deleted. Past points are unchanged.",
-      };
-    }
-
-    return await logBehaviour(form, typeId);
-  } catch (error) {
-    return {
-      intent,
-      affectedTypeId: typeId || undefined,
-      types: await reloadTypes(),
-      error: errorMessage(
-        error,
-        "That good behaviour change couldn't be saved.",
-      ),
-    };
+    return intent === "createType"
+      ? queueUndoableAction(
+          { intent },
+          {
+            form,
+            description: `Added good behaviour ${quoted(input.name)}: usually ${pointsText(input.points)}`,
+            commit: () => createGoodBehaviourType(input),
+            failure,
+          },
+        )
+      : queueUndoableAction(
+          { intent, affectedTypeId: typeId },
+          {
+            form,
+            description: `Saved good behaviour ${quoted(input.name)}`,
+            commit: () => updateGoodBehaviourType(typeId, input),
+            failure,
+          },
+        );
   }
+
+  if (intent === "deleteType") {
+    if (!typeId) {
+      return { intent, error: "Choose a good behaviour." };
+    }
+
+    return queueUndoableAction(
+      { intent, affectedTypeId: typeId },
+      {
+        form,
+        description: `Deleted good behaviour ${quoted(text(form, "typeName"))}. Past points are unchanged`,
+        commit: () => deleteGoodBehaviourType(typeId),
+        failure,
+      },
+    );
+  }
+
+  return logBehaviour(form, typeId, failure);
 }
 
-async function logBehaviour(
+function logBehaviour(
   form: FormData,
   typeId: string,
-): Promise<GoodBehavioursActionResult> {
+  failure: (error: unknown) => string,
+): GoodBehavioursActionResult {
   const childIds = form
     .getAll("childIds")
     .filter((value): value is string => typeof value === "string");
@@ -114,40 +119,39 @@ async function logBehaviour(
   const points = pointsValue === "" ? null : Number(pointsValue);
   const requestId = text(form, "requestId") || safeRequestId();
   if (childIds.length === 0 || new Set(childIds).size !== childIds.length) {
-    return {
-      intent: "logBehaviour",
-      types: await reloadTypes(),
-      error: "Choose one or more children.",
-    };
+    return { intent: "logBehaviour", error: "Choose one or more children." };
   }
   if (!typeId || (points !== null && !isWholeNumber(points))) {
     return {
       intent: "logBehaviour",
-      types: await reloadTypes(),
       error: "Choose a good behaviour with zero or more points.",
     };
   }
   if (!requestId) {
     return {
       intent: "logBehaviour",
-      types: await reloadTypes(),
       error:
         "Your browser couldn't prepare this request. Try again or use another browser.",
     };
   }
 
-  const logged = await logGoodBehaviour({
-    requestId,
-    typeId,
-    childIds,
-    points,
-  });
-  return {
-    intent: "logBehaviour",
-    types: await reloadTypes(),
-    affectedTypeId: typeId,
-    logged,
-  };
+  const awarded = points ?? Number(text(form, "typePoints"));
+  const each = childIds.length > 1 ? " each" : "";
+  return queueUndoableAction(
+    { intent: "logBehaviour", affectedTypeId: typeId },
+    {
+      form,
+      description: `Logged ${quoted(text(form, "typeName"))} for ${selectedChildNames(form)}: +${pointsText(awarded)}${each}`,
+      commit: () =>
+        logGoodBehaviour({
+          requestId,
+          typeId,
+          childIds,
+          points,
+        }),
+      failure,
+    },
+  );
 }
 
 function typeInput(form: FormData) {
@@ -181,14 +185,6 @@ function safeRequestId(): string {
     return createRequestId();
   } catch {
     return "";
-  }
-}
-
-async function reloadTypes(): Promise<GoodBehaviourType[] | undefined> {
-  try {
-    return await getGoodBehaviourTypes();
-  } catch {
-    return undefined;
   }
 }
 

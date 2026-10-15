@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { acceptSession, clearIdentity } from "../../api/auth";
 import { routes } from "../../app/routes";
+import { saveQueuedAction } from "../../test/undo";
 
 const addie = member("22eb0cc1-058e-4b2e-bb18-d7aaad564a6c", "Addie", true);
 const fredster = member(
@@ -54,8 +55,12 @@ describe("Point adjustments", () => {
     );
 
     expect(
-      await screen.findByText("Added 5 points for Harrie. Balance is now 12."),
+      await screen.findByText("Added 5 points for Harrie: Helped a friend"),
     ).toHaveAttribute("role", "status");
+    expect(within(form).getByLabelText("Reason")).toHaveValue("");
+    expect(api.requests).toHaveLength(0);
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.requests).toHaveLength(1));
     expect(api.requests).toEqual([
       {
         requestId: expect.any(String),
@@ -81,10 +86,10 @@ describe("Point adjustments", () => {
     );
 
     expect(
-      await screen.findByText(
-        "Removed 3 points from Fredster. Balance is now 7.",
-      ),
+      await screen.findByText("Removed 3 points from Fredster: Broke a plate"),
     ).toBeInTheDocument();
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.requests).toHaveLength(1));
     expect(api.requests[0]).toMatchObject({
       childId: fredster.id,
       amount: -3,
@@ -122,10 +127,10 @@ describe("Point adjustments", () => {
       within(form).getByRole("button", { name: "Record adjustment" }),
     );
 
-    expect(await within(form).findByRole("alert")).toHaveTextContent(
-      "Fredster only has 3 points.",
+    await saveQueuedAction(user);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Not saved: Removed 5 points from Fredster: Lost a book. Fredster only has 3 points.",
     );
-    expect(screen.queryByText(/Balance is now/)).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /adjust anyway/i }),
     ).not.toBeInTheDocument();
@@ -139,7 +144,7 @@ describe("Point adjustments", () => {
     ]);
   });
 
-  it("shows server rejections and reuses the request ID for the retry", async () => {
+  it("shows server rejections and reuses the request ID when trying again", async () => {
     let attempt = 0;
     const api = fakeApi(adultBoard, (body) => {
       attempt += 1;
@@ -165,17 +170,18 @@ describe("Point adjustments", () => {
       name: "Record adjustment",
     });
     await user.click(submit);
+    await saveQueuedAction(user);
 
-    expect(await within(form).findByRole("alert")).toHaveTextContent(
+    expect(await screen.findByRole("alert")).toHaveTextContent(
       "Choose an active child in this household.",
     );
-    await user.click(submit);
-    await screen.findByText("Added 4 points for Fredster. Balance is now 4.");
-    await vi.waitFor(() => expect(submit).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(api.requests).toHaveLength(2));
     await user.type(within(form).getByLabelText("Number of points"), "2");
     await user.type(within(form).getByLabelText("Reason"), "More chores");
     await user.click(submit);
-    await vi.waitFor(() => expect(api.requests).toHaveLength(3));
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.requests).toHaveLength(3));
 
     const [failed, retried, next] = api.requests;
     expect(retried?.requestId).toBe(failed?.requestId);

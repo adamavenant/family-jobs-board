@@ -35,13 +35,7 @@ export function AddJobForm({
         void navigate(`/?${search.toString()}`);
       }
     }
-  }, [
-    fetcher.state,
-    navigate,
-    result,
-    selectedChildId,
-    selectedDate,
-  ]);
+  }, [fetcher.state, navigate, result, selectedChildId, selectedDate]);
 
   const defaultDate = selectedDate < currentDate ? currentDate : selectedDate;
 

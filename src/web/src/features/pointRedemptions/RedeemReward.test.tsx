@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { acceptSession, clearIdentity } from "../../api/auth";
 import { routes } from "../../app/routes";
+import { saveQueuedAction } from "../../test/undo";
 
 const addie = member("22eb0cc1-058e-4b2e-bb18-d7aaad564a6c", "Addie", true);
 const fredster = member(
@@ -65,10 +66,18 @@ describe("Redeem a reward", () => {
     );
 
     expect(
-      await screen.findByText(
-        "Fredster spent 5 points on Ice cream. Balance is now 7.",
-      ),
+      await screen.findByText("Fredster spent 5 points on Ice cream"),
     ).toHaveAttribute("role", "status");
+    expect(within(form).getByLabelText("Child")).toHaveValue("");
+    expect(within(form).getByLabelText("Reward")).toHaveValue("");
+    // The queued spend already counts against the balance shown.
+    await user.selectOptions(within(form).getByLabelText("Child"), "Fredster");
+    expect(
+      within(form).getByText("Fredster has 7 points to spend."),
+    ).toBeInTheDocument();
+    expect(api.redemptions).toHaveLength(0);
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.redemptions).toHaveLength(1));
     expect(api.redemptions).toEqual([
       {
         requestId: expect.any(String),
@@ -77,8 +86,6 @@ describe("Redeem a reward", () => {
         reward: "Ice cream",
       },
     ]);
-    expect(within(form).getByLabelText("Child")).toHaveValue("");
-    expect(within(form).getByLabelText("Reward")).toHaveValue("");
   });
 
   it("asks for a child rather than picking one", async () => {
@@ -115,16 +122,14 @@ describe("Redeem a reward", () => {
     await user.type(within(form).getByLabelText("Reward"), "Movie night");
     const submit = within(form).getByRole("button", { name: "Redeem points" });
     await user.click(submit);
+    await saveQueuedAction(user);
 
-    expect(await within(form).findByRole("alert")).toHaveTextContent(
-      "Fredster only has 4 points.",
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Not saved: Fredster spent 4 points on Movie night. Fredster only has 4 points.",
     );
-    expect(screen.queryByText(/Balance is now/)).not.toBeInTheDocument();
 
-    await user.click(submit);
-    await screen.findByText(
-      "Fredster spent 4 points on Movie night. Balance is now 0.",
-    );
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(api.redemptions).toHaveLength(2));
     const [failed, retried] = api.redemptions;
     expect(retried?.requestId).toBe(failed?.requestId);
   });
@@ -167,10 +172,9 @@ describe("Redeem a reward", () => {
       within(form).getByRole("button", { name: "Redeem points" }),
     );
 
-    await screen.findByText(
-      "Harrie spent 1 point on Sticker. Balance is now 2.",
-    );
-    expect(api.redemptions).toHaveLength(1);
+    await screen.findByText("Harrie spent 1 point on Sticker");
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.redemptions).toHaveLength(1));
   });
 
   it("reloads the balances each time the panel opens", async () => {

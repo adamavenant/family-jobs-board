@@ -129,6 +129,15 @@ function NoticeToast({ notice }: { notice: ToastNotice }) {
       <span role={notice.tone === "error" ? "alert" : "status"}>
         {notice.message}
       </span>
+      {notice.canRetry ? (
+        <button
+          type="button"
+          className="status-toast__retry"
+          onClick={() => undoQueue.retry(notice.id)}
+        >
+          Try again
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={() => undoQueue.dismissNotice(notice.id)}

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { routes } from "../../app/routes";
 import { acceptSession, clearIdentity } from "../../api/auth";
 import type { FamilyMember } from "../../api/members";
+import { saveQueuedAction } from "../../test/undo";
 
 const addie = {
   id: "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c",
@@ -180,6 +181,13 @@ describe("Today page", () => {
     expect(
       screen.queryByRole("button", { name: "Approve +5 points" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Marked “Feed the dog” done for Fredster: +5 points"),
+    ).toHaveAttribute("role", "status");
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    await saveQueuedAction(user);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
     const completionRequest = fetch.mock.calls[1]?.[0];
     expect(completionRequest).toBeInstanceOf(Request);
     expect((completionRequest as Request).method).toBe("POST");
@@ -337,23 +345,22 @@ describe("Today page", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps adult completion confirmation open when awarding fails", async () => {
+  it("reports a completion the server refuses after the undo time and shows the server's state", async () => {
     const openJob = board.jobs[0];
     if (!openJob) {
       throw new Error("The open-job fixture was missing.");
     }
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(jsonResponse({ ...board, jobs: [openJob] }))
-        .mockResolvedValueOnce(
-          jsonResponse(
-            { detail: "This job changed. Refresh and try again." },
-            { status: 409 },
-          ),
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ ...board, jobs: [openJob] }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { detail: "This job changed. Refresh and try again." },
+          { status: 409 },
         ),
-    );
+      )
+      .mockResolvedValueOnce(jsonResponse({ ...board, jobs: [openJob] }));
+    vi.stubGlobal("fetch", fetch);
     const user = userEvent.setup();
     renderApp();
 
@@ -363,13 +370,23 @@ describe("Today page", () => {
       }),
     );
     await user.click(screen.getByRole("button", { name: "Yes, mark done" }));
+    expect(
+      await screen.findByText("Approved — 5 points awarded"),
+    ).toBeInTheDocument();
+    await saveQueuedAction(user);
 
     expect(
-      await screen.findByText("This job changed. Refresh and try again."),
+      await screen.findByText(
+        "Not saved: Marked “Feed the dog” done for Fredster: +5 points. This job changed. Refresh and try again.",
+      ),
     ).toHaveAttribute("role", "alert");
     expect(
-      screen.getByRole("group", { name: "Confirm completion for Fredster" }),
-    ).toBeInTheDocument();
+      await screen.findByRole("button", { name: "Mark as done for Fredster" }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByText("Approved — 5 points awarded"),
+    ).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   it("lets an adult edit an open job and refreshes the agenda", async () => {
@@ -438,6 +455,12 @@ describe("Today page", () => {
       await screen.findByRole("heading", { name: "Feed and water the dog" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Evening · 18:15")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await saveQueuedAction(user);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+    expect(
+      await screen.findByRole("heading", { name: "Feed and water the dog" }),
+    ).toBeInTheDocument();
     const updateRequest = fetch.mock.calls[1]?.[0];
     expect(updateRequest).toBeInstanceOf(Request);
     expect((updateRequest as Request).method).toBe("PUT");
@@ -494,6 +517,10 @@ describe("Today page", () => {
     expect(
       screen.queryByRole("heading", { name: "Clear the table" }),
     ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("0 jobs awaiting review")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await saveQueuedAction(user);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
     const cancelRequest = fetch.mock.calls[1]?.[0];
     expect(cancelRequest).toBeInstanceOf(Request);
     expect(await (cancelRequest as Request).clone().json()).toEqual({
@@ -601,13 +628,29 @@ describe("Today page", () => {
     await user.type(screen.getByLabelText("Time (optional)"), "15:45");
     await user.click(screen.getByRole("button", { name: "Add job" }));
 
+    expect(
+      await screen.findByRole("article", {
+        name: "Put toys away for Fredster, being added",
+      }),
+    ).toHaveTextContent("Arriving home · 15:45");
+    expect(
+      screen.getByText("Scheduled “Put toys away” for Fredster on 2026-08-29"),
+    ).toHaveAttribute("role", "status");
+    expect(screen.getByLabelText("Points")).toHaveValue(1);
+    expect(screen.getByLabelText("4 jobs on this day")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    await saveQueuedAction(user);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("article", {
+          name: "Put toys away for Fredster, being added",
+        }),
+      ).not.toBeInTheDocument(),
+    );
     const addedHeading = await screen.findByRole("heading", {
       name: "Put toys away",
     });
-    expect(
-      await screen.findByText("Job scheduled for 2026-08-29."),
-    ).toHaveAttribute("role", "status");
-    expect(screen.getByLabelText("Points")).toHaveValue(1);
     const addedCard = addedHeading.closest("article");
     expect(addedCard).not.toBeNull();
     expect(
@@ -784,7 +827,22 @@ describe("Today page", () => {
     await user.click(screen.getByRole("button", { name: "Add job" }));
 
     expect(
-      await screen.findAllByRole("heading", { name: "Make the beds" }),
+      await screen.findByText(
+        "Scheduled “Make the beds” for Fredster and Harrie on 2026-08-29",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("article", {
+        name: "Make the beds for Harrie, being added",
+      }),
+    ).toBeInTheDocument();
+    await saveQueuedAction(user);
+
+    expect(
+      await screen.findAllByRole("button", { name: "Mark as done for Harrie" }),
+    ).toHaveLength(1);
+    expect(
+      screen.getAllByRole("heading", { name: "Make the beds" }),
     ).toHaveLength(2);
     expect(
       screen.getAllByRole("button", { name: "Mark as done for Fredster" }),
@@ -890,6 +948,14 @@ describe("Today page", () => {
         screen.getByRole("button", { name: "Create daily job" }),
       );
 
+      expect(
+        await screen.findByText(
+          "Created daily job “Feed the fish” for Fredster and Harrie",
+        ),
+      ).toHaveAttribute("role", "status");
+      expect(screen.getByLabelText("Daily job name")).toHaveValue("");
+      await saveQueuedAction(user);
+
       const headings = await screen.findAllByRole("heading", {
         name: "Feed the fish",
       });
@@ -899,9 +965,6 @@ describe("Today page", () => {
       expect(
         within(card as HTMLElement).getByText("Daily · Morning · 07:30"),
       ).toBeInTheDocument();
-      expect(
-        await screen.findByText("Daily job created through 2026-10-23."),
-      ).toHaveAttribute("role", "status");
     },
   );
 
@@ -954,9 +1017,12 @@ describe("Today page", () => {
 
     expect(
       await screen.findByText(
-        "Take-turns daily job created through 2026-10-23.",
+        "Created take-turns daily job “Tidy the table” for Fredster and Harrie",
       ),
     ).toHaveAttribute("role", "status");
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await saveQueuedAction(user);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
     const createRequest = fetch.mock.calls.find(
       ([input]) => requestPath(input) === "/api/recurring-jobs/daily",
     )?.[0];
@@ -1046,6 +1112,12 @@ describe("Today page", () => {
       await user.click(
         screen.getByRole("button", { name: "Create weekly job" }),
       );
+      expect(
+        await screen.findByText(
+          "Created weekly job “Pack sports kit” for Fredster",
+        ),
+      ).toHaveAttribute("role", "status");
+      await saveQueuedAction(user);
 
       const heading = await screen.findByRole("heading", {
         name: "Pack sports kit",
@@ -1055,9 +1127,6 @@ describe("Today page", () => {
       expect(
         within(card as HTMLElement).getByText("Weekly · Evening · 18:15"),
       ).toBeInTheDocument();
-      expect(
-        await screen.findByText("Weekly job created through 2026-10-23."),
-      ).toHaveAttribute("role", "status");
     },
   );
 
@@ -1141,6 +1210,12 @@ describe("Today page", () => {
       await user.click(
         screen.getByRole("button", { name: "Create monthly job" }),
       );
+      expect(
+        await screen.findByText(
+          "Created monthly job “Clean the fridge” for Fredster",
+        ),
+      ).toHaveAttribute("role", "status");
+      await saveQueuedAction(user);
 
       const heading = await screen.findByRole("heading", {
         name: "Clean the fridge",
@@ -1150,9 +1225,6 @@ describe("Today page", () => {
       expect(
         within(card as HTMLElement).getByText("Monthly · Morning · 09:15"),
       ).toBeInTheDocument();
-      expect(
-        await screen.findByText("Monthly job created through 2026-10-23."),
-      ).toHaveAttribute("role", "status");
     },
   );
 
@@ -1176,19 +1248,18 @@ describe("Today page", () => {
     ).toBe(true);
   });
 
-  it("reports recurring-job server failures without clearing the form", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(jsonResponse(board))
-        .mockResolvedValueOnce(
-          jsonResponse(
-            { detail: "The recurring job could not be saved." },
-            { status: 503 },
-          ),
+  it("reports a recurring job the server refuses after the undo time", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(board))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { detail: "The recurring job could not be saved." },
+          { status: 503 },
         ),
-    );
+      )
+      .mockResolvedValueOnce(jsonResponse(board));
+    vi.stubGlobal("fetch", fetch);
     const user = userEvent.setup();
     renderApp();
 
@@ -1197,11 +1268,12 @@ describe("Today page", () => {
     const name = screen.getByLabelText("Daily job name");
     await user.type(name, "Feed the fish");
     await user.click(screen.getByRole("button", { name: "Create daily job" }));
+    await saveQueuedAction(user);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "The recurring job could not be saved.",
+      "Not saved: Created daily job “Feed the fish” for Fredster. The recurring job could not be saved.",
     );
-    expect(name).toHaveValue("Feed the fish");
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
   });
 
   it("approves a pending job and updates the points balance", async () => {
@@ -1249,6 +1321,15 @@ describe("Today page", () => {
     expect(
       await screen.findByText("Approved — 5 points awarded"),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("Approved “Clear the table” for Fredster: +5 points"),
+    ).toHaveAttribute("role", "status");
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
+    await saveQueuedAction(user);
+    await waitFor(() =>
+      expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(3),
+    );
+    expect(screen.getByLabelText("0 jobs awaiting review")).toBeInTheDocument();
     const approvalRequest = vi.mocked(globalThis.fetch).mock.calls[1]?.[0];
     expect(approvalRequest).toBeInstanceOf(Request);
     expect(
@@ -1302,13 +1383,19 @@ describe("Today page", () => {
     );
 
     expect(
+      await screen.findByText("Sent “Clear the table” back to Fredster"),
+    ).toHaveAttribute("role", "status");
+    expect(screen.getByLabelText("0 jobs awaiting review")).toBeInTheDocument();
+    await saveQueuedAction(user);
+
+    expect(
       await within(card as HTMLElement).findByRole("button", {
         name: "Mark as done for Fredster",
       }),
-    ).toBeInTheDocument();
+    ).toBeEnabled();
   });
 
-  it("reports rejection failures without clearing the reason", async () => {
+  it("reports a rejection the server refuses after the undo time", async () => {
     vi.stubGlobal(
       "fetch",
       vi
@@ -1319,7 +1406,8 @@ describe("Today page", () => {
             { detail: "This job is no longer pending approval." },
             { status: 409 },
           ),
-        ),
+        )
+        .mockResolvedValueOnce(jsonResponse(board)),
     );
     const user = userEvent.setup();
     renderApp();
@@ -1336,11 +1424,14 @@ describe("Today page", () => {
     await user.click(
       within(card as HTMLElement).getByRole("button", { name: "Reject job" }),
     );
+    await saveQueuedAction(user);
 
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Not saved: Sent “Clear the table” back to Fredster. This job is no longer pending approval.",
+    );
     expect(
-      await within(card as HTMLElement).findByRole("alert"),
-    ).toHaveTextContent("This job is no longer pending approval.");
-    expect(reason).toHaveValue("Please try again.");
+      await screen.findByRole("button", { name: "Approve +5 points" }),
+    ).toBeEnabled();
   });
 
   it("persists an explicit dark theme selection", async () => {
@@ -1367,7 +1458,7 @@ describe("Today page", () => {
     ).toBePressed();
   });
 
-  it("reports creation failures without removing the entered job", async () => {
+  it("reports a job the server can't add after the undo time", async () => {
     vi.stubGlobal(
       "fetch",
       vi
@@ -1378,7 +1469,8 @@ describe("Today page", () => {
             { detail: "The database is unavailable." },
             { status: 503 },
           ),
-        ),
+        )
+        .mockResolvedValueOnce(jsonResponse(board)),
     );
     const user = userEvent.setup();
     renderApp();
@@ -1390,14 +1482,21 @@ describe("Today page", () => {
     await user.clear(screen.getByLabelText("Points"));
     await user.type(screen.getByLabelText("Points"), "4");
     await user.click(screen.getByRole("button", { name: "Add job" }));
+    await saveQueuedAction(user);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "The database is unavailable.",
+      "Not saved: Scheduled “Put toys away” for Fredster on 2026-08-29. The database is unavailable.",
     );
-    expect(name).toHaveValue("Put toys away");
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("article", {
+          name: "Put toys away for Fredster, being added",
+        }),
+      ).not.toBeInTheDocument(),
+    );
   });
 
-  it("reports completion failures through the job card", async () => {
+  it("reports a completion the server refuses and shows the job as it is", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(childBoard))
@@ -1406,7 +1505,8 @@ describe("Today page", () => {
           { detail: "This job is already pending approval." },
           { status: 409 },
         ),
-      );
+      )
+      .mockResolvedValueOnce(jsonResponse(childBoard));
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
     renderApp();
@@ -1419,10 +1519,21 @@ describe("Today page", () => {
     await user.click(
       within(card as HTMLElement).getByRole("button", { name: "Mark as done" }),
     );
+    expect(
+      await within(card as HTMLElement).findByText(
+        "Sent to a grown-up for approval",
+      ),
+    ).toBeInTheDocument();
+    await saveQueuedAction(user);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "This job is already pending approval.",
+      "Not saved: Sent “Feed the dog” for approval. This job is already pending approval.",
     );
+    expect(
+      await within(card as HTMLElement).findByRole("button", {
+        name: "Mark as done",
+      }),
+    ).toBeEnabled();
   });
 
   it("shows the authenticated profile without persisting identity", async () => {
@@ -1654,12 +1765,18 @@ describe("Today page", () => {
     );
     await user.click(addButton);
 
-    const createdToast = await screen.findByText(/Fredster was added/);
+    const createdToast = await screen.findByText("Added Fredster as a child");
     expect(createdToast).toHaveAttribute("role", "status");
-    expect(createdToast.closest(".status-toast")).not.toBeNull();
+    expect(createdToast.closest(".undo-toast")).not.toBeNull();
+    expect(screen.getByText("Being added")).toBeInTheDocument();
+    expect(createMember.getByLabelText("First name")).toHaveValue("");
+    expect(created).toBe(false);
+    await saveQueuedAction(user);
+
     expect(
-      screen.getByRole("button", { name: "Set up PIN now" }),
+      await screen.findByRole("button", { name: "Set up PIN now" }),
     ).toBeInTheDocument();
+    expect(screen.queryByText("Being added")).not.toBeInTheDocument();
     const createRequest = fetch.mock.calls.find(([input]) => {
       const request = input instanceof Request ? input : null;
       return requestPath(input) === "/api/users" && request?.method === "POST";
@@ -1677,7 +1794,7 @@ describe("Today page", () => {
     expect(createMember.getByLabelText("Role")).toHaveValue("child");
   });
 
-  it("keeps family member details after a failed creation", async () => {
+  it("reports a family member the server refuses after the undo time", async () => {
     const fetch = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const request = input instanceof Request ? input : null;
@@ -1716,16 +1833,14 @@ describe("Today page", () => {
     );
     await user.selectOptions(createMember.getByLabelText("Role"), "adult");
     await user.click(addButton);
+    await saveQueuedAction(user);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "That family member already exists.",
+      "Not saved: Added Fredster as a grown-up. That family member already exists.",
     );
-    expect(createMember.getByLabelText("First name")).toHaveValue("Fred");
-    expect(createMember.getByLabelText("Surname")).toHaveValue("Avenant");
-    expect(createMember.getByLabelText("Nickname (optional)")).toHaveValue(
-      "Fredster",
+    await waitFor(() =>
+      expect(screen.queryByText("Being added")).not.toBeInTheDocument(),
     );
-    expect(createMember.getByLabelText("Role")).toHaveValue("adult");
   });
 
   it("confirms a PIN reset before signing out for the private handoff", async () => {
@@ -1815,7 +1930,7 @@ describe("Today page", () => {
     expect(JSON.parse(String(resetRequest?.[1]?.body))).toEqual({});
   });
 
-  it("keeps an edited profile open and populated when saving fails", async () => {
+  it("reports a profile edit the server refuses and shows the saved profile", async () => {
     const members = [
       managedMember(addie, true, "Avenant"),
       managedMember(fredster, true, "Avenant"),
@@ -1856,15 +1971,17 @@ describe("Today page", () => {
     await user.clear(editProfile.getByLabelText("First name"));
     await user.type(editProfile.getByLabelText("First name"), "Frederick");
     await user.click(editProfile.getByRole("button", { name: "Save profile" }));
+    expect(
+      await editProfile.findByText("Frederick", { selector: "strong" }),
+    ).toBeInTheDocument();
+    await saveQueuedAction(user);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "That profile couldn't be updated.",
+      "Not saved: Saved Frederick’s profile. That profile couldn't be updated.",
     );
     expect(
-      editProfile.getByText("Edit profile").closest("details"),
-    ).toHaveAttribute("open");
-    expect(editProfile.getByLabelText("First name")).toHaveValue("Frederick");
-    expect(screen.queryByText(/profile was updated/)).not.toBeInTheDocument();
+      await editProfile.findByText("Fredster", { selector: "strong" }),
+    ).toBeInTheDocument();
   });
 
   it("edits, deliberately deactivates, and restores a family profile", async () => {
@@ -1948,14 +2065,29 @@ describe("Today page", () => {
       within(fredsterProfile).getByRole("button", { name: "Save profile" }),
     );
 
-    const updateToast = await screen.findByText(
-      "Freddie's profile was updated.",
-    );
+    const updateToast = await screen.findByText("Saved Freddie’s profile");
     expect(updateToast).toHaveAttribute("role", "status");
-    expect(updateToast.closest(".status-toast")).not.toBeNull();
     expect(
       within(fredsterProfile).getByText("Edit profile").closest("details"),
     ).not.toHaveAttribute("open");
+    expect(
+      within(fredsterProfile).getByText("Freddie", { selector: "strong" }),
+    ).toBeInTheDocument();
+    expect(
+      within(fredsterProfile).getByRole("button", {
+        name: "Save profile",
+        hidden: true,
+      }),
+    ).toBeDisabled();
+    await saveQueuedAction(user);
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.some(([input]) => {
+          const request = input instanceof Request ? input : null;
+          return request?.method === "PATCH";
+        }),
+      ).toBe(true),
+    );
     const editRequest = fetch.mock.calls.find(([input]) => {
       const request = input instanceof Request ? input : null;
       return (
@@ -2004,11 +2136,17 @@ describe("Today page", () => {
     );
 
     expect(
-      await screen.findByText(/Freddie's profile is inactive/),
+      await screen.findByText("Deactivated Freddie’s profile"),
     ).toHaveAttribute("role", "status");
-    expect(
-      screen.queryByText("Freddie's profile was updated."),
-    ).not.toBeInTheDocument();
+    await saveQueuedAction(user);
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.some(([input]) => {
+          const request = input instanceof Request ? input : null;
+          return request?.method === "DELETE";
+        }),
+      ).toBe(true),
+    );
     const inactiveList = screen.getByRole("list", {
       name: "Inactive family members",
     });
@@ -2023,8 +2161,17 @@ describe("Today page", () => {
     );
 
     expect(
-      await screen.findByText("Freddie's profile was restored."),
+      await screen.findByText("Restored Freddie’s profile"),
     ).toHaveAttribute("role", "status");
+    await saveQueuedAction(user);
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.some(
+          ([input]) =>
+            requestPath(input) === `/api/users/${fredster.id}/restore`,
+        ),
+      ).toBe(true),
+    );
     expect(
       within(screen.getByRole("list", { name: "Family members" })).getByText(
         "Freddie",

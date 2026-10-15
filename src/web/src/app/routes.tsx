@@ -34,7 +34,6 @@ import {
   updateJob,
 } from "../api/today";
 import type {
-  RecurringJobChangeImpact,
   RecurringJobChangeInput,
   RecurringJobChangeScope,
   RecurringJobScopePreview,
@@ -199,9 +198,7 @@ export interface FamilyMembersActionResult extends QueuedFlag {
 export type AppActionResult = TodayActionResult | IdentityActionResult;
 
 export type AppLoaderData =
-  | AuthStart
-  | PendingPinSetup
-  | { state: "authenticated"; board: TodayBoard };
+  AuthStart | PendingPinSetup | { state: "authenticated"; board: TodayBoard };
 
 async function appLoader({
   request,
@@ -904,7 +901,9 @@ async function addRecurringJobAction(
         : null,
     startDate,
     endDate: typeof endDate === "string" && endDate.length > 0 ? endDate : null,
-    assignmentMode: takesTurns ? ("takeTurns" as const) : ("eachChild" as const),
+    assignmentMode: takesTurns
+      ? ("takeTurns" as const)
+      : ("eachChild" as const),
   };
   const kind = takesTurns
     ? `take-turns ${recurrenceFrequency}`
