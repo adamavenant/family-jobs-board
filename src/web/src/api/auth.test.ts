@@ -34,3 +34,25 @@ it("preserves JSON request headers and body when adding authentication", async (
   );
   expect(fetch).toHaveBeenCalledOnce();
 });
+
+it("keeps saves alive when the page closes, but not reads", async () => {
+  acceptSession({
+    accessToken: "test-token",
+    accessTokenExpiresAtUtc: "2099-01-01T00:00:00Z",
+    member: { id: "adult", displayName: "Test", role: "adult" },
+  });
+  const fetch = vi.fn<
+    (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+  >(async () => new Response(null, { status: 200 }));
+  vi.stubGlobal("fetch", fetch);
+
+  await authenticatedFetch(
+    new Request("http://dashboard.home.arpa/api/jobs/1/approve", {
+      method: "POST",
+    }),
+  );
+  await authenticatedFetch(new Request("http://dashboard.home.arpa/api/today"));
+
+  expect(fetch.mock.calls[0]?.[1]?.keepalive).toBe(true);
+  expect(fetch.mock.calls[1]?.[1]?.keepalive).toBeUndefined();
+});

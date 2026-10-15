@@ -65,12 +65,8 @@ function UndoToast({ action }: { action: QueuedAction }) {
       <p role="status" id={descriptionId}>
         {action.description}
       </p>
-      <span
-        className="undo-toast__countdown"
-        aria-hidden="true"
-        data-paused={action.runningSince === null ? "" : undefined}
-      >
-        {seconds}s
+      <span className="undo-toast__countdown" aria-hidden="true">
+        {action.runningSince === null ? "Paused" : `${seconds}s`}
       </span>
       <button
         type="button"

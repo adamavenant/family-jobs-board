@@ -895,12 +895,23 @@ a.hero__balance:focus-visible {
 .success-message {
   margin: 0 !important;
 }
-.status-toast {
+.toast-stack {
   position: fixed;
-  right: 50%;
+  left: 50%;
   bottom: max(20px, env(safe-area-inset-bottom));
   z-index: 1000;
   width: min(560px, calc(100% - 32px));
+  max-height: min(60vh, 520px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform: translateX(-50%);
+}
+.status-toast {
+  position: relative;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -913,7 +924,11 @@ a.hero__balance:focus-visible {
   box-shadow: 0 16px 40px rgb(0 0 0 / 28%);
   font-size: 0.95rem;
   font-weight: 700;
-  transform: translateX(50%);
+}
+.status-toast--error {
+  color: var(--error-text);
+  background: var(--error-bg);
+  border-color: color-mix(in srgb, var(--error-text) 35%, transparent);
 }
 .status-toast button {
   flex: 0 0 auto;
@@ -927,6 +942,83 @@ a.hero__balance:focus-visible {
   cursor: pointer;
   font-size: 1.25rem;
   line-height: 1;
+}
+.status-toast .status-toast__retry,
+.status-toast .undo-toast__undo {
+  width: auto;
+  height: auto;
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+.status-toast .undo-toast__undo {
+  color: var(--button-text);
+  background: var(--button);
+  border-color: var(--button);
+}
+.status-toast .undo-toast__undo:hover {
+  background: var(--button-hover);
+}
+.status-toast button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.undo-toast {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px 12px;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+}
+.undo-toast p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.undo-toast__countdown {
+  min-width: 4ch;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.undo-toast__timer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform 250ms linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .undo-toast__timer {
+    transition: none;
+  }
+}
+@media (max-width: 480px) {
+  .toast-stack {
+    width: calc(100% - 16px);
+    bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .undo-toast {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    padding: 12px;
+  }
+  .undo-toast p {
+    grid-column: 1 / -1;
+  }
+}
+.job-card--queued,
+.family-member--queued,
+.good-behaviour--queued,
+.whose-turn--queued {
+  outline: 2px dashed color-mix(in srgb, var(--text) 35%, transparent);
+  outline-offset: -6px;
 }
 .success-message {
   padding: 10px 12px;

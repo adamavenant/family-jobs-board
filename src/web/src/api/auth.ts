@@ -223,10 +223,16 @@ export async function authenticatedFetch(
     init.headers ?? (input instanceof Request ? input.headers : undefined),
   );
   headers.set("Authorization", `Bearer ${session.accessToken}`);
+  const method = (
+    init.method ?? (input instanceof Request ? input.method : "GET")
+  ).toUpperCase();
   const response = await fetch(input, {
     ...init,
     credentials: "include",
     headers,
+    // Queued actions are sent as the page is hidden or closed; keepalive lets
+    // those saves finish after the page goes away.
+    ...(method === "GET" || method === "HEAD" ? {} : { keepalive: true }),
   });
   if (response.status === 401) {
     session = null;

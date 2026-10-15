@@ -1637,6 +1637,8 @@ describe("Today page", () => {
     expect(
       screen.getByText("No jobs are scheduled for this day."),
     ).toBeVisible();
+    // The typed confirmation is the safeguard; reset is not an undoable action.
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 
   it("keeps the reset confirmation available when the server fails", async () => {
@@ -1919,6 +1921,8 @@ describe("Today page", () => {
       await screen.findByRole("heading", { name: "Over to Fredster" }),
     ).toBeInTheDocument();
     expect(screen.getByText(/signed out/)).toBeInTheDocument();
+    // PIN resets are sent at once rather than waiting behind an undo toast.
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
     const resetRequest = fetch.mock.calls.find(([input, init]) => {
       const request = input instanceof Request ? input : null;
       return (
