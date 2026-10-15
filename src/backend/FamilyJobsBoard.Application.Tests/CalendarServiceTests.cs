@@ -341,6 +341,12 @@ public sealed class CalendarServiceTests
                     && job.ScheduledDate <= endDate)
                 .ToArray());
 
+        public Task<int> CountPendingApprovalJobsAsync(
+            IReadOnlyCollection<Guid> childIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Jobs.Count(job => childIds.Contains(job.ChildId)
+                && job.Status == JobStatus.PendingApproval));
+
         public Task<IReadOnlyList<Job>> GetPendingApprovalJobsAsync(
             IReadOnlyCollection<Guid> childIds,
             CancellationToken cancellationToken) =>

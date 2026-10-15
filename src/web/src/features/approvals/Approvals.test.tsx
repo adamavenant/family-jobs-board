@@ -107,6 +107,11 @@ describe("Approvals panel", () => {
     expect(await within(panel).findByRole("alert")).toHaveTextContent(
       "Job cannot be rejected",
     );
+    expect(
+      within(panel).getByRole("button", {
+        name: "Reject job Feed the dog for Fredster",
+      }),
+    ).toHaveFocus();
     expect(within(panel).getByLabelText(/Rejection reason/)).toHaveValue(
       "The bowl is still empty",
     );
@@ -166,6 +171,73 @@ describe("Approvals panel", () => {
     expect(
       within(row).queryByRole("button", { name: /Approve/ }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Pack school bag/ })).toHaveFocus();
+  });
+
+  it("keeps a half-typed rejection reason when Escape is pressed in it", async () => {
+    stubServer([job({ id: "old", name: "Feed the dog" })]);
+    const user = userEvent.setup();
+    renderAt("/calendar?view=month");
+
+    await user.click(
+      await screen.findByRole("button", { name: "1 jobs awaiting review" }),
+    );
+    const panel = await screen.findByRole("complementary", {
+      name: "Awaiting review",
+    });
+    await user.click(await within(panel).findByText("Reject…"));
+    await user.type(
+      within(panel).getByLabelText(/Rejection reason/),
+      "Not yet",
+    );
+    await user.keyboard("{Escape}");
+
+    expect(within(panel).getByLabelText(/Rejection reason/)).toHaveValue(
+      "Not yet",
+    );
+  });
+
+  it("reloads a fresh list on reopening and stops refreshing it while closed", async () => {
+    const server = stubServer([
+      job({ id: "old", name: "Feed the dog", scheduledDate: yesterday }),
+      job({ id: "new", name: "Pack school bag" }),
+    ]);
+    const user = userEvent.setup();
+    renderAt("/calendar?view=week");
+
+    const badge = await screen.findByRole("button", {
+      name: "2 jobs awaiting review",
+    });
+    await user.click(badge);
+    await screen.findByRole("heading", { name: /^Yesterday/ });
+    await user.click(
+      screen.getByRole("button", { name: "Close review panel" }),
+    );
+    server.jobs[0]!.status = "approved";
+
+    const row = (await screen.findByRole("link", { name: /Pack school bag/ }))
+      .parentElement!;
+    const loadsBefore = queueLoads(server.requests);
+    await user.click(
+      within(row).getByRole("button", {
+        name: "Approve +5 Pack school bag for Fredster",
+      }),
+    );
+    await screen.findByRole("button", { name: "0 jobs awaiting review" });
+    expect(queueLoads(server.requests)).toBe(loadsBefore);
+
+    await user.click(
+      screen.getByRole("button", { name: "0 jobs awaiting review" }),
+    );
+    const panel = screen.getByRole("complementary", {
+      name: "Awaiting review",
+    });
+    expect(
+      within(panel).queryByText("Feed the dog", { exact: true }),
+    ).toBeNull();
+    expect(
+      await within(panel).findByText(/Nothing is waiting for review/),
+    ).toBeInTheDocument();
   });
 
   it("counts earlier days' pending work on today's board and reviews it from there", async () => {
@@ -199,6 +271,12 @@ describe("Approvals panel", () => {
 });
 
 type Member = typeof addie;
+
+function queueLoads(requests: string[]): number {
+  return requests.filter((request) =>
+    request.startsWith("GET /api/approvals/pending"),
+  ).length;
+}
 
 interface RawJob {
   id: string;

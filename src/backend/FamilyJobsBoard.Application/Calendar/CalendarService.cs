@@ -98,7 +98,7 @@ public sealed class CalendarService
                     .ToArray());
 
         // The review count is household-wide: it ignores the child filter and the visible range.
-        var pendingApprovalJobs = await _repository.GetPendingApprovalJobsAsync(
+        var pendingApprovalCount = await _repository.CountPendingApprovalJobsAsync(
             children.Select(child => child.Id).ToArray(),
             cancellationToken);
 
@@ -123,7 +123,7 @@ public sealed class CalendarService
             rangeStart,
             rangeEnd,
             selectedChild?.Id,
-            pendingApprovalJobs.Count,
+            pendingApprovalCount,
             days);
     }
 

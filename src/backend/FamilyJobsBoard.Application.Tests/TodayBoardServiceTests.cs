@@ -791,6 +791,9 @@ public sealed class TodayBoardServiceTests
             Task.FromResult(Jobs.SingleOrDefault(job => job.Id == jobId));
         public Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(IReadOnlyCollection<Guid> childIds, DateOnly scheduledDate, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TodayJobRejection>>([]);
+        public Task<int> CountPendingApprovalJobsAsync(IReadOnlyCollection<Guid> childIds, CancellationToken cancellationToken) =>
+            Task.FromResult(Jobs.Count(job => childIds.Contains(job.ChildId) && job.Status == JobStatus.PendingApproval));
+
         public Task<IReadOnlyList<Job>> GetPendingApprovalJobsAsync(IReadOnlyCollection<Guid> childIds, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<Job>>(Jobs.Where(job => childIds.Contains(job.ChildId) && job.Status == JobStatus.PendingApproval).OrderBy(job => job.ScheduledDate).ToArray());
 

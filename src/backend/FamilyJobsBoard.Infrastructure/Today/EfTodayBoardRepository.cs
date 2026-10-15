@@ -127,6 +127,15 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
             .ToListAsync(cancellationToken);
     }
 
+    public Task<int> CountPendingApprovalJobsAsync(
+        IReadOnlyCollection<Guid> childIds,
+        CancellationToken cancellationToken)
+    {
+        return _database.Jobs.CountAsync(
+            job => childIds.Contains(job.ChildId) && job.Status == JobStatus.PendingApproval,
+            cancellationToken);
+    }
+
     public async Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsInRangeAsync(
         IReadOnlyCollection<Guid> childIds,
         DateOnly startDate,

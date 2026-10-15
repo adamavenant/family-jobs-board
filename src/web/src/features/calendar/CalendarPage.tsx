@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Link, useLoaderData } from "react-router";
 
 import type { TodayJob } from "../../api/today";
@@ -6,7 +7,7 @@ import type {
   CalendarDay,
   CalendarView,
 } from "../../api/calendar";
-import { ApprovalControls } from "../approvals/ApprovalControls";
+import { ApprovalControls, focusIsLost } from "../approvals/ApprovalControls";
 import { ApprovalsReview, ApprovalsTrigger } from "../approvals/ApprovalsPanel";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { IdentityControls } from "../today/TodayPage";
@@ -285,6 +286,17 @@ function CalendarJobRow({
   detailed?: boolean;
 }) {
   const isOverdue = job.status === "open" && job.scheduledDate < currentDate;
+  const isPending = job.status === "pendingApproval";
+  const linkRef = useRef<HTMLAnchorElement>(null);
+  const wasPending = useRef(isPending);
+
+  useEffect(() => {
+    // Deciding a job inline removes the focused control; keep keyboard users on this row.
+    if (wasPending.current && !isPending && focusIsLost()) {
+      linkRef.current?.focus();
+    }
+    wasPending.current = isPending;
+  }, [isPending]);
 
   return (
     <li
@@ -294,7 +306,10 @@ function CalendarJobRow({
           : "calendar-job-row"
       }
     >
-      <Link to={boardHref(job.scheduledDate, currentDate, job.childId)}>
+      <Link
+        ref={linkRef}
+        to={boardHref(job.scheduledDate, currentDate, job.childId)}
+      >
         <span className={jobStatusClassName(job.status)}>
           {jobStatusLabel(job.status)}
         </span>

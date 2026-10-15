@@ -11,7 +11,7 @@ import { useFetcher } from "react-router";
 
 import type { TodayJob } from "../../api/today";
 import { addDays, formatAgendaPeriod } from "../today/jobFormatting";
-import { ApprovalControls } from "./ApprovalControls";
+import { ApprovalControls, focusIsLost } from "./ApprovalControls";
 import type { ApprovalsLoaderData } from "./approvalsRoute";
 
 interface ApprovalsReviewValue {
@@ -34,12 +34,17 @@ export function ApprovalsReview({
   currentDate: string;
   children: ReactNode;
 }) {
-  const fetcher = useFetcher<ApprovalsLoaderData>();
   const [isOpen, setIsOpen] = useState(false);
+  // Each opening gets its own fetcher: closing retires the old one, so a closed panel isn't
+  // revalidated after every page action and reopening never shows a stale list.
+  const [opening, setOpening] = useState(0);
   const openerRef = useRef<HTMLElement | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const panelId = useId();
   const headingId = useId();
+  const fetcher = useFetcher<ApprovalsLoaderData>({
+    key: `approvals-review-${panelId}-${opening}`,
+  });
   const jobs =
     fetcher.data && "jobs" in fetcher.data ? fetcher.data.jobs : undefined;
   const loadError =
@@ -54,17 +59,14 @@ export function ApprovalsReview({
 
   useEffect(() => {
     // A decided job leaves the list while its button has focus; keep focus inside the panel.
-    if (
-      isOpen &&
-      (document.activeElement === null ||
-        document.activeElement === document.body)
-    ) {
+    if (isOpen && focusIsLost()) {
       headingRef.current?.focus();
     }
   }, [isOpen, jobCount]);
 
   function close() {
     setIsOpen(false);
+    setOpening((current) => current + 1);
     // Return focus to whichever trigger opened the panel, or to another one if it has gone.
     const opener = openerRef.current?.isConnected
       ? openerRef.current
@@ -95,7 +97,11 @@ export function ApprovalsReview({
           className="approvals-panel"
           aria-labelledby={headingId}
           onKeyDown={(event) => {
-            if (event.key === "Escape") {
+            // Escape inside a form field (like a half-typed rejection reason) is left alone.
+            if (
+              event.key === "Escape" &&
+              !(event.target instanceof HTMLTextAreaElement)
+            ) {
               event.stopPropagation();
               close();
             }
