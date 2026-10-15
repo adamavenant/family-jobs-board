@@ -266,8 +266,8 @@ public sealed class PointRedemptionEndpointsTests : IAsyncLifetime
             + $"VALUES (gen_random_uuid(), '{child}', '{redemptionId}', 3, now())"));
         var twoSources = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(
             connection,
-            "INSERT INTO points_ledger_entries (id, child_id, job_id, point_redemption_id, amount, awarded_at_utc) "
-            + $"VALUES (gen_random_uuid(), '{child}', '{DemoDataIds.FeedDog}', '{redemptionId}', -3, now())"));
+            "INSERT INTO points_ledger_entries (id, child_id, job_id, job_approval_number, point_redemption_id, amount, awarded_at_utc) "
+            + $"VALUES (gen_random_uuid(), '{child}', '{DemoDataIds.FeedDog}', 1, '{redemptionId}', -3, now())"));
         var zeroPoints = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(
             connection,
             "INSERT INTO point_redemptions (id, request_id, child_id, redeemed_by_member_id, points, reward, redeemed_at_utc) "
