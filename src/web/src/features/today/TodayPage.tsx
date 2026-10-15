@@ -4,6 +4,7 @@ import { Link, useFetcher } from "react-router";
 import type { HouseholdMember, TodayBoard, TodayJob } from "../../api/today";
 import type { AppActionResult, TodayActionResult } from "../../app/routes";
 import { AddJobForm } from "./AddJobForm";
+import { FloatingDateBar } from "./FloatingDateBar";
 import { RecurringJobForm } from "./RecurringJobForm";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { FamilyMembersPanel } from "../identity/FamilyMembersPanel";
@@ -36,14 +37,36 @@ export function TodayPage({ board }: { board: TodayBoard }) {
     (child) => child.id === board.selectedChildId,
   );
   const isToday = board.date === currentDate;
+  const dateLineRef = useRef<HTMLParagraphElement>(null);
   const formattedDate = new Intl.DateTimeFormat("en", {
     weekday: "long",
     day: "numeric",
     month: "long",
   }).format(new Date(`${board.date}T12:00:00`));
+  const previousDayHref = boardHref(
+    addDays(board.date, -1),
+    currentDate,
+    board.selectedChildId,
+  );
+  const nextDayHref = boardHref(
+    addDays(board.date, 1),
+    currentDate,
+    board.selectedChildId,
+  );
   return (
     <ApprovalsReview currentDate={currentDate}>
       <main>
+        <FloatingDateBar
+          dateLineRef={dateLineRef}
+          date={board.date}
+          isToday={isToday}
+          todayHref={boardHref(currentDate, currentDate, board.selectedChildId)}
+          previousHref={previousDayHref}
+          nextHref={nextDayHref}
+          pendingApprovalCount={
+            board.viewer.isAdult ? board.pendingApprovalCount : null
+          }
+        />
         <header className="hero">
           <div className="hero__toolbar">
             <p className="eyebrow">Family Jobs Board</p>
@@ -65,7 +88,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
           <div className="hero__content">
             <div>
               <h1>Good day, {board.viewer.displayName}!</h1>
-              <p className="hero__date">
+              <p className="hero__date" ref={dateLineRef}>
                 {formattedDate}
                 {isToday ? <span>Today</span> : null}
               </p>
@@ -141,15 +164,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
             </nav>
           ) : null}
           <nav className="date-navigation" aria-label="Daily agenda">
-            <Link
-              to={boardHref(
-                addDays(board.date, -1),
-                currentDate,
-                board.selectedChildId,
-              )}
-            >
-              ← Previous day
-            </Link>
+            <Link to={previousDayHref}>← Previous day</Link>
             {!isToday ? (
               <Link
                 to={boardHref(currentDate, currentDate, board.selectedChildId)}
@@ -159,15 +174,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
             ) : (
               <span aria-current="date">Today</span>
             )}
-            <Link
-              to={boardHref(
-                addDays(board.date, 1),
-                currentDate,
-                board.selectedChildId,
-              )}
-            >
-              Next day →
-            </Link>
+            <Link to={nextDayHref}>Next day →</Link>
           </nav>
           <div className="board__heading">
             <div>

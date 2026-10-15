@@ -10,7 +10,11 @@ import type { ReactNode } from "react";
 import { useFetcher } from "react-router";
 
 import type { TodayJob } from "../../api/today";
-import { addDays, formatAgendaPeriod } from "../today/jobFormatting";
+import {
+  addDays,
+  formatAgendaPeriod,
+  formatShortDate,
+} from "../today/jobFormatting";
 import { ApprovalControls, focusIsLost } from "./ApprovalControls";
 import type { ApprovalsLoaderData } from "./approvalsRoute";
 
@@ -225,11 +229,7 @@ function groupByDate(jobs: TodayJob[]): [string, TodayJob[]][] {
 }
 
 function reviewDateLabel(date: string, currentDate: string): string {
-  const formatted = new Intl.DateTimeFormat("en", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  }).format(new Date(`${date}T12:00:00`));
+  const formatted = formatShortDate(date);
   if (date === currentDate) {
     return `Today · ${formatted}`;
   }

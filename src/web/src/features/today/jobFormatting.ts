@@ -47,6 +47,15 @@ export function jobStatusClassName(status: TodayJob["status"]): string {
   return `status status--${modifier}`;
 }
 
+/** A compact label such as "Tue, Sep 22" for a household-local yyyy-MM-dd date. */
+export function formatShortDate(date: string): string {
+  return new Intl.DateTimeFormat("en", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(`${date}T12:00:00`));
+}
+
 export function addDays(date: string, days: number): string {
   const value = new Date(`${date}T12:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);
