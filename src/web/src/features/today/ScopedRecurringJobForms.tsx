@@ -8,6 +8,7 @@ import type {
 } from "../../api/today";
 import type { TodayActionResult } from "../../app/routes";
 import { createRequestId } from "../../app/requestId";
+import { OptionalDateInput } from "./OptionalDateInput";
 
 const agendaPeriods = [
   ["morning", "Morning"],
@@ -56,6 +57,7 @@ export function ScopedRecurringJobEditForm({ job }: { job: TodayJob }) {
   const [frequency, setFrequency] = useState(
     recurrence?.frequency ?? job.recurrenceFrequency ?? "daily",
   );
+  const [endDate, setEndDate] = useState(recurrence?.endDate ?? "");
   if (!recurrence) {
     return <p role="alert">The repeating schedule could not be loaded.</p>;
   }
@@ -193,13 +195,17 @@ export function ScopedRecurringJobEditForm({ job }: { job: TodayJob }) {
         )}
         <label htmlFor={`edit-end-date-${job.id}`}>
           End date <span>(optional)</span>
-          <input
-            id={`edit-end-date-${job.id}`}
-            name="endDate"
-            type="date"
-            defaultValue={recurrence.endDate ?? ""}
-          />
         </label>
+        <OptionalDateInput
+          id={`edit-end-date-${job.id}`}
+          name="endDate"
+          value={endDate}
+          fieldName="end date"
+          onChange={(value) => {
+            setEndDate(value);
+            setFormRevision((revision) => revision + 1);
+          }}
+        />
         <ScopeReview
           fetcher={fetcher}
           job={job}
