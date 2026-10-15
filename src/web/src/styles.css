@@ -2179,6 +2179,19 @@ button.hero__balance[aria-expanded="true"] {
   justify-items: start;
   gap: 10px;
 }
+.approvals-panel__error .error-message {
+  margin: 0;
+}
+.approvals-panel__error button {
+  min-height: 44px;
+  padding: 10px 16px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-weight: 700;
+  cursor: pointer;
+}
 .approvals-panel__day {
   display: grid;
   gap: 10px;
