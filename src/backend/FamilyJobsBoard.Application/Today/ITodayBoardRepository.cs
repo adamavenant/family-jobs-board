@@ -18,6 +18,9 @@ public interface ITodayBoardRepository
 
     Task<Job?> GetJobAsync(Guid jobId, CancellationToken cancellationToken);
 
+    /// <summary>The job's assigned child, read without tracking the job.</summary>
+    Task<Guid?> GetJobChildIdAsync(Guid jobId, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(
         IReadOnlyCollection<Guid> childIds,
         DateOnly scheduledDate,

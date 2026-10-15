@@ -25,6 +25,13 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                 type: "integer",
                 nullable: true);
 
+            migrationBuilder.AddColumn<string>(
+                name: "job_name",
+                table: "points_ledger_entries",
+                type: "character varying(160)",
+                maxLength: 160,
+                nullable: true);
+
             migrationBuilder.AddColumn<Guid>(
                 name: "reversed_entry_id",
                 table: "points_ledger_entries",
@@ -46,10 +53,12 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                 defaultValue: false);
 
             // Approvals were final until now, so every existing job award belongs to its job's
-            // first and only approval. An adult marking a job done approves it at the instant
-            // it is completed; approving a child's submission always happens later.
+            // first and only approval, and its job's name hasn't changed since it was approved.
+            // An adult marking a job done approves it at the instant it is completed; approving
+            // a child's submission always happens later.
             migrationBuilder.Sql(
-                "UPDATE points_ledger_entries SET job_approval_number = 1 WHERE job_id IS NOT NULL;");
+                "UPDATE points_ledger_entries SET job_approval_number = 1, job_name = jobs.name " +
+                "FROM jobs WHERE points_ledger_entries.job_id = jobs.id;");
             migrationBuilder.Sql(
                 "UPDATE jobs SET approval_count = 1 WHERE status = 'Approved' " +
                 "OR EXISTS (SELECT 1 FROM points_ledger_entries entry WHERE entry.job_id = jobs.id);");
@@ -78,6 +87,11 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                 name: "ck_points_ledger_entries_job_entry",
                 table: "points_ledger_entries",
                 sql: "(job_id IS NULL AND job_approval_number IS NULL AND reversed_entry_id IS NULL) OR (job_id IS NOT NULL AND job_approval_number IS NOT NULL AND job_approval_number >= 1 AND reversed_entry_id IS NULL) OR (job_id IS NOT NULL AND job_approval_number IS NULL AND reversed_entry_id IS NOT NULL)");
+
+            migrationBuilder.AddCheckConstraint(
+                name: "ck_points_ledger_entries_job_name",
+                table: "points_ledger_entries",
+                sql: "(job_id IS NULL) = (job_name IS NULL)");
 
             migrationBuilder.AddCheckConstraint(
                 name: "ck_jobs_approval_tracking",
@@ -123,11 +137,19 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                 table: "points_ledger_entries");
 
             migrationBuilder.DropCheckConstraint(
+                name: "ck_points_ledger_entries_job_name",
+                table: "points_ledger_entries");
+
+            migrationBuilder.DropCheckConstraint(
                 name: "ck_jobs_approval_tracking",
                 table: "jobs");
 
             migrationBuilder.DropColumn(
                 name: "job_approval_number",
+                table: "points_ledger_entries");
+
+            migrationBuilder.DropColumn(
+                name: "job_name",
                 table: "points_ledger_entries");
 
             migrationBuilder.DropColumn(

@@ -979,6 +979,11 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("job_id");
 
+                    b.Property<string>("JobName")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("job_name");
+
                     b.Property<Guid?>("PointAdjustmentId")
                         .HasColumnType("uuid")
                         .HasColumnName("point_adjustment_id");
@@ -1021,6 +1026,8 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                             t.HasCheckConstraint("ck_points_ledger_entries_amount_sign", "(point_adjustment_id IS NULL AND point_redemption_id IS NULL AND reversed_entry_id IS NULL AND amount >= 0) OR (point_adjustment_id IS NOT NULL AND amount <> 0) OR (point_redemption_id IS NOT NULL AND amount < 0) OR (reversed_entry_id IS NOT NULL AND amount <= 0)");
 
                             t.HasCheckConstraint("ck_points_ledger_entries_job_entry", "(job_id IS NULL AND job_approval_number IS NULL AND reversed_entry_id IS NULL) OR (job_id IS NOT NULL AND job_approval_number IS NOT NULL AND job_approval_number >= 1 AND reversed_entry_id IS NULL) OR (job_id IS NOT NULL AND job_approval_number IS NULL AND reversed_entry_id IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_points_ledger_entries_job_name", "(job_id IS NULL) = (job_name IS NULL)");
 
                             t.HasCheckConstraint("ck_points_ledger_entries_single_source", "num_nonnulls(job_id, good_behaviour_id, point_adjustment_id, point_redemption_id) = 1");
                         });

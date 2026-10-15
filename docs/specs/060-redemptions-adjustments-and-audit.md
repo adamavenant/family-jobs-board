@@ -251,9 +251,10 @@ this view.
 ### Rules
 
 - **Entry content.** Each entry has:
-  - the name: the job name, the behaviour type name as it was logged, the
-    adjustment reason, or the redeemed reward. An approval reversal carries
-    its job's name and is marked as a reversal;
+  - the name: the job name as it was when the entry was written, the behaviour
+    type name as it was logged, the adjustment reason, or the redeemed reward.
+    An approval reversal carries the same job name as the award it takes back
+    and is marked as a reversal;
   - the award date and time;
   - the signed points;
   - the child's balance after the entry;

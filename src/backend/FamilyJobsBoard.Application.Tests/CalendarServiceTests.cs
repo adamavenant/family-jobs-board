@@ -376,6 +376,10 @@ public sealed class CalendarServiceTests
             JobReviewDecision decision,
             CancellationToken cancellationToken) => throw Unused();
 
+        public Task<Guid?> GetJobChildIdAsync(
+            Guid jobId,
+            CancellationToken cancellationToken) => throw Unused();
+
         public Task<PointsLedgerEntry?> GetJobAwardAsync(
             Guid jobId,
             int approvalNumber,

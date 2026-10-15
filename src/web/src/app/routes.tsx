@@ -1274,11 +1274,14 @@ export const routes: RouteObject[] = [
     Component: AppPage,
     HydrateFallback: LoadingPage,
     shouldRevalidate: ({ actionResult, defaultShouldRevalidate }) => {
+      // Keep the page as it is after most refusals, so typed input survives. A refused
+      // reversal has nothing to keep, and the job has often changed under a stale card.
       if (
         actionResult &&
         typeof actionResult === "object" &&
         "error" in actionResult &&
-        actionResult.error
+        actionResult.error &&
+        !("intent" in actionResult && actionResult.intent === "reverseApproval")
       ) {
         return false;
       }

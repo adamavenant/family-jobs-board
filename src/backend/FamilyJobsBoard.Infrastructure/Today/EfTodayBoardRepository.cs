@@ -64,6 +64,15 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         return _database.Jobs.SingleOrDefaultAsync(job => job.Id == jobId, cancellationToken);
     }
 
+    public Task<Guid?> GetJobChildIdAsync(Guid jobId, CancellationToken cancellationToken)
+    {
+        return _database.Jobs
+            .AsNoTracking()
+            .Where(job => job.Id == jobId)
+            .Select(job => (Guid?)job.ChildId)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(
         IReadOnlyCollection<Guid> childIds,
         DateOnly scheduledDate,

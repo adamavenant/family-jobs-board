@@ -116,17 +116,35 @@ public sealed class JobApprovalReversalTests
     }
 
     [Fact]
+    public void A_job_award_snapshots_the_approval_it_belongs_to()
+    {
+        var job = ApprovedJob();
+        job.ReverseApproval();
+        job.Approve(ApprovedAt.AddHours(1));
+
+        var award = PointsLedgerEntry.ForJobApproval(Guid.NewGuid(), job, ApprovedAt.AddHours(1));
+        job.ReverseApproval();
+        job.Edit("Walk the dog", "", 9, job.ScheduledDate, AgendaPeriod.Evening, null);
+
+        Assert.Equal(job.Id, award.JobId);
+        Assert.Equal(job.ChildId, award.ChildId);
+        Assert.Equal("Feed the dog", award.JobName);
+        Assert.Equal(2, award.JobApprovalNumber);
+        Assert.Equal(5, award.Amount);
+    }
+
+    [Fact]
     public void Approval_reversal_takes_back_the_award_as_a_new_entry()
     {
-        var childId = Guid.NewGuid();
-        var jobId = Guid.NewGuid();
-        var award = new PointsLedgerEntry(Guid.NewGuid(), childId, jobId, 1, 5, ApprovedAt);
+        var job = ApprovedJob();
+        var award = PointsLedgerEntry.ForJobApproval(Guid.NewGuid(), job, ApprovedAt);
         var reversedAt = new DateTimeOffset(2026, 10, 14, 12, 0, 0, TimeSpan.FromHours(2));
 
         var reversal = PointsLedgerEntry.ForApprovalReversal(Guid.NewGuid(), award, reversedAt);
 
-        Assert.Equal(childId, reversal.ChildId);
-        Assert.Equal(jobId, reversal.JobId);
+        Assert.Equal(job.ChildId, reversal.ChildId);
+        Assert.Equal(job.Id, reversal.JobId);
+        Assert.Equal("Feed the dog", reversal.JobName);
         Assert.Equal(award.Id, reversal.ReversedEntryId);
         Assert.Equal(-5, reversal.Amount);
         Assert.Null(reversal.JobApprovalNumber);
@@ -140,7 +158,9 @@ public sealed class JobApprovalReversalTests
     [Fact]
     public void A_zero_point_award_is_taken_back_with_a_zero_entry()
     {
-        var award = new PointsLedgerEntry(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 1, 0, ApprovedAt);
+        var job = new Job(Guid.NewGuid(), Guid.NewGuid(), "Smile", "", 0, new DateOnly(2026, 10, 14));
+        job.CompleteForChild(CompletedAt);
+        var award = PointsLedgerEntry.ForJobApproval(Guid.NewGuid(), job, CompletedAt);
 
         var reversal = PointsLedgerEntry.ForApprovalReversal(Guid.NewGuid(), award, ApprovedAt);
 
@@ -151,8 +171,9 @@ public sealed class JobApprovalReversalTests
     [Fact]
     public void Only_a_job_award_can_be_reversed()
     {
-        var child = Guid.NewGuid();
-        var award = new PointsLedgerEntry(Guid.NewGuid(), child, Guid.NewGuid(), 1, 5, ApprovedAt);
+        var job = ApprovedJob();
+        var child = job.ChildId;
+        var award = PointsLedgerEntry.ForJobApproval(Guid.NewGuid(), job, ApprovedAt);
         var reversal = PointsLedgerEntry.ForApprovalReversal(Guid.NewGuid(), award, ApprovedAt);
         var behaviour = PointsLedgerEntry.ForGoodBehaviour(Guid.NewGuid(), child, Guid.NewGuid(), 5, ApprovedAt);
         var redemption = PointsLedgerEntry.ForRedemption(Guid.NewGuid(), child, Guid.NewGuid(), 5, ApprovedAt);
@@ -165,10 +186,24 @@ public sealed class JobApprovalReversalTests
     }
 
     [Fact]
-    public void A_job_award_belongs_to_a_numbered_approval()
+    public void Only_an_approved_job_awards_points()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => new PointsLedgerEntry(
-            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 0, 5, ApprovedAt));
+        var pending = NewJob();
+        pending.MarkComplete(CompletedAt);
+
+        foreach (var job in new[] { NewJob(), pending, ReversedSubmission() })
+        {
+            Assert.Throws<ArgumentException>(() =>
+                PointsLedgerEntry.ForJobApproval(Guid.NewGuid(), job, ApprovedAt));
+        }
+    }
+
+    private static Job ApprovedJob()
+    {
+        var job = NewJob();
+        job.MarkComplete(CompletedAt);
+        job.Approve(ApprovedAt);
+        return job;
     }
 
     private static Job ReversedSubmission()

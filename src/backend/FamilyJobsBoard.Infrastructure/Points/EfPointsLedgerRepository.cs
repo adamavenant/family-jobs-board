@@ -73,13 +73,6 @@ public sealed class EfPointsLedgerRepository : IPointsLedgerRepository
             .Take(take)
             .ToListAsync(cancellationToken);
 
-        var jobIds = entries.Where(entry => entry.JobId is not null)
-            .Select(entry => entry.JobId!.Value)
-            .ToArray();
-        var jobNames = await _database.Jobs
-            .AsNoTracking()
-            .Where(job => jobIds.Contains(job.Id))
-            .ToDictionaryAsync(job => job.Id, job => job.Name, cancellationToken);
         var behaviourIds = entries.Where(entry => entry.GoodBehaviourId is not null)
             .Select(entry => entry.GoodBehaviourId!.Value)
             .ToArray();
@@ -112,7 +105,8 @@ public sealed class EfPointsLedgerRepository : IPointsLedgerRepository
                 cancellationToken);
 
         // Job decisions don't record the deciding adult yet, so job awards and their
-        // reversals have no recorder. A reversal is named after its job, like its award.
+        // reversals have no recorder. Job entries keep the job's name as it was when they were
+        // written, since a reversed job can be renamed before it is approved again.
         var sources = entries.ToDictionary(
             entry => entry.Id,
             entry => entry switch
@@ -120,7 +114,7 @@ public sealed class EfPointsLedgerRepository : IPointsLedgerRepository
                 { GoodBehaviourId: { } behaviourId } => behaviours[behaviourId],
                 { PointAdjustmentId: { } adjustmentId } => adjustments[adjustmentId],
                 { PointRedemptionId: { } redemptionId } => redemptions[redemptionId],
-                _ => new RecordedSource(jobNames[entry.JobId!.Value], null),
+                _ => new RecordedSource(entry.JobName!, null),
             });
         var recorderIds = sources.Values
             .Where(source => source.RecordedByMemberId is not null)

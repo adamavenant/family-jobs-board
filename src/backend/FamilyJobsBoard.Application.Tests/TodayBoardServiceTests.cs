@@ -607,9 +607,76 @@ public sealed class TodayBoardServiceTests
             repository.ReviewDecisions.Select(decision => decision.Outcome));
         var pointsLock = Assert.Single(repository.Locks);
         Assert.Equal(FirstChild.Id, pointsLock.ChildId);
+        Assert.Equal(1, repository.JobReadsWhileLocked);
         Assert.True(pointsLock.SavedWhileHeld);
         Assert.True(pointsLock.Committed);
         Assert.True(pointsLock.Disposed);
+    }
+
+    [Fact]
+    public async Task A_zero_point_approval_can_be_reversed_whatever_the_balance()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Smile", "", 0, Today);
+        job.MarkComplete(new FixedClock().UtcNow);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+        await service.ApproveAsync(job.Id, 0, CancellationToken.None);
+        // A balance left negative before negative balances were refused stays as recorded.
+        repository.PointsFromOtherEntries = -3;
+
+        var reversal = await service.ReverseApprovalAsync(
+            job.Id,
+            Adult.Id,
+            0,
+            CancellationToken.None);
+
+        Assert.Equal("pendingApproval", reversal.Job.Status);
+        Assert.Equal(-3, reversal.PointsBalance);
+        Assert.Equal([0, 0], repository.PointsAwards.Select(entry => entry.Amount));
+    }
+
+    [Fact]
+    public async Task Reopening_a_job_shows_its_latest_rejection_like_the_board()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        repository.Jobs.Add(job);
+        var rejection = new TodayJobRejection(
+            Guid.NewGuid(),
+            job.Id,
+            "Missed the water bowl.",
+            new FixedClock().UtcNow.AddHours(-1));
+        repository.Rejections.Add(rejection);
+        var service = CreateService(repository);
+        await service.CompleteAsync(job.Id, Adult.Id, 5, CancellationToken.None);
+
+        var reversal = await service.ReverseApprovalAsync(
+            job.Id,
+            Adult.Id,
+            5,
+            CancellationToken.None);
+
+        Assert.Equal("open", reversal.Job.Status);
+        Assert.Equal(rejection, reversal.Job.LatestRejection);
+    }
+
+    [Fact]
+    public async Task Reversal_returns_the_balance_after_saving_including_concurrent_awards()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = PendingJob(repository);
+        var service = CreateService(repository);
+        await service.ApproveAsync(job.Id, 5, CancellationToken.None);
+        repository.OnSave = () => repository.PointsFromOtherEntries = 4;
+
+        var reversal = await service.ReverseApprovalAsync(
+            job.Id,
+            Adult.Id,
+            5,
+            CancellationToken.None);
+
+        Assert.Equal(4, reversal.PointsBalance);
     }
 
     [Fact]
@@ -963,6 +1030,13 @@ public sealed class TodayBoardServiceTests
 
         public List<FakeChildPointsLock> Locks { get; } = [];
 
+        public List<TodayJobRejection> Rejections { get; } = [];
+
+        public int JobReadsWhileLocked { get; private set; }
+
+        /// <summary>Runs as changes are saved, to simulate a concurrent write.</summary>
+        public Action? OnSave { get; set; }
+
         /// <summary>The signed sum of the child's other ledger entries, such as redemptions.</summary>
         public int PointsFromOtherEntries { get; set; }
 
@@ -1014,6 +1088,7 @@ public sealed class TodayBoardServiceTests
                 held.SavedWhileHeld = true;
             }
 
+            OnSave?.Invoke();
             SaveCount++;
             return Task.CompletedTask;
         }
@@ -1022,10 +1097,23 @@ public sealed class TodayBoardServiceTests
             Task.FromResult<IReadOnlyList<Job>>(Jobs
                 .Where(job => childIds.Contains(job.ChildId) && job.ScheduledDate == scheduledDate)
                 .ToArray());
-        public Task<Job?> GetJobAsync(Guid jobId, CancellationToken cancellationToken) =>
-            Task.FromResult(Jobs.SingleOrDefault(job => job.Id == jobId));
+        public Task<Job?> GetJobAsync(Guid jobId, CancellationToken cancellationToken)
+        {
+            if (Locks.LastOrDefault() is { Committed: false, Disposed: false })
+            {
+                JobReadsWhileLocked++;
+            }
+
+            return Task.FromResult(Jobs.SingleOrDefault(job => job.Id == jobId));
+        }
+        public Task<Guid?> GetJobChildIdAsync(Guid jobId, CancellationToken cancellationToken) =>
+            Task.FromResult(Jobs.SingleOrDefault(job => job.Id == jobId)?.ChildId);
         public Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(IReadOnlyCollection<Guid> childIds, DateOnly scheduledDate, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<TodayJobRejection>>([]);
+            Task.FromResult<IReadOnlyList<TodayJobRejection>>(Rejections
+                .Where(rejection => Jobs.Any(job => job.Id == rejection.JobId
+                    && childIds.Contains(job.ChildId)
+                    && job.ScheduledDate == scheduledDate))
+                .ToArray());
         public Task<IReadOnlyList<Job>> GetJobsInRangeAsync(IReadOnlyCollection<Guid> childIds, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<Job>>(Jobs
                 .Where(job => childIds.Contains(job.ChildId) && job.ScheduledDate >= startDate && job.ScheduledDate <= endDate)

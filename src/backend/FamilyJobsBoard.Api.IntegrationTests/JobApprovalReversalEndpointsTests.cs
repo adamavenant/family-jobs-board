@@ -162,6 +162,36 @@ public sealed class JobApprovalReversalEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Renaming_a_reversed_job_keeps_its_earlier_history_named_as_it_was()
+    {
+        await CompleteAsChildAsync(DemoDataIds.FeedDog);
+        await ApproveAsync(DemoDataIds.FeedDog, 5);
+        (await ReverseAsync(DemoDataIds.FeedDog, 5)).EnsureSuccessStatusCode();
+        using var edit = await SendAsync(
+            HttpMethod.Put,
+            $"/api/jobs/{DemoDataIds.FeedDog}",
+            DemoDataIds.Addie,
+            new
+            {
+                name = "Walk the dog",
+                description = "Round the block.",
+                points = 6,
+                scheduledDate = (await GetJobAsync(DemoDataIds.FeedDog)).ScheduledDate,
+                agendaPeriod = "morning",
+                scheduledTime = (string?)null,
+            });
+        Assert.True(edit.IsSuccessStatusCode, await edit.Content.ReadAsStringAsync());
+
+        await ApproveAsync(DemoDataIds.FeedDog, 6);
+
+        var ledger = await GetLedgerAsync(Client, DemoDataIds.Fredster);
+        Assert.Equal(
+            [("Feed the dog", 5, false), ("Feed the dog", -5, true), ("Walk the dog", 6, false)],
+            ledger.Entries.Reverse().Select(entry => (entry.Name, entry.Points, entry.IsApprovalReversal)));
+        Assert.Equal(6, (await GetBoardAsync(DemoDataIds.Fredster)).PointsBalance);
+    }
+
+    [Fact]
     public async Task A_reversed_job_can_be_rejected_or_cancelled()
     {
         foreach (var jobId in new[] { DemoDataIds.FeedDog, DemoDataIds.PackBag })
@@ -338,6 +368,10 @@ public sealed class JobApprovalReversalEndpointsTests : IAsyncLifetime
             connection, LedgerInsert(Guid.NewGuid(), child, job, "2", award, -5)));
         var missingAward = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(
             connection, LedgerInsert(Guid.NewGuid(), child, job, "NULL", Guid.NewGuid(), -5)));
+        var unnamedAward = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(
+            connection,
+            "INSERT INTO points_ledger_entries (id, child_id, job_id, job_approval_number, amount, awarded_at_utc) "
+            + $"VALUES (gen_random_uuid(), '{child}', '{job}', 2, 5, now())"));
         var behaviourReversal = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(
             connection,
             "INSERT INTO points_ledger_entries (id, child_id, good_behaviour_id, reversed_entry_id, amount, awarded_at_utc) "
@@ -354,6 +388,7 @@ public sealed class JobApprovalReversalEndpointsTests : IAsyncLifetime
         Assert.Equal("ck_points_ledger_entries_amount_sign", positiveReversal.ConstraintName);
         Assert.Equal("ck_points_ledger_entries_job_entry", numberedReversal.ConstraintName);
         Assert.Equal("FK_points_ledger_entries_reversed_entry_id", missingAward.ConstraintName);
+        Assert.Equal("ck_points_ledger_entries_job_name", unnamedAward.ConstraintName);
         Assert.Equal("ck_points_ledger_entries_job_entry", behaviourReversal.ConstraintName);
         Assert.Equal("ux_points_ledger_entries_reversed_entry_id", secondReversal.ConstraintName);
         Assert.Equal("FK_points_ledger_entries_reversed_entry_id", reversedAwardDeleted.ConstraintName);
@@ -431,9 +466,11 @@ public sealed class JobApprovalReversalEndpointsTests : IAsyncLifetime
         Assert.Equal((1, false), (jobs[submittedJobId].ApprovalCount, jobs[submittedJobId].CompletedByAdult));
         Assert.Equal((1, true), (jobs[adultCompletedJobId].ApprovalCount, jobs[adultCompletedJobId].CompletedByAdult));
         Assert.Equal((0, false), (jobs[openJobId].ApprovalCount, jobs[openJobId].CompletedByAdult));
-        Assert.All(
-            await database.PointsLedgerEntries.AsNoTracking().ToListAsync(),
-            entry => Assert.Equal(1, entry.JobApprovalNumber));
+        Assert.Equal(
+            [("Marked done", 1), ("Submitted", 1)],
+            (await database.PointsLedgerEntries.AsNoTracking().ToListAsync())
+                .Select(entry => (entry.JobName, entry.JobApprovalNumber ?? 0))
+                .OrderBy(entry => entry.JobName));
 
         // The backfilled award is the one a reversal takes back, and both reverse as they began.
         var submitted = await database.Jobs.SingleAsync(job => job.Id == submittedJobId);
@@ -463,8 +500,8 @@ public sealed class JobApprovalReversalEndpointsTests : IAsyncLifetime
         string approvalNumber,
         Guid? reversed,
         int amount) =>
-        "INSERT INTO points_ledger_entries (id, child_id, job_id, job_approval_number, reversed_entry_id, amount, awarded_at_utc) "
-        + $"VALUES ('{id}', '{childId}', '{jobId}', {approvalNumber}, {(reversed is null ? "NULL" : $"'{reversed}'")}, {amount}, now())";
+        "INSERT INTO points_ledger_entries (id, child_id, job_id, job_name, job_approval_number, reversed_entry_id, amount, awarded_at_utc) "
+        + $"VALUES ('{id}', '{childId}', '{jobId}', 'Feed the dog', {approvalNumber}, {(reversed is null ? "NULL" : $"'{reversed}'")}, {amount}, now())";
 
     private static async Task ExecuteAsync(NpgsqlConnection connection, string sql)
     {

@@ -3,7 +3,7 @@ namespace FamilyJobsBoard.Domain.Jobs;
 public sealed class JobApprovalReversalRejectedException : InvalidOperationException
 {
     public JobApprovalReversalRejectedException(Guid jobId)
-        : base($"Job '{jobId}' is not approved, so there is no approval to reverse.")
+        : base("This job isn't approved any more, so there's no approval to reverse. Refresh to see its latest state.")
     {
         JobId = jobId;
     }

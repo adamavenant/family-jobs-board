@@ -159,9 +159,16 @@ to cancel, can be undone at any time. The undo is not limited to a grace period.
   `points_ledger_entries.job_approval_number`, so approving again awards the
   points once more, exactly once.
 - **Never negative.** A reversal is a points removal. It takes the child's points
-  lock (see `060-redemptions-adjustments-and-audit.md`) and, under it, refuses
-  with `409` if the child's balance is below the award, for example because
-  the points were redeemed. Nothing changes.
+  lock (see `060-redemptions-adjustments-and-audit.md`) before reading the job,
+  so it judges the job as it is now. Under the lock it refuses with `409` if the
+  child's balance is below the award, for example because the points were
+  redeemed, and nothing changes. A zero-point award takes nothing, so it can
+  always be reversed. The response re-reads the balance after saving, since
+  awards don't take the lock.
+- **History keeps its names.** A reversed job can be edited again, so every job
+  ledger entry records the job's name when it is written (`job_name`). An
+  award and its reversal keep the name the job had then, even if the job is
+  renamed before it is approved again.
 - **Stale confirmation.** The adult confirms the points shown to them. If they
   no longer match the award, the reversal is refused like a stale approval.
 
@@ -173,18 +180,21 @@ to cancel, can be undone at any time. The undo is not limited to a grace period.
   (boolean, default false), with `ck_jobs_approval_tracking`. That check
   requires a non-negative count, at least one approval for an `Approved` job,
   and `completed_by_adult` only on an `Approved` job;
-- adds `points_ledger_entries.job_approval_number` and `reversed_entry_id` (a
-  restricting self-reference). `ck_points_ledger_entries_job_entry` makes a job
-  entry either an award with an approval number of at least 1, or a reversal
-  with a reversed entry and no number. The amount-sign check allows `<= 0` for
-  reversals;
+- adds `points_ledger_entries.job_approval_number`, `job_name`, and
+  `reversed_entry_id` (a restricting self-reference).
+  `ck_points_ledger_entries_job_entry` makes a job entry either an award with an
+  approval number of at least 1, or a reversal with a reversed entry and no
+  number. `ck_points_ledger_entries_job_name` requires a name on exactly the
+  job entries. The amount-sign check allows `<= 0` for reversals;
 - replaces `ux_points_ledger_entries_job_id` with
   `ux_points_ledger_entries_job_approval` on `(job_id, job_approval_number)` and
   `ux_points_ledger_entries_reversed_entry_id`. Two racing approvals or two
   racing reversals of the same award can't both commit, and job-row optimistic
   concurrency serializes every job transition;
-- backfills each existing award as approval 1, every approved job (or job with
-  an award) with one approval, and `completed_by_adult` where completion and
+- backfills each existing award as approval 1 with its job's name (unchanged
+  since approval, because approved jobs couldn't be edited), every approved job
+  (or job with an award) with one approval, and `completed_by_adult` where
+  completion and
   approval share an instant. That is always true for adult completion, which
   approves at the instant it completes, and never true for a separately
   approved submission;
@@ -212,25 +222,31 @@ to cancel, can be undone at any time. The undo is not limited to a grace period.
 
 Approved job cards give adults a **Reverse approval** action. It opens an inline
 confirmation naming the child and the points to take back, with initial focus
-on **Keep approved**. Keeping it makes no request and returns focus to the
-action. Confirming submits the `reverseApproval` intent on the board's route
-action through a fetcher, as approve and reject do. The prompt closes if
-revalidation changes the job's status or points. A refusal shows the server's
-message on the card. The points ledger marks the reversal entry
+on **Keep approved**. Keeping it, or pressing Escape, makes no request and
+returns focus to the action. Confirming submits the `reverseApproval` intent on
+the board's route action through the job card's fetcher, as approve and reject
+do. When it succeeds, focus moves to the job's heading, because the card's
+controls change. The prompt closes if revalidation changes the job's status or
+points. Unlike other refusals, a refused reversal revalidates the board, since
+there is no typed input to keep and the job has often changed under a stale
+card. The server's message stays on the card. The points ledger marks the reversal entry
 **Approval reversed** next to the job's name, and the award stays listed.
 
 ### Tests
 
 - Domain: both restorations, follow-on approve, reject, cancel, edit, and
   re-completion, guards, and the reversal ledger entry.
-- Application: orchestration under the lock, re-approval numbering, the
-  insufficient-points refusal, stale and missing confirmations, and children.
+- Application: reading the job under the lock, re-approval numbering, the
+  insufficient-points refusal, zero-point awards, the latest rejection on a
+  reopened job, the balance after saving, stale and missing confirmations, and
+  children.
 - PostgreSQL integration: the endpoint for both restorations, re-approval,
-  reject and cancel after reversal, redeemed points, racing reversals, a
+  names kept after a rename, reject and cancel after reversal, redeemed points, racing reversals, a
   reversal racing a redemption, `403` and `404`, constraints, reset, and the
   migration backfill and downgrade guard.
-- Vitest: the confirmation and its focus, submission, refusal, prompt closing on
-  revalidation, children, and the ledger label.
+- Vitest: the confirmation and its focus, Escape, submission and focus after it,
+  refusal with revalidation, a job already reversed elsewhere, prompt closing
+  on revalidation, children, and the ledger label.
 
 ## Compose demonstration
 

@@ -287,13 +287,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 decidedAtUtc),
             CancellationToken.None);
         await adultRepository.AddPointsAwardAsync(
-            new PointsLedgerEntry(
-                Guid.NewGuid(),
-                adultJob.ChildId,
-                adultJob.Id,
-                adultJob.ApprovalCount,
-                adultJob.Points,
-                decidedAtUtc),
+            PointsLedgerEntry.ForJobApproval(Guid.NewGuid(), adultJob, decidedAtUtc),
             CancellationToken.None);
         await adultRepository.SaveChangesAsync(CancellationToken.None);
 
@@ -345,13 +339,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 decidedAtUtc.AddSeconds(1)),
             CancellationToken.None);
         await adultRepository.AddPointsAwardAsync(
-            new PointsLedgerEntry(
-                Guid.NewGuid(),
-                adultJob.ChildId,
-                adultJob.Id,
-                adultJob.ApprovalCount,
-                adultJob.Points,
-                decidedAtUtc.AddSeconds(1)),
+            PointsLedgerEntry.ForJobApproval(Guid.NewGuid(), adultJob, decidedAtUtc.AddSeconds(1)),
             CancellationToken.None);
         await childRepository.SaveChangesAsync(CancellationToken.None);
 

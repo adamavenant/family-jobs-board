@@ -29,6 +29,9 @@ internal sealed class PointsLedgerEntryConfiguration : IEntityTypeConfiguration<
                 // Job entries are either an approval's award, numbered by approval, or the
                 // reversal of an award; no other entry has either column.
                 table.HasCheckConstraint(
+                    "ck_points_ledger_entries_job_name",
+                    "(job_id IS NULL) = (job_name IS NULL)");
+                table.HasCheckConstraint(
                     "ck_points_ledger_entries_job_entry",
                     "(job_id IS NULL AND job_approval_number IS NULL AND reversed_entry_id IS NULL) OR (job_id IS NOT NULL AND job_approval_number IS NOT NULL AND job_approval_number >= 1 AND reversed_entry_id IS NULL) OR (job_id IS NOT NULL AND job_approval_number IS NULL AND reversed_entry_id IS NOT NULL)");
             });
@@ -36,6 +39,9 @@ internal sealed class PointsLedgerEntryConfiguration : IEntityTypeConfiguration<
         builder.Property(entry => entry.Id).HasColumnName("id");
         builder.Property(entry => entry.ChildId).HasColumnName("child_id");
         builder.Property(entry => entry.JobId).HasColumnName("job_id");
+        builder.Property(entry => entry.JobName)
+            .HasColumnName("job_name")
+            .HasMaxLength(Job.MaximumNameLength);
         builder.Property(entry => entry.JobApprovalNumber).HasColumnName("job_approval_number");
         builder.Property(entry => entry.ReversedEntryId).HasColumnName("reversed_entry_id");
         builder.Property(entry => entry.GoodBehaviourId).HasColumnName("good_behaviour_id");

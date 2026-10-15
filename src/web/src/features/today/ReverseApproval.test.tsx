@@ -111,6 +111,7 @@ describe("Reversing an approval", () => {
     expect(
       await screen.findByRole("button", { name: "Approve +5 points" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Feed the dog" })).toHaveFocus();
     expect(
       screen.queryByText("Approved — 5 points awarded"),
     ).not.toBeInTheDocument();
@@ -141,7 +142,8 @@ describe("Reversing an approval", () => {
           },
           { status: 409 },
         ),
-      );
+      )
+      .mockResolvedValueOnce(jsonResponse(board([approvedJob])));
     vi.stubGlobal("fetch", fetch);
     const user = userEvent.setup();
     renderApp(addie);
@@ -156,6 +158,73 @@ describe("Reversing an approval", () => {
 
     expect(await within(card).findByRole("alert")).toHaveTextContent(message);
     expect(card).toHaveTextContent("Approved — 5 points awarded");
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+    expect(
+      within(card).getByRole("group", {
+        name: "Confirm reversing the approval for Fredster",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the job as it is now when another grown-up already reversed it", async () => {
+    const message =
+      "This job isn't approved any more, so there's no approval to reverse. Refresh to see its latest state.";
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(board([approvedJob])))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            title: "Approval cannot be reversed",
+            detail: message,
+            status: 409,
+          },
+          { status: 409 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(board([pendingJob], { pendingApprovalCount: 1 })),
+      );
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp(addie);
+
+    const card = await jobCard("Feed the dog");
+    await user.click(
+      within(card).getByRole("button", { name: "Reverse approval" }),
+    );
+    await user.click(
+      within(card).getByRole("button", { name: "Yes, reverse approval" }),
+    );
+
+    expect(
+      await within(card).findByRole("button", { name: "Approve +5 points" }),
+    ).toBeInTheDocument();
+    expect(within(card).getByRole("alert")).toHaveTextContent(message);
+    expect(card).not.toHaveTextContent("Approved — 5 points awarded");
+  });
+
+  it("backs out with Escape and returns focus to the action", async () => {
+    const fetch = vi.fn().mockResolvedValue(jsonResponse(board([approvedJob])));
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    renderApp(addie);
+
+    const card = await jobCard("Feed the dog");
+    await user.click(
+      within(card).getByRole("button", { name: "Reverse approval" }),
+    );
+    await user.keyboard("{Escape}");
+
+    expect(
+      within(card).queryByRole("group", {
+        name: "Confirm reversing the approval for Fredster",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: "Reverse approval" }),
+    ).toHaveFocus();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("closes the prompt when revalidation changes the job's points", async () => {

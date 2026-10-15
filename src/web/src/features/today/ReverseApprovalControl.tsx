@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useFetcher } from "react-router";
+import type { useFetcher } from "react-router";
 
 import type { TodayJob } from "../../api/today";
 import type { TodayActionResult } from "../../app/routes";
@@ -7,10 +7,16 @@ import type { TodayActionResult } from "../../app/routes";
 /**
  * Lets an adult undo an approved job: the job goes back to how it was before it was approved
  * and its points come back off the child's balance. The prompt names the child and points,
- * and starts on the safe choice.
+ * and starts on the safe choice. It submits through the job card's fetcher, so the card can
+ * show a refusal and keep focus once the job's state changes.
  */
-export function ReverseApprovalControl({ job }: { job: TodayJob }) {
-  const fetcher = useFetcher<TodayActionResult>();
+export function ReverseApprovalControl({
+  job,
+  fetcher,
+}: {
+  job: TodayJob;
+  fetcher: ReturnType<typeof useFetcher<TodayActionResult>>;
+}) {
   const [confirming, setConfirming] = useState(false);
   // Close the prompt when revalidation changes what it describes.
   const confirmationKey = `${job.status}:${job.points}`;
@@ -29,11 +35,11 @@ export function ReverseApprovalControl({ job }: { job: TodayJob }) {
     }
   }, [confirming]);
   const isSubmitting = fetcher.state !== "idle";
-  const error =
-    fetcher.data?.intent === "reverseApproval" && fetcher.data.jobId === job.id
-      ? fetcher.data.error
-      : undefined;
   const points = `${job.points} ${job.points === 1 ? "point" : "points"}`;
+  const keepApproved = () => {
+    restoreFocus.current = true;
+    setConfirming(false);
+  };
 
   return (
     <div className="reverse-approval">
@@ -42,6 +48,12 @@ export function ReverseApprovalControl({ job }: { job: TodayJob }) {
           className="inline-confirmation"
           role="group"
           aria-label={`Confirm reversing the approval for ${job.childDisplayName}`}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !isSubmitting) {
+              event.preventDefault();
+              keepApproved();
+            }
+          }}
         >
           <p>
             Reverse this approval and take {points} back from{" "}
@@ -64,10 +76,7 @@ export function ReverseApprovalControl({ job }: { job: TodayJob }) {
               type="button"
               className="button--quiet"
               autoFocus
-              onClick={() => {
-                restoreFocus.current = true;
-                setConfirming(false);
-              }}
+              onClick={keepApproved}
               disabled={isSubmitting}
             >
               Keep approved
@@ -80,15 +89,11 @@ export function ReverseApprovalControl({ job }: { job: TodayJob }) {
           type="button"
           className="reverse-approval__trigger"
           onClick={() => setConfirming(true)}
+          disabled={isSubmitting}
         >
           Reverse approval
         </button>
       )}
-      {error ? (
-        <p role="alert" className="error-message">
-          {error}
-        </p>
-      ) : null}
     </div>
   );
 }

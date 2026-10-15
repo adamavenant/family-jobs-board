@@ -1,39 +1,11 @@
+using FamilyJobsBoard.Domain.Jobs;
+
 namespace FamilyJobsBoard.Domain.Points;
 
 public sealed class PointsLedgerEntry
 {
     private PointsLedgerEntry()
     {
-    }
-
-    /// <summary>
-    /// A job's points award for its <paramref name="approvalNumber"/>th approval. A job is
-    /// only approved again after its previous approval was reversed, so each approval awards
-    /// once and a job has at most one award that hasn't been reversed.
-    /// </summary>
-    public PointsLedgerEntry(
-        Guid id,
-        Guid childId,
-        Guid jobId,
-        int approvalNumber,
-        int amount,
-        DateTimeOffset awardedAtUtc)
-        : this(id, childId, EnsureAward(amount), awardedAtUtc)
-    {
-        if (jobId == Guid.Empty)
-        {
-            throw new ArgumentException("A points award needs a source job.", nameof(jobId));
-        }
-
-        if (approvalNumber < 1)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(approvalNumber),
-                "A job award belongs to an approval, numbered from 1.");
-        }
-
-        JobId = jobId;
-        JobApprovalNumber = approvalNumber;
     }
 
     private PointsLedgerEntry(
@@ -64,6 +36,12 @@ public sealed class PointsLedgerEntry
 
     public Guid? JobId { get; private set; }
 
+    /// <summary>
+    /// The job's name when the entry was written, so history keeps it if the job is renamed
+    /// after a reversal; null for entries that aren't from a job.
+    /// </summary>
+    public string? JobName { get; private set; }
+
     /// <summary>Which approval of the job a job award is for; null for every other entry.</summary>
     public int? JobApprovalNumber { get; private set; }
 
@@ -81,6 +59,29 @@ public sealed class PointsLedgerEntry
     public DateTimeOffset AwardedAtUtc { get; private set; }
 
     public bool IsApprovalReversal => ReversedEntryId is not null;
+
+    /// <summary>
+    /// The points award for a job's latest approval, numbered by it. A job is only approved
+    /// again after its previous approval was reversed, so each approval awards once and a job
+    /// has at most one award that hasn't been reversed.
+    /// </summary>
+    public static PointsLedgerEntry ForJobApproval(
+        Guid id,
+        Job job,
+        DateTimeOffset awardedAtUtc)
+    {
+        if (job.Status != JobStatus.Approved)
+        {
+            throw new ArgumentException("Only an approved job awards points.", nameof(job));
+        }
+
+        return new PointsLedgerEntry(id, job.ChildId, EnsureAward(job.Points), awardedAtUtc)
+        {
+            JobId = job.Id,
+            JobName = job.Name,
+            JobApprovalNumber = job.ApprovalCount,
+        };
+    }
 
     public static PointsLedgerEntry ForGoodBehaviour(
         Guid id,
@@ -179,6 +180,7 @@ public sealed class PointsLedgerEntry
         return new PointsLedgerEntry(id, award.ChildId, -award.Amount, reversedAtUtc)
         {
             JobId = award.JobId,
+            JobName = award.JobName,
             ReversedEntryId = award.Id,
         };
     }

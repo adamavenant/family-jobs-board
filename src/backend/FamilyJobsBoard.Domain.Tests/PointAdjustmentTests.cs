@@ -88,10 +88,9 @@ public sealed class PointAdjustmentTests
     }
 
     [Fact]
-    public void Job_and_behaviour_awards_cannot_be_negative()
+    public void Behaviour_awards_cannot_be_negative()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => new PointsLedgerEntry(
-            Guid.NewGuid(), Child, Guid.NewGuid(), 1, -1, Now));
+        // Job awards take the job's points, which can never be negative.
         Assert.Throws<ArgumentOutOfRangeException>(() => PointsLedgerEntry.ForGoodBehaviour(
             Guid.NewGuid(), Child, Guid.NewGuid(), -1, Now));
     }

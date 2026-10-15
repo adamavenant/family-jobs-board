@@ -815,13 +815,7 @@ public sealed class TodayBoardService
                 decidedAtUtc),
             cancellationToken);
         await _repository.AddPointsAwardAsync(
-            new PointsLedgerEntry(
-                Guid.NewGuid(),
-                job.ChildId,
-                job.Id,
-                job.ApprovalCount,
-                job.Points,
-                decidedAtUtc),
+            PointsLedgerEntry.ForJobApproval(Guid.NewGuid(), job, decidedAtUtc),
             cancellationToken);
     }
 
@@ -846,12 +840,21 @@ public sealed class TodayBoardService
             });
         }
 
-        var job = await GetJobAsync(jobId, cancellationToken);
-        var child = await GetChildAsync(job, cancellationToken);
+        // Take the lock before reading the job, so every decision below is made on the job as
+        // it is now rather than as it was before a concurrent change released the lock.
+        var childId = await _repository.GetJobChildIdAsync(jobId, cancellationToken)
+            ?? throw new JobNotFoundException(jobId);
         await using var pointsLock = await _repository.LockChildPointsAsync(
-            job.ChildId,
+            childId,
             cancellationToken);
+        var job = await GetJobAsync(jobId, cancellationToken);
+        if (job.ChildId != childId)
+        {
+            throw new JobStateConflictException(
+                new InvalidOperationException("The job moved to another child."));
+        }
 
+        var child = await GetChildAsync(job, cancellationToken);
         var award = job.Status == JobStatus.Approved
             ? await _repository.GetJobAwardAsync(job.Id, job.ApprovalCount, cancellationToken)
             : null;
@@ -868,7 +871,7 @@ public sealed class TodayBoardService
         var currentBalance = await _repository.GetPointsBalanceAsync(
             job.ChildId,
             cancellationToken);
-        if (currentBalance < award.Amount)
+        if (award.Amount > 0 && currentBalance < award.Amount)
         {
             throw new ApprovalReversalInsufficientPointsException(
                 child.DisplayName,
@@ -892,9 +895,21 @@ public sealed class TodayBoardService
         await _repository.SaveChangesAsync(cancellationToken);
         await pointsLock.CommitAsync(cancellationToken);
 
+        // A job reopened by the reversal shows its latest rejection again, as on the board.
+        var latestRejection = job.Status == JobStatus.Open
+            ? (await _repository.GetLatestRejectionsAsync(
+                    [job.ChildId],
+                    job.ScheduledDate,
+                    cancellationToken))
+                .SingleOrDefault(rejection => rejection.JobId == job.Id)
+            : null;
+        // Awards don't take the lock, so read the balance again rather than assume it.
+        var pointsBalance = await _repository.GetPointsBalanceAsync(
+            job.ChildId,
+            cancellationToken);
         return new TodayJobApprovalReversal(
-            MapJob(job, child, null),
-            currentBalance - award.Amount);
+            MapJob(job, child, latestRejection),
+            pointsBalance);
     }
 
     public async Task<TodayJob> RejectAsync(

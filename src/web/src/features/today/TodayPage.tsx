@@ -329,6 +329,23 @@ function JobCard({
       restoreCompletionFocus.current = false;
     }
   }, [confirmingAdultCompletion]);
+  // A reversal swaps the card's controls, so keep the reader on the card they acted on.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const focusedReversal = useRef<TodayActionResult | null>(null);
+  useEffect(() => {
+    const result = fetcher.data;
+    if (
+      fetcher.state === "idle" &&
+      result?.intent === "reverseApproval" &&
+      result.jobId === job.id &&
+      !result.error &&
+      job.status !== "approved" &&
+      focusedReversal.current !== result
+    ) {
+      focusedReversal.current = result;
+      headingRef.current?.focus();
+    }
+  }, [fetcher.state, fetcher.data, job.id, job.status]);
   const isSubmitting = fetcher.state !== "idle";
   const submittingIntent = fetcher.formData?.get("intent");
   const error =
@@ -336,7 +353,8 @@ function JobCard({
       fetcher.data?.intent === "approve" ||
       fetcher.data?.intent === "reject" ||
       fetcher.data?.intent === "editJob" ||
-      fetcher.data?.intent === "cancelJob") &&
+      fetcher.data?.intent === "cancelJob" ||
+      fetcher.data?.intent === "reverseApproval") &&
     fetcher.data.jobId === job.id
       ? fetcher.data.error
       : undefined;
@@ -355,7 +373,9 @@ function JobCard({
         {isAdult ? (
           <p className="job-card__assignee">For {job.childDisplayName}</p>
         ) : null}
-        <h3>{job.name}</h3>
+        <h3 ref={headingRef} tabIndex={-1}>
+          {job.name}
+        </h3>
         <p className="job-card__schedule">
           {job.recurringJobSeriesId
             ? `${formatRecurrenceFrequency(job.recurrenceFrequency)} · `
@@ -493,7 +513,9 @@ function JobCard({
             <span aria-hidden="true">★</span>
             Approved — {job.points} points awarded
           </div>
-          {isAdult ? <ReverseApprovalControl job={job} /> : null}
+          {isAdult ? (
+            <ReverseApprovalControl job={job} fetcher={fetcher} />
+          ) : null}
         </>
       ) : isPending && isAdult ? (
         <fetcher.Form method="post" className="approval-form">
