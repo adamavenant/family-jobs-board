@@ -60,6 +60,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
           dateLineRef={dateLineRef}
           date={board.date}
           isToday={isToday}
+          todayHref={boardHref(currentDate, currentDate, board.selectedChildId)}
           previousHref={previousDayHref}
           nextHref={nextDayHref}
           pendingApprovalCount={

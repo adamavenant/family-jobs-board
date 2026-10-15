@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 import { Link } from "react-router";
 
 import { ApprovalsTrigger } from "../approvals/ApprovalsPanel";
+import { formatShortDate } from "./jobFormatting";
 import { KittenIllustration } from "./KittenIllustration";
+
+/** The bar's height in pixels, matching `.floating-date-bar__inner`. */
+const barHeight = 64;
 
 /**
  * Keeps the viewed date in sight once the page header's date line scrolls away, with the same
@@ -13,6 +17,7 @@ export function FloatingDateBar({
   dateLineRef,
   date,
   isToday,
+  todayHref,
   previousHref,
   nextHref,
   pendingApprovalCount,
@@ -20,12 +25,12 @@ export function FloatingDateBar({
   dateLineRef: RefObject<HTMLElement | null>;
   date: string;
   isToday: boolean;
+  todayHref: string;
   previousHref: string;
   nextHref: string;
   pendingApprovalCount: number | null;
 }) {
   const [isPinned, setIsPinned] = useState(false);
-  const barRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const dateLine = dateLineRef.current;
@@ -33,62 +38,39 @@ export function FloatingDateBar({
       return;
     }
 
-    const observer = new IntersectionObserver(([entry]) => {
-      // Pin only once the date line has left through the top, not while it's still below.
-      setIsPinned(
-        entry !== undefined &&
-          !entry.isIntersecting &&
-          entry.boundingClientRect.top < 0,
-      );
-    });
+    // Pin as the date line slides under where the bar sits, and only when it leaves through
+    // the top rather than while it's still below the fold.
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsPinned(
+          entry !== undefined &&
+            !entry.isIntersecting &&
+            entry.boundingClientRect.top < barHeight,
+        );
+      },
+      { rootMargin: `-${barHeight}px 0px 0px 0px` },
+    );
     observer.observe(dateLine);
     return () => observer.disconnect();
   }, [dateLineRef]);
-
-  useEffect(() => {
-    if (!isPinned) {
-      return;
-    }
-
-    // Browsers don't reliably apply scroll-padding when focus lands on a control that is
-    // already in the viewport, so lift any newly focused page control out from under the bar.
-    function keepFocusClear(event: FocusEvent) {
-      const bar = barRef.current;
-      const target = event.target;
-      if (!bar || !(target instanceof Element) || isInFixedLayer(target)) {
-        return;
-      }
-
-      const overlap =
-        bar.getBoundingClientRect().bottom - target.getBoundingClientRect().top;
-      if (overlap > 0) {
-        window.scrollBy({ top: -(overlap + 12) });
-      }
-    }
-
-    document.addEventListener("focusin", keepFocusClear);
-    return () => document.removeEventListener("focusin", keepFocusClear);
-  }, [isPinned]);
 
   if (!isPinned) {
     return null;
   }
 
-  const shortDate = new Intl.DateTimeFormat("en", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  }).format(new Date(`${date}T12:00:00`));
-
   return (
-    <div className="floating-date-bar" ref={barRef}>
+    <div className="floating-date-bar">
       <nav className="floating-date-bar__inner" aria-label="Pinned day">
         <KittenIllustration className="floating-date-bar__kitten" />
         <p className="floating-date-bar__date">
-          <time dateTime={date}>{shortDate}</time>
+          <time dateTime={date}>{formatShortDate(date)}</time>
           {isToday ? (
             <span className="floating-date-bar__today">Today</span>
-          ) : null}
+          ) : (
+            <Link to={todayHref} className="floating-date-bar__today">
+              Back to today
+            </Link>
+          )}
         </p>
         <div className="floating-date-bar__actions">
           <Link
@@ -115,19 +97,4 @@ export function FloatingDateBar({
       </nav>
     </div>
   );
-}
-
-/** Controls in fixed layers (this bar, the review panel, toasts) don't move when the page scrolls. */
-function isInFixedLayer(element: Element): boolean {
-  for (
-    let current: Element | null = element;
-    current;
-    current = current.parentElement
-  ) {
-    if (getComputedStyle(current).position === "fixed") {
-      return true;
-    }
-  }
-
-  return false;
 }

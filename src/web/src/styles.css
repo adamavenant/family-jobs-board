@@ -2143,6 +2143,9 @@ button.hero__balance[aria-expanded="true"] {
   body:has(.approvals-panel) {
     padding-right: min(420px, 100%);
   }
+  body:has(.approvals-panel) .floating-date-bar {
+    right: min(420px, 100%);
+  }
 }
 .approvals-panel__header {
   display: flex;
@@ -2298,6 +2301,13 @@ html:has(.floating-date-bar) {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 1rem;
   font-weight: 700;
+}
+a.floating-date-bar__today {
+  text-decoration: none;
+}
+a.floating-date-bar__today:focus-visible {
+  outline: 4px solid var(--focus);
+  outline-offset: 3px;
 }
 .floating-date-bar__today {
   padding: 2px 8px;

@@ -72,7 +72,9 @@ describe("Floating date bar", () => {
       "datetime",
       "2026-09-23",
     );
-    expect(within(bar).queryByText("Today")).not.toBeInTheDocument();
+    expect(
+      within(bar).getByRole("link", { name: "Back to today" }),
+    ).toHaveAttribute("href", `/?childId=${fredster.id}`);
     expect(
       within(bar).getByRole("link", { name: "Previous day" }),
     ).toHaveAttribute("href", `/?childId=${fredster.id}`);
