@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId, useRef } from "react";
 import { useFetcher } from "react-router";
 
 import type { TodayJob } from "../../api/today";
@@ -18,6 +18,17 @@ export function ApprovalControls({ job }: { job: TodayJob }) {
     fetcher.data.jobId === job.id
       ? fetcher.data.error
       : undefined;
+  const failedIntent = error ? fetcher.data?.intent : undefined;
+  const approveRef = useRef<HTMLButtonElement>(null);
+  const rejectRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    // The button disables itself while submitting, which drops focus; on failure the job
+    // stays, so put focus back on the button that was pressed.
+    if (fetcher.state === "idle" && failedIntent && focusIsLost()) {
+      (failedIntent === "reject" ? rejectRef : approveRef).current?.focus();
+    }
+  }, [fetcher.state, failedIntent]);
 
   return (
     <div className="approval-controls">
@@ -25,6 +36,7 @@ export function ApprovalControls({ job }: { job: TodayJob }) {
         <input type="hidden" name="jobId" value={job.id} />
         <input type="hidden" name="expectedPoints" value={job.points} />
         <button
+          ref={approveRef}
           type="submit"
           name="intent"
           value="approve"
@@ -49,6 +61,7 @@ export function ApprovalControls({ job }: { job: TodayJob }) {
           </label>
           <textarea id={reasonId} name="reason" maxLength={500} rows={2} />
           <button
+            ref={rejectRef}
             type="submit"
             className="button--secondary"
             disabled={isSubmitting}
@@ -78,5 +91,12 @@ function JobContext({ job }: { job: TodayJob }) {
         {`${job.name} for ${job.childDisplayName}`}
       </span>
     </>
+  );
+}
+
+/** True when focus has fallen back to the document, typically because its element went away. */
+export function focusIsLost(): boolean {
+  return (
+    document.activeElement === null || document.activeElement === document.body
   );
 }

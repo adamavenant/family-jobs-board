@@ -46,6 +46,11 @@ public interface ITodayBoardRepository
         IReadOnlyCollection<Guid> childIds,
         CancellationToken cancellationToken);
 
+    /// <summary>How many jobs await review for the given children, whatever their dates.</summary>
+    Task<int> CountPendingApprovalJobsAsync(
+        IReadOnlyCollection<Guid> childIds,
+        CancellationToken cancellationToken);
+
     Task AddJobsAsync(IReadOnlyCollection<Job> jobs, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesByRequestAsync(

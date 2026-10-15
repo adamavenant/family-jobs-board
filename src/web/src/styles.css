@@ -2138,6 +2138,12 @@ button.hero__balance[aria-expanded="true"] {
   border-left: 1px solid var(--border);
   box-shadow: -16px 0 40px var(--shadow);
 }
+/* On wide screens the page makes room for the panel instead of sliding under it. */
+@media (min-width: 1024px) {
+  body:has(.approvals-panel) {
+    padding-right: min(420px, 100%);
+  }
+}
 .approvals-panel__header {
   display: flex;
   align-items: start;
