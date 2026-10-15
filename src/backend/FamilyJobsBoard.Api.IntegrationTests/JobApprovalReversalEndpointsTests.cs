@@ -59,7 +59,11 @@ public sealed class JobApprovalReversalEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Reversing_a_submitted_approval_returns_the_job_for_approval_and_takes_back_its_points()
     {
-        var completed = await CompleteAsChildAsync(DemoDataIds.FeedDog);
+        await CompleteAsChildAsync(DemoDataIds.FeedDog);
+        // Compare with the stored completion time: PostgreSQL keeps whole microseconds, while the
+        // completion response carries the clock's full precision.
+        var completedAtUtc = (await GetJobAsync(DemoDataIds.FeedDog)).CompletedAtUtc;
+        Assert.NotNull(completedAtUtc);
         await ApproveAsync(DemoDataIds.FeedDog, 5);
         var award = await SingleJobEntryAsync(DemoDataIds.FeedDog);
 
@@ -69,7 +73,8 @@ public sealed class JobApprovalReversalEndpointsTests : IAsyncLifetime
         var reversal = await response.Content.ReadFromJsonAsync<ReversalResponse>();
         Assert.NotNull(reversal);
         Assert.Equal("pendingApproval", reversal.Job.Status);
-        Assert.Equal(completed.CompletedAtUtc, reversal.Job.CompletedAtUtc);
+        Assert.Equal(completedAtUtc, reversal.Job.CompletedAtUtc);
+        Assert.Equal(completedAtUtc, (await GetJobAsync(DemoDataIds.FeedDog)).CompletedAtUtc);
         Assert.Null(reversal.Job.ApprovedAtUtc);
         Assert.Equal(0, reversal.PointsBalance);
 
