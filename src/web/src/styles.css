@@ -1577,6 +1577,35 @@ a.hero__balance:focus-visible {
 .complete-state--approved {
   color: var(--approved-text);
 }
+.reverse-approval {
+  display: grid;
+  gap: 10px;
+}
+.job-card .reverse-approval__trigger {
+  min-height: 44px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+.job-card .reverse-approval__trigger:hover {
+  background: var(--open-bg);
+}
+.job-card .reverse-approval .button--danger {
+  color: #fff;
+  background: var(--error-text);
+}
+.job-card .reverse-approval .button--danger:hover {
+  background: color-mix(in srgb, var(--error-text) 84%, #000);
+}
+.earning-list__reversal {
+  justify-self: start;
+  padding: 2px 8px;
+  color: var(--error-text);
+  background: var(--error-bg);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
 .complete-state--approved span {
   background: #4e8060;
 }

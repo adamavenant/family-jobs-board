@@ -2,7 +2,8 @@
 
 ## Status
 
-Retrospective specification of the delivered core Phase 3 loop. Reviewer
+Retrospective specification of the delivered core Phase 3 loop. Reversible
+approvals were added with issue #138; see "Reversing an approval" below. Reviewer
 attribution and approval-time point override remain planned.
 
 ## Outcome and user value
@@ -34,8 +35,10 @@ same ledger in Phase 5; see `050-good-behaviours.md`.
 
 Only `PendingApproval` jobs can be approved or rejected. Approval moves the job
 to `Approved`, records a UTC instant, persists an approved decision, and adds a
-positive ledger award equal to the job points in one transaction. A unique
-database constraint on job ID prevents duplicate awards.
+positive ledger award equal to the job points in one transaction. Each approval
+is numbered, and a unique database constraint on the job and approval number
+prevents duplicate awards. Approval is no longer final; see "Reversing an
+approval".
 
 An open job may be submitted by its assigned child or completed by an adult
 acting on the child's behalf. Child submission uses the `Open` to
@@ -57,9 +60,11 @@ latest rejection is displayed for the next attempt.
 
 ## Data and migration
 
-`job_review_decisions` stores job, outcome, optional reason, and UTC decision
-time. `points_ledger_entries` stores child, source job, non-negative amount,
-and UTC award time, with one entry per job. Current balance is calculated as
+`job_review_decisions` stores job, outcome (`Approved`, `Rejected`, or
+`ApprovalReversed`), optional reason, and UTC decision time.
+`points_ledger_entries` stores child, source job, non-negative amount, and UTC
+award time, with one award per approval of the job; an approval reversal adds a
+second, negative entry for the job (see below). Current balance is calculated as
 the sum of entries rather than stored on the child. The delivered schema does
 not record the reviewing adult.
 
@@ -111,7 +116,8 @@ stable conflict responses, and the standard readiness check covers PostgreSQL.
   approval, the review decision, and one ledger award commit atomically.
 - Given the job's points change after the adult opens confirmation, then the
   stale completion or approval is rejected and no decision or award is written.
-- Given two approval attempts race, then at most one award exists for the job.
+- Given two approval attempts race, then at most one award exists for that
+  approval of the job.
 - Given a pending job is rejected, then it becomes open, no points are awarded,
   and optional feedback is visible to the child.
 - Given a child views the board after restart, then balance equals the sum of
@@ -124,6 +130,107 @@ Application and integration tests cover atomic awards, duplicate prevention,
 rejection/retry, authorization, balance, and history. Component and Playwright
 tests cover the child-to-adult approval loop, adult-on-behalf completion, and
 rejection errors.
+
+## Reversing an approval
+
+Issue #138. Approving a job by mistake, such as approving a job the adult meant
+to cancel, can be undone at any time. The undo is not limited to a grace period.
+
+### Rules
+
+- Only an adult can reverse, and only an `Approved` job. Children get `403`.
+- The job returns to how it was before it was approved:
+  - a job the child submitted returns to `PendingApproval` and keeps its
+    completion time;
+  - a job an adult marked done for the child returns to `Open`, with its
+    completion and approval times cleared.
+
+  `jobs.completed_by_adult` records which case applies. Adult completion sets
+  it as part of the same transition that approves the job.
+- The reversal is recorded as an `ApprovalReversed` review decision. It doesn't
+  record the deciding adult yet (#122).
+- A new negative ledger entry for the job takes back the award; the award is
+  never edited or deleted. The entry's `reversed_entry_id` names the award it
+  takes back and its amount is the award's, negated. A zero-point award is
+  taken back with a zero entry.
+- The job can then be approved again, rejected, edited, or cancelled. An open
+  job can be completed again. Each approval is numbered by
+  `jobs.approval_count`, and its award carries that number in
+  `points_ledger_entries.job_approval_number`, so approving again awards the
+  points once more, exactly once.
+- **Never negative.** A reversal is a points removal. It takes the child's points
+  lock (see `060-redemptions-adjustments-and-audit.md`) and, under it, refuses
+  with `409` if the child's balance is below the award, for example because
+  the points were redeemed. Nothing changes.
+- **Stale confirmation.** The adult confirms the points shown to them. If they
+  no longer match the award, the reversal is refused like a stale approval.
+
+### Data and migration
+
+`MakeJobApprovalsReversible`:
+
+- adds `jobs.approval_count` (integer, default 0) and `jobs.completed_by_adult`
+  (boolean, default false), with `ck_jobs_approval_tracking`. That check
+  requires a non-negative count, at least one approval for an `Approved` job,
+  and `completed_by_adult` only on an `Approved` job;
+- adds `points_ledger_entries.job_approval_number` and `reversed_entry_id` (a
+  restricting self-reference). `ck_points_ledger_entries_job_entry` makes a job
+  entry either an award with an approval number of at least 1, or a reversal
+  with a reversed entry and no number. The amount-sign check allows `<= 0` for
+  reversals;
+- replaces `ux_points_ledger_entries_job_id` with
+  `ux_points_ledger_entries_job_approval` on `(job_id, job_approval_number)` and
+  `ux_points_ledger_entries_reversed_entry_id`. Two racing approvals or two
+  racing reversals of the same award can't both commit, and job-row optimistic
+  concurrency serializes every job transition;
+- backfills each existing award as approval 1, every approved job (or job with
+  an award) with one approval, and `completed_by_adult` where completion and
+  approval share an instant. That is always true for adult completion, which
+  approves at the instant it completes, and never true for a separately
+  approved submission;
+- refuses to downgrade while any reversal exists, since one award per job could
+  no longer hold.
+
+"Reset jobs and points" deletes reversals with the other ledger entries.
+
+### HTTP contract
+
+`POST /api/jobs/{id}/reverse-approval?expectedPoints={n}`, adult-only:
+
+- `200` with `{ job, pointsBalance }`, the restored job and the child's new
+  balance;
+- `400` when `expectedPoints` is missing;
+- `403` for children;
+- `404` when the job or its active child is unavailable;
+- `409` when the job isn't approved, was already reversed, or changed
+  concurrently, or when `expectedPoints` no longer matches the award;
+- `409` with `code: "insufficientPoints"` and `currentBalance` when the child
+  doesn't have the points. The detail names the child, their balance, and the
+  points.
+
+### UI
+
+Approved job cards give adults a **Reverse approval** action. It opens an inline
+confirmation naming the child and the points to take back, with initial focus
+on **Keep approved**. Keeping it makes no request and returns focus to the
+action. Confirming submits the `reverseApproval` intent on the board's route
+action through a fetcher, as approve and reject do. The prompt closes if
+revalidation changes the job's status or points. A refusal shows the server's
+message on the card. The points ledger marks the reversal entry
+**Approval reversed** next to the job's name, and the award stays listed.
+
+### Tests
+
+- Domain: both restorations, follow-on approve, reject, cancel, edit, and
+  re-completion, guards, and the reversal ledger entry.
+- Application: orchestration under the lock, re-approval numbering, the
+  insufficient-points refusal, stale and missing confirmations, and children.
+- PostgreSQL integration: the endpoint for both restorations, re-approval,
+  reject and cancel after reversal, redeemed points, racing reversals, a
+  reversal racing a redemption, `403` and `404`, constraints, reset, and the
+  migration backfill and downgrade guard.
+- Vitest: the confirmation and its focus, submission, refusal, prompt closing on
+  revalidation, children, and the ledger label.
 
 ## Compose demonstration
 

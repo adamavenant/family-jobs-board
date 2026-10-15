@@ -27,6 +27,7 @@ import {
   ScopedRecurringJobCancelForm,
   ScopedRecurringJobEditForm,
 } from "./ScopedRecurringJobForms";
+import { ReverseApprovalControl } from "./ReverseApprovalControl";
 
 export function TodayPage({ board }: { board: TodayBoard }) {
   const children = board.members.filter((member) => !member.isAdult);
@@ -484,10 +485,16 @@ function JobCard({
       ) : null}
 
       {isApproved ? (
-        <div className="complete-state complete-state--approved" role="status">
-          <span aria-hidden="true">★</span>
-          Approved — {job.points} points awarded
-        </div>
+        <>
+          <div
+            className="complete-state complete-state--approved"
+            role="status"
+          >
+            <span aria-hidden="true">★</span>
+            Approved — {job.points} points awarded
+          </div>
+          {isAdult ? <ReverseApprovalControl job={job} /> : null}
+        </>
       ) : isPending && isAdult ? (
         <fetcher.Form method="post" className="approval-form">
           <input type="hidden" name="jobId" value={job.id} />
