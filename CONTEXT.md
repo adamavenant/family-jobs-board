@@ -135,6 +135,19 @@ day, with no interaction or completion step.
   it takes effect no earlier than the next household-local day, so reconfiguring
   never changes an answer that already happened.
 
+### Household Settings
+Preferences that every device in the household shares. Today it holds the undo
+time: how long a household action — completing, approving, or rejecting a job,
+changing jobs, points, behaviours, family members, or rotations — waits with
+an Undo toast before it is saved.
+
+#### Characteristics
+- Undo time in whole seconds from 5 to 120; a new household uses 30
+- Adults change it; Children can read it but not change it
+- Records which Adult last changed it and when
+- An undone action never reaches the server, so history records only real
+  changes
+
 ### Administration
 Functions available to Adult users for managing the system.
 
