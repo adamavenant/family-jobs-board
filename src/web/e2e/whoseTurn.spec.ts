@@ -26,6 +26,7 @@ for (const viewport of [
     });
     const showerOrder = [albaId, benId];
     const showerTicks: string[] = [];
+    const showerTickBodies: unknown[] = [];
     let movieTaken = false;
     const names: Record<string, string> = {
       [albaId]: "Alba",
@@ -46,6 +47,7 @@ for (const viewport of [
         return json(route, board());
       }
       if (path === `/api/turn-rotations/${showerId}/turns`) {
+        showerTickBodies.push(request.postDataJSON());
         showerTicks.push(request.postDataJSON().childId);
         return json(route, taken(showerId, `shower-${showerTicks.length}`));
       }
@@ -84,6 +86,14 @@ for (const viewport of [
       .getByRole("checkbox", { name: "Alba has had their turn" })
       .click();
     await expect(shower.locator(".whose-turn-card__child")).toHaveText(/Ben/);
+    expect(showerTickBodies).toEqual([
+      {
+        requestId: expect.any(String),
+        revisionId: "66666666-6666-4666-8666-666666666666",
+        turnNumber: 0,
+        childId: albaId,
+      },
+    ]);
     await expect(shower.getByRole("checkbox")).toHaveCount(0);
     await expect(shower.getByText("Alba just had a turn.")).toBeVisible();
     await expectNoSidewaysScroll(page);
@@ -112,6 +122,8 @@ for (const viewport of [
         question: "Who is first in the shower?",
         childId: showerChild,
         childDisplayName: names[showerChild]!,
+        revisionId: "66666666-6666-4666-8666-666666666666",
+        turnNumber: showerTicks.length,
         advanceMode: "whenTicked",
         turnTaken: false,
         canTakeTurn: showerChild === albaId,
@@ -129,6 +141,8 @@ for (const viewport of [
         question: "Who picks the movie?",
         childId: albaId,
         childDisplayName: "Alba",
+        revisionId: "77777777-7777-4777-8777-777777777777",
+        turnNumber: 0,
         advanceMode: "whenTicked",
         turnTaken: movieTaken,
         canTakeTurn: !movieTaken,
@@ -152,7 +166,10 @@ for (const viewport of [
     function taken(rotationId: string, id: string) {
       return {
         id,
+        requestId: "88888888-8888-4888-8888-888888888888",
         rotationId,
+        revisionId: "66666666-6666-4666-8666-666666666666",
+        turnNumber: 0,
         date: "2026-09-21",
         childId: albaId,
         childDisplayName: "Alba",

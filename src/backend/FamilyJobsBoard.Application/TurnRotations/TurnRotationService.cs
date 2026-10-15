@@ -225,8 +225,9 @@ public sealed class TurnRotationService
 
     /// <summary>
     /// Ticks off today's turn in a rotation that moves on when ticked. Any adult, or the child
-    /// whose turn it is, may tick it; the request names that child so a repeated or stale tick
-    /// is refused instead of moving the rotation on twice.
+    /// whose turn it is, may tick it. The request names the turn it saw by revision and turn
+    /// number, so a stale tick is refused even when the same child's turn has come round
+    /// again, and a replayed request returns the original tick instead of ticking twice.
     /// </summary>
     public async Task<TakenTurnDetails> TakeTurnAsync(
         Guid actorMemberId,
@@ -234,7 +235,21 @@ public sealed class TurnRotationService
         TakeTurn request,
         CancellationToken cancellationToken)
     {
+        if (request.RequestId == Guid.Empty)
+        {
+            throw new InvalidTurnRotationException(new Dictionary<string, string[]>
+            {
+                [nameof(TakeTurn.RequestId)] = ["Send a request ID with the tick."],
+            });
+        }
+
         await using var rotationLock = await _repository.LockRotationAsync(rotationId, cancellationToken);
+        var replayed = await _repository.GetTakenTurnByRequestAsync(request.RequestId, cancellationToken);
+        if (replayed is not null)
+        {
+            return await ReplayTakenTurnAsync(replayed, actorMemberId, rotationId, request, cancellationToken);
+        }
+
         var today = _clock.Today;
         var revisions = await _repository.GetRevisionsAsync(cancellationToken);
         var group = revisions.Where(revision => revision.RotationId == rotationId).ToArray();
@@ -259,12 +274,28 @@ public sealed class TurnRotationService
             });
         }
 
-        if (request.ChildId is not { } childId || childId == Guid.Empty)
+        var errors = new Dictionary<string, string[]>();
+        var childId = request.ChildId ?? Guid.Empty;
+        if (childId == Guid.Empty)
         {
-            throw new InvalidTurnRotationException(new Dictionary<string, string[]>
-            {
-                [nameof(TakeTurn.ChildId)] = ["Choose whose turn is being ticked off."],
-            });
+            errors[nameof(TakeTurn.ChildId)] = ["Choose whose turn is being ticked off."];
+        }
+
+        var revisionId = request.RevisionId ?? Guid.Empty;
+        if (revisionId == Guid.Empty)
+        {
+            errors[nameof(TakeTurn.RevisionId)] = ["Say which revision's turn is being ticked off."];
+        }
+
+        var turnNumber = request.TurnNumber ?? -1;
+        if (turnNumber < 0)
+        {
+            errors[nameof(TakeTurn.TurnNumber)] = ["Say which turn is being ticked off."];
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new InvalidTurnRotationException(errors);
         }
 
         var actor = await _repository.GetMemberAsync(actorMemberId, cancellationToken);
@@ -282,14 +313,14 @@ public sealed class TurnRotationService
                 $"{Name(names, turn.ChildId)}'s turn has already been ticked off today.");
         }
 
-        if (turn.ChildId != childId)
+        if (revisionId != applicable.Id || turnNumber != turn.Number || childId != turn.ChildId)
         {
             throw new TakenTurnConflictException(
-                $"It's {Name(names, turn.ChildId)}'s turn now. Refresh the board to see the latest turn.");
+                $"That turn has already moved on. It's {Name(names, turn.ChildId)}'s turn now.");
         }
 
         var taken = applicable.TakeTurn(
-            Guid.NewGuid(), today, childId, takenTurns, actor.Id, _clock.UtcNow);
+            Guid.NewGuid(), request.RequestId, today, turnNumber, childId, takenTurns, actor.Id, _clock.UtcNow);
         await _repository.AddTakenTurnAsync(taken, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
         await rotationLock.CommitAsync(cancellationToken);
@@ -342,6 +373,34 @@ public sealed class TurnRotationService
         await _repository.SaveChangesAsync(cancellationToken);
         await rotationLock.CommitAsync(cancellationToken);
         return MapTakenTurn(taken, await LoadNamesAsync([revision], cancellationToken));
+    }
+
+    /// <summary>
+    /// Answers a request that was already recorded with its original tick, without ticking
+    /// again. A request ID reused for a different tick is a conflict.
+    /// </summary>
+    private async Task<TakenTurnDetails> ReplayTakenTurnAsync(
+        TakenTurn replayed,
+        Guid actorMemberId,
+        Guid rotationId,
+        TakeTurn request,
+        CancellationToken cancellationToken)
+    {
+        var samePayload = replayed.RotationId == rotationId
+            && replayed.RecordedByMemberId == actorMemberId
+            && replayed.RevisionId == request.RevisionId
+            && replayed.TurnNumber == request.TurnNumber
+            && replayed.ChildId == request.ChildId;
+        if (!samePayload)
+        {
+            throw new TakenTurnConflictException("That request ID was already used for a different tick.");
+        }
+
+        var revisions = await _repository.GetRevisionsAsync(cancellationToken);
+        var names = await LoadNamesAsync(
+            revisions.Where(revision => revision.Id == replayed.RevisionId).ToArray(),
+            cancellationToken);
+        return MapTakenTurn(replayed, names);
     }
 
     private async Task EnsureAdultAsync(Guid actorMemberId, CancellationToken cancellationToken)
@@ -464,6 +523,8 @@ public sealed class TurnRotationService
             revision.Question,
             turn.ChildId,
             Name(names, turn.ChildId),
+            revision.Id,
+            turn.Number,
             MapAdvanceMode(revision.AdvanceMode),
             turn.IsTaken,
             tickable && !turn.IsTaken && MayTick(viewer, turn.ChildId),
@@ -522,7 +583,10 @@ public sealed class TurnRotationService
     {
         return new TakenTurnDetails(
             taken.Id,
+            taken.RequestId,
             taken.RotationId,
+            taken.RevisionId,
+            taken.TurnNumber,
             taken.Date,
             taken.ChildId,
             Name(names, taken.ChildId),

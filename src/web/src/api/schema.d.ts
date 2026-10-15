@@ -660,7 +660,7 @@ export interface paths {
         put?: never;
         /**
          * Tick off today's turn in a rotation that moves on when ticked.
-         * @description Any adult, or the child whose turn it is. The body names that child; a tick for a turn that has already moved on, or a second tick today in a rotation of one or three or more children, is a conflict. A two-child rotation moves straight on to the other child.
+         * @description Any adult, or the child whose turn it is. The body names the turn from the board by revision, turn number, and child; a tick for a turn that has already moved on, or a second tick today in a rotation of one or three or more children, is a conflict. A two-child rotation moves straight on to the other child. Replaying a request ID returns the original tick without ticking again.
          */
         post: operations["TakeTurn"];
         delete?: never;
@@ -1180,7 +1180,13 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
+            requestId: string;
+            /** Format: uuid */
             rotationId: string;
+            /** Format: uuid */
+            revisionId: string;
+            /** Format: int32 */
+            turnNumber: number | string;
             /** Format: date */
             date: string;
             /** Format: uuid */
@@ -1196,6 +1202,12 @@ export interface components {
             undoneAtUtc: null | string;
         };
         TakeTurnRequest: {
+            /** Format: uuid */
+            requestId: null | string;
+            /** Format: uuid */
+            revisionId: null | string;
+            /** Format: int32 */
+            turnNumber: null | number | string;
             /** Format: uuid */
             childId: null | string;
         };
@@ -1276,6 +1288,10 @@ export interface components {
             /** Format: uuid */
             childId: string;
             childDisplayName: string;
+            /** Format: uuid */
+            revisionId: string;
+            /** Format: int32 */
+            turnNumber: number | string;
             advanceMode: string;
             turnTaken: boolean;
             canTakeTurn: boolean;

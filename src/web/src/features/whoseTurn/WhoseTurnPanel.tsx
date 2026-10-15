@@ -227,18 +227,24 @@ function WhoseTurnForm({
   const initialOrder = (current?.participantChildIds ?? []).filter((id) =>
     activeIds.has(id),
   );
+  const [order, setOrder] = useState<string[]>(initialOrder);
+  // Only a first turn the adult picks is kept in state. Otherwise an existing rotation's
+  // default is worked out from the latest overview on every render: the form stays mounted
+  // while its details are closed, and a tick on the board can change who is up next.
+  const [chosenFirstChildId, setChosenFirstChildId] = useState<string | null>(
+    null,
+  );
   // A rotation that moves on when ticked carries on from whoever is next, not from the
   // child it originally started with.
-  const initialFirst =
+  const projectedFirstChildId =
     current?.advanceMode === "whenTicked"
-      ? upNext.find((child) => initialOrder.includes(child.childId))?.childId
+      ? upNext.find((child) => order.includes(child.childId))?.childId
       : current?.firstChildId;
-  const [order, setOrder] = useState<string[]>(initialOrder);
-  const [firstChildId, setFirstChildId] = useState(
-    initialFirst && initialOrder.includes(initialFirst)
-      ? initialFirst
-      : (initialOrder[0] ?? ""),
-  );
+  const firstChildId =
+    [
+      chosenFirstChildId,
+      ...(rotation ? [projectedFirstChildId, order[0]] : []),
+    ].find((id) => id && order.includes(id)) ?? "";
   const [question, setQuestion] = useState(current?.question ?? "");
   const [advanceMode, setAdvanceMode] = useState<TurnAdvanceMode>(
     current?.advanceMode === "whenTicked" ? "whenTicked" : "daily",
@@ -255,15 +261,17 @@ function WhoseTurnForm({
       : undefined;
 
   function toggleChild(id: string) {
-    setOrder((previous) => {
-      if (previous.includes(id)) {
-        const next = previous.filter((item) => item !== id);
-        setFirstChildId((chosen) => (chosen === id ? (next[0] ?? "") : chosen));
-        return next;
-      }
+    if (!order.includes(id)) {
+      setOrder([...order, id]);
+      return;
+    }
 
-      return [...previous, id];
-    });
+    const next = order.filter((item) => item !== id);
+    setOrder(next);
+    if (chosenFirstChildId === id) {
+      // An existing rotation falls back to its projected default; a new one to the next child.
+      setChosenFirstChildId(rotation ? null : (next[0] ?? null));
+    }
   }
 
   function move(id: string, direction: -1 | 1) {
@@ -360,7 +368,7 @@ function WhoseTurnForm({
             id={`${idPrefix}-first`}
             name="firstChildId"
             value={firstChildId}
-            onChange={(event) => setFirstChildId(event.target.value)}
+            onChange={(event) => setChosenFirstChildId(event.target.value)}
             required
             disabled={order.length === 0}
           >

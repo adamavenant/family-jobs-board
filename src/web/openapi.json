@@ -2235,7 +2235,7 @@
           "Whose turn"
         ],
         "summary": "Tick off today's turn in a rotation that moves on when ticked.",
-        "description": "Any adult, or the child whose turn it is. The body names that child; a tick for a turn that has already moved on, or a second tick today in a rotation of one or three or more children, is a conflict. A two-child rotation moves straight on to the other child.",
+        "description": "Any adult, or the child whose turn it is. The body names the turn from the board by revision, turn number, and child; a tick for a turn that has already moved on, or a second tick today in a rotation of one or three or more children, is a conflict. A two-child rotation moves straight on to the other child. Replaying a request ID returns the original tick without ticking again.",
         "operationId": "TakeTurn",
         "parameters": [
           {
@@ -4409,7 +4409,10 @@
       "TakenTurnResponse": {
         "required": [
           "id",
+          "requestId",
           "rotationId",
+          "revisionId",
+          "turnNumber",
           "date",
           "childId",
           "childDisplayName",
@@ -4424,9 +4427,25 @@
             "type": "string",
             "format": "uuid"
           },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "rotationId": {
             "type": "string",
             "format": "uuid"
+          },
+          "revisionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "turnNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           },
           "date": {
             "type": "string",
@@ -4465,10 +4484,36 @@
       },
       "TakeTurnRequest": {
         "required": [
+          "requestId",
+          "revisionId",
+          "turnNumber",
           "childId"
         ],
         "type": "object",
         "properties": {
+          "requestId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "revisionId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "turnNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
           "childId": {
             "type": [
               "null",
@@ -4774,6 +4819,8 @@
           "question",
           "childId",
           "childDisplayName",
+          "revisionId",
+          "turnNumber",
           "advanceMode",
           "turnTaken",
           "canTakeTurn",
@@ -4794,6 +4841,18 @@
           },
           "childDisplayName": {
             "type": "string"
+          },
+          "revisionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "turnNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           },
           "advanceMode": {
             "type": "string"

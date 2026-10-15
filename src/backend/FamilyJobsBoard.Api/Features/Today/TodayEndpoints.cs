@@ -729,6 +729,8 @@ internal static class TodayEndpoints
                     turn.Question,
                     turn.ChildId,
                     turn.ChildDisplayName,
+                    turn.RevisionId,
+                    turn.TurnNumber,
                     turn.AdvanceMode,
                     turn.TurnTaken,
                     turn.CanTakeTurn,

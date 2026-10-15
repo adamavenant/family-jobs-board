@@ -1,5 +1,7 @@
 import type { ActionFunctionArgs } from "react-router";
 
+import { createRequestId } from "../../app/requestId";
+
 import {
   TurnRotationApiError,
   endTurnRotation,
@@ -113,7 +115,12 @@ export async function whoseTurnTickAction({
     if (intent === "undo") {
       await undoTurn(rotationId, text(form, "turnId"));
     } else {
-      await takeTurn(rotationId, text(form, "childId"));
+      await takeTurn(rotationId, {
+        requestId: createRequestId(),
+        revisionId: text(form, "revisionId"),
+        turnNumber: Number(text(form, "turnNumber")),
+        childId: text(form, "childId"),
+      });
     }
 
     return { intent, rotationId };

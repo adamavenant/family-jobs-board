@@ -24,8 +24,10 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
+                    request_id = table.Column<Guid>(type: "uuid", nullable: false),
                     rotation_id = table.Column<Guid>(type: "uuid", nullable: false),
                     turn_rotation_revision_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    turn_number = table.Column<int>(type: "integer", nullable: false),
                     turn_date = table.Column<DateOnly>(type: "date", nullable: false),
                     child_id = table.Column<Guid>(type: "uuid", nullable: false),
                     recorded_by_member_id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -82,6 +84,19 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                 name: "IX_turn_rotation_taken_turns_undone_by_member_id",
                 table: "turn_rotation_taken_turns",
                 column: "undone_by_member_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ux_turn_rotation_taken_turns_request_id",
+                table: "turn_rotation_taken_turns",
+                column: "request_id",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "ux_turn_rotation_taken_turns_revision_turn",
+                table: "turn_rotation_taken_turns",
+                columns: new[] { "turn_rotation_revision_id", "turn_number" },
+                unique: true,
+                filter: "undone_at_utc IS NULL");
         }
 
         /// <inheritdoc />

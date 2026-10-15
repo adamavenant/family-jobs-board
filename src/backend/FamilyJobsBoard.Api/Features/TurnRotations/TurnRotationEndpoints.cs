@@ -45,7 +45,7 @@ internal static class TurnRotationEndpoints
             .WithName("TakeTurn")
             .WithSummary("Tick off today's turn in a rotation that moves on when ticked.")
             .WithDescription(
-                "Any adult, or the child whose turn it is. The body names that child; a tick for a turn that has already moved on, or a second tick today in a rotation of one or three or more children, is a conflict. A two-child rotation moves straight on to the other child.");
+                "Any adult, or the child whose turn it is. The body names the turn from the board by revision, turn number, and child; a tick for a turn that has already moved on, or a second tick today in a rotation of one or three or more children, is a conflict. A two-child rotation moves straight on to the other child. Replaying a request ID returns the original tick without ticking again.");
 
         turns.MapDelete("/{turnId:guid}", UndoTurnAsync)
             .WithName("UndoTurn")
@@ -156,7 +156,11 @@ internal static class TurnRotationEndpoints
             var taken = await service.TakeTurnAsync(
                 IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
                 rotationId,
-                new TakeTurn(request.ChildId),
+                new TakeTurn(
+                    request.RequestId ?? Guid.Empty,
+                    request.RevisionId,
+                    request.TurnNumber,
+                    request.ChildId),
                 cancellationToken);
             return TypedResults.Ok(MapTakenTurn(taken));
         }
@@ -266,7 +270,10 @@ internal static class TurnRotationEndpoints
     {
         return new TakenTurnResponse(
             taken.Id,
+            taken.RequestId,
             taken.RotationId,
+            taken.RevisionId,
+            taken.TurnNumber,
             taken.Date,
             taken.ChildId,
             taken.ChildDisplayName,

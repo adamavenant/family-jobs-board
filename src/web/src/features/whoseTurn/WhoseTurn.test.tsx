@@ -19,6 +19,7 @@ const pinkId = "11111111-1111-4111-8111-111111111111";
 const mumId = "22222222-2222-4222-8222-222222222222";
 const showerId = "33333333-3333-4333-8333-333333333333";
 const turnId = "44444444-4444-4444-8444-444444444444";
+const revisionId = "66666666-6666-4666-8666-666666666666";
 
 const baseBoard = {
   members: [addie, fredster, harrie],
@@ -290,7 +291,12 @@ describe("Whose Turn Is It?", () => {
       {
         method: "POST",
         path: `/api/turn-rotations/${showerId}/turns`,
-        body: { childId: fredster.id },
+        body: {
+          requestId: expect.any(String),
+          revisionId,
+          turnNumber: 0,
+          childId: fredster.id,
+        },
       },
     ]);
   });
@@ -460,21 +466,8 @@ describe("Whose Turn Is It?", () => {
   });
 
   it("previews who is up next and carries on from them when editing a ticked rotation", async () => {
-    const shower = rotation(
-      showerId,
-      "Who is first in the shower?",
-      [fredster, harrie],
-      fredster,
-    );
     const api = fakeApi(addie, { whoseTurns: [] }, [
-      {
-        ...shower,
-        current: { ...shower.current, advanceMode: "whenTicked" },
-        upNext: [
-          { childId: harrie.id, childDisplayName: "Harrie" },
-          { childId: fredster.id, childDisplayName: "Fredster" },
-        ],
-      },
+      showerRotation([harrie, fredster]),
     ]);
     const user = userEvent.setup();
     renderApp(addie);
@@ -508,6 +501,95 @@ describe("Whose Turn Is It?", () => {
       body: { firstChildId: harrie.id, advanceMode: "whenTicked" },
     });
   });
+
+  it("carries an untouched first turn on from whoever is next after a tick on the board", async () => {
+    fakeApi(
+      addie,
+      { whoseTurns: [ticked(fredster, { canTakeTurn: true })] },
+      [showerRotation([fredster, harrie])],
+      {
+        whoseTurns: [
+          ticked(harrie, {
+            canTakeTurn: true,
+            turnNumber: 1,
+            undoableTurn: undoable(fredster),
+          }),
+        ],
+        rotations: [showerRotation([harrie, fredster])],
+      },
+    );
+    const user = userEvent.setup();
+    renderApp(addie);
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Manage rotations"));
+    const form = await screen.findByRole("form", {
+      name: "Configure Who is first in the shower?",
+    });
+    expect(within(form).getByLabelText("First turn")).toHaveValue(fredster.id);
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "Fredster has had their turn" }),
+    );
+    await screen.findByText("Fredster just had a turn.");
+    await user.click(screen.getByText("Edit Who is first in the shower?"));
+
+    await waitFor(() =>
+      expect(within(form).getByLabelText("First turn")).toHaveValue(harrie.id),
+    );
+  });
+
+  it("keeps a first turn the adult picked when the board moves on", async () => {
+    fakeApi(
+      addie,
+      { whoseTurns: [ticked(fredster, { canTakeTurn: true })] },
+      [showerRotation([fredster, harrie])],
+      [
+        {
+          whoseTurns: [ticked(harrie, { canTakeTurn: true, turnNumber: 1 })],
+          rotations: [showerRotation([harrie, fredster])],
+        },
+        {
+          whoseTurns: [ticked(fredster, { canTakeTurn: true, turnNumber: 2 })],
+          rotations: [showerRotation([fredster, harrie])],
+        },
+      ],
+    );
+    const user = userEvent.setup();
+    renderApp(addie);
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Manage rotations"));
+    const form = await screen.findByRole("form", {
+      name: "Configure Who is first in the shower?",
+    });
+    await user.click(screen.getByText("Edit Who is first in the shower?"));
+    await user.selectOptions(
+      within(form).getByLabelText("First turn"),
+      "Harrie",
+    );
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "Fredster has had their turn" }),
+    );
+    await user.click(
+      await screen.findByRole("checkbox", {
+        name: "Harrie has had their turn",
+      }),
+    );
+    await screen.findByRole("checkbox", {
+      name: "Fredster has had their turn",
+    });
+
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("region", { name: "Up next" }))
+          .getAllByRole("listitem")
+          .map((item) => item.textContent),
+      ).toEqual(["Fredster", "Harrie"]),
+    );
+    expect(within(form).getByLabelText("First turn")).toHaveValue(harrie.id);
+  });
 });
 
 function turn(
@@ -521,6 +603,8 @@ function turn(
     question,
     childId: child.id,
     childDisplayName: child.displayName,
+    revisionId,
+    turnNumber: 0,
     advanceMode: "daily",
     turnTaken: false,
     canTakeTurn: false,
@@ -537,6 +621,23 @@ function ticked(
     advanceMode: "whenTicked",
     ...overrides,
   });
+}
+
+function showerRotation(upNext: ReturnType<typeof member>[]) {
+  const shower = rotation(
+    showerId,
+    "Who is first in the shower?",
+    [fredster, harrie],
+    fredster,
+  );
+  return {
+    ...shower,
+    current: { ...shower.current, advanceMode: "whenTicked" },
+    upNext: upNext.map((child) => ({
+      childId: child.id,
+      childDisplayName: child.displayName,
+    })),
+  };
 }
 
 function undoable(child: ReturnType<typeof member>) {
@@ -573,6 +674,11 @@ function rotation(
   };
 }
 
+interface AfterTick {
+  whoseTurns: unknown[];
+  rotations?: ReturnType<typeof rotation>[];
+}
+
 interface RecordedRequest {
   method: string;
   path: string;
@@ -583,9 +689,14 @@ function fakeApi(
   viewer: ReturnType<typeof member>,
   boardExtras: { whoseTurns: unknown[]; date?: string },
   initialRotations: ReturnType<typeof rotation>[] = [],
-  boardAfterTick?: { whoseTurns: unknown[] },
+  boardAfterTick?: AfterTick | AfterTick[],
   tickProblem?: { status: number; detail: string },
 ) {
+  const afterTicks = Array.isArray(boardAfterTick)
+    ? [...boardAfterTick]
+    : boardAfterTick
+      ? [boardAfterTick]
+      : [];
   let board = { viewer, ...baseBoard, ...boardExtras };
   const state = {
     rotations: [...initialRotations],
@@ -605,8 +716,14 @@ function fakeApi(
         const body =
           method === "DELETE" ? undefined : await request.clone().json();
         state.requests.push({ method, path, body });
-        if (boardAfterTick) {
-          board = { ...board, ...boardAfterTick };
+        const after = Array.isArray(boardAfterTick)
+          ? afterTicks.shift()
+          : afterTicks[0];
+        if (after) {
+          board = { ...board, whoseTurns: after.whoseTurns };
+          if (after.rotations) {
+            state.rotations = after.rotations;
+          }
         }
         if (tickProblem) {
           return jsonResponse(
@@ -616,7 +733,10 @@ function fakeApi(
         }
         return jsonResponse({
           id: turnId,
+          requestId: body?.requestId ?? crypto.randomUUID(),
           rotationId: showerId,
+          revisionId,
+          turnNumber: body?.turnNumber ?? 0,
           date: "2026-09-21",
           childId: fredster.id,
           childDisplayName: "Fredster",

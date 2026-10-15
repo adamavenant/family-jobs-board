@@ -19,6 +19,14 @@ export type TurnRotationOverview =
 
 export type TakenTurn = components["schemas"]["TakenTurnResponse"];
 
+/** Names the turn the board showed, so a stale or replayed tick never ticks again. */
+export interface TakeTurnInput {
+  requestId: string;
+  revisionId: string;
+  turnNumber: number;
+  childId: string;
+}
+
 export interface SaveTurnRotationInput {
   participantChildIds: string[];
   firstChildId: string;
@@ -82,11 +90,11 @@ export async function endTurnRotation(
 
 export async function takeTurn(
   rotationId: string,
-  childId: string,
+  input: TakeTurnInput,
 ): Promise<TakenTurn> {
   const { data, error } = await apiClient().POST(
     "/api/turn-rotations/{rotationId}/turns",
-    { params: { path: { rotationId } }, body: { childId } },
+    { params: { path: { rotationId } }, body: input },
   );
   if (!data) {
     throw new TurnRotationApiError(

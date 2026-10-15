@@ -34,11 +34,18 @@ public sealed record SaveTurnRotationRequest(
     string? Question,
     string? AdvanceMode);
 
-public sealed record TakeTurnRequest(Guid? ChildId);
+public sealed record TakeTurnRequest(
+    Guid? RequestId,
+    Guid? RevisionId,
+    int? TurnNumber,
+    Guid? ChildId);
 
 public sealed record TakenTurnResponse(
     Guid Id,
+    Guid RequestId,
     Guid RotationId,
+    Guid RevisionId,
+    int TurnNumber,
     DateOnly Date,
     Guid ChildId,
     string ChildDisplayName,

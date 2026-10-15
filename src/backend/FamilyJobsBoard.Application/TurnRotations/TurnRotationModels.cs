@@ -1,11 +1,17 @@
 namespace FamilyJobsBoard.Application.TurnRotations;
 
+/// <summary>
+/// A rotation's answer for a date. <see cref="RevisionId"/> and <see cref="TurnNumber"/>
+/// identify the turn shown, so a tick can name exactly which turn it takes.
+/// </summary>
 public sealed record TurnRotationAnswer(
     Guid RotationId,
     DateOnly Date,
     string Question,
     Guid ChildId,
     string ChildDisplayName,
+    Guid RevisionId,
+    int TurnNumber,
     string AdvanceMode,
     bool TurnTaken,
     bool CanTakeTurn,
@@ -47,11 +53,18 @@ public sealed record SaveTurnRotation(
     string? Question,
     string? AdvanceMode = null);
 
-public sealed record TakeTurn(Guid? ChildId);
+/// <summary>
+/// Ticks off the turn the board showed: <see cref="RevisionId"/> and <see cref="TurnNumber"/>
+/// name it, and <see cref="RequestId"/> makes a replayed request return the original tick.
+/// </summary>
+public sealed record TakeTurn(Guid RequestId, Guid? RevisionId, int? TurnNumber, Guid? ChildId);
 
 public sealed record TakenTurnDetails(
     Guid Id,
+    Guid RequestId,
     Guid RotationId,
+    Guid RevisionId,
+    int TurnNumber,
     DateOnly Date,
     Guid ChildId,
     string ChildDisplayName,

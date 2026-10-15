@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261014163930_AddTickedTurnRotations")]
+    [Migration("20261015184706_AddTickedTurnRotations")]
     partial class AddTickedTurnRotations
     {
         /// <inheritdoc />
@@ -1028,6 +1028,10 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("recorded_by_member_id");
 
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_id");
+
                     b.Property<Guid>("RevisionId")
                         .HasColumnType("uuid")
                         .HasColumnName("turn_rotation_revision_id");
@@ -1035,6 +1039,10 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                     b.Property<Guid>("RotationId")
                         .HasColumnType("uuid")
                         .HasColumnName("rotation_id");
+
+                    b.Property<int>("TurnNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("turn_number");
 
                     b.Property<DateTimeOffset?>("UndoneAtUtc")
                         .HasColumnType("timestamp with time zone")
@@ -1050,10 +1058,19 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 
                     b.HasIndex("RecordedByMemberId");
 
+                    b.HasIndex("RequestId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_turn_rotation_taken_turns_request_id");
+
                     b.HasIndex("UndoneByMemberId");
 
                     b.HasIndex("RevisionId", "Date")
                         .HasDatabaseName("ix_turn_rotation_taken_turns_revision_date");
+
+                    b.HasIndex("RevisionId", "TurnNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ux_turn_rotation_taken_turns_revision_turn")
+                        .HasFilter("undone_at_utc IS NULL");
 
                     b.ToTable("turn_rotation_taken_turns", null, t =>
                         {

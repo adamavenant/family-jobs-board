@@ -268,11 +268,18 @@ board.
   first child advanced by the ticks on earlier dates) and whether a turn was
   ticked that day — except that today in a two-child rotation already counts
   today's ticks. A future date therefore shows the child whose turn it is now.
+- Every answer carries a turn number within its revision, counting from zero:
+  the days since the effective date in a daily rotation, or the turns ticked
+  off before it in a tick-to-advance rotation. A revision and a turn number
+  identify one turn, even when the same child's turn comes round again.
 - Only today (household-local) can be ticked, by any adult or by the child
-  whose turn it is. The tick names that child, so a repeated or stale tick
-  (double tap, two devices) is refused rather than moving the rotation on
-  twice; ticks and unticks for a rotation are serialized by a row lock on its
-  revisions.
+  whose turn it is. The tick names the turn the board showed — revision, turn
+  number, and child — so a stale tick (double tap, two devices, or a request
+  for a child's earlier turn once theirs has come round again) is refused
+  rather than moving the rotation on twice. It also carries a client-generated
+  request ID: replaying a request returns the original tick without ticking
+  again, and reusing an ID for a different tick is a conflict. Ticks and
+  unticks for a rotation are serialized by a row lock on its revisions.
 - The most recent tick can be unticked on the day it was made, by any adult or
   by the child whose turn was ticked, restoring the previous answer. Older
   ticks, and ticks from earlier days, cannot be unticked.
@@ -284,10 +291,13 @@ board.
 
 `AddTickedTurnRotations` adds `advance_mode` (`Daily` | `WhenTicked`,
 default `Daily` for existing rows) to `turn_rotation_revisions`, and a
-`turn_rotation_taken_turns` table: `id`, `rotation_id`,
-`turn_rotation_revision_id`, `turn_date`, `child_id`,
+`turn_rotation_taken_turns` table: `id`, `request_id`, `rotation_id`,
+`turn_rotation_revision_id`, `turn_number`, `turn_date`, `child_id`,
 `recorded_by_member_id`, `recorded_at_utc`, `undone_by_member_id`, and
 `undone_at_utc`. It is indexed on `(turn_rotation_revision_id, turn_date)`,
+has a unique index on `request_id` and a unique index on
+`(turn_rotation_revision_id, turn_number)` for ticks that have not been
+unticked (so each turn is taken at most once, backing up the row lock),
 references revisions and `household_members` with `ON DELETE RESTRICT`, and
 a check constraint keeps the unticking member and time set together. `Down`
 drops the table and the column.
@@ -303,16 +313,20 @@ drops the table and the column.
   whoever takes the next turn (empty for a daily rotation).
   `upcomingTurns` leaves out future dates governed by a tick-to-advance
   revision, since they can't be predicted.
-- Each `whoseTurns[]` item in `GET /api/today` gains `advanceMode`,
-  `turnTaken`, `canTakeTurn` (whether this viewer may tick it today), and
-  `undoableTurn` (`{ turnId, childId, childDisplayName }` when this viewer may
-  untick today's most recent tick, else `null`).
+- Each `whoseTurns[]` item in `GET /api/today` gains `revisionId` and
+  `turnNumber` (identifying the turn shown), `advanceMode`, `turnTaken`,
+  `canTakeTurn` (whether this viewer may tick it today), and `undoableTurn`
+  (`{ turnId, childId, childDisplayName }` when this viewer may untick today's
+  most recent tick, else `null`).
 - `POST /api/turn-rotations/{rotationId}/turns` — any signed-in member, body
-  `{ childId }`. Returns the `TakenTurnResponse`. `400` for a daily rotation
-  or a missing `childId`; `403` unless the caller is an adult or that child;
-  `404` for an unknown or ended rotation; `409` if the rotation hasn't
-  started, `childId` is no longer the current turn, or today is already
-  ticked.
+  `{ requestId, revisionId, turnNumber, childId }` copied from the board's
+  answer, with a fresh `requestId` per tick. Returns the `TakenTurnResponse`
+  (including its `requestId`, `revisionId`, and `turnNumber`); replaying a
+  `requestId` with the same body returns the original tick. `400` for a daily
+  rotation or a missing field; `403` unless the caller is an adult or that
+  child; `404` for an unknown or ended rotation; `409` if the rotation hasn't
+  started, the named turn is no longer the current one, today is already
+  ticked, or the `requestId` was used for a different tick.
 - `DELETE /api/turn-rotations/{rotationId}/turns/{turnId}` — any signed-in
   member. Returns the unticked `TakenTurnResponse`. `403` unless the caller is
   an adult or the child whose turn was ticked; `404` for an unknown tick or
@@ -324,7 +338,9 @@ drops the table and the column.
 - The adult rotation form gains a **Moves on** choice — "Every day" or "When
   a turn is ticked off" — with helper text explaining the two-child and
   three-or-more behaviour. Editing a tick-to-advance rotation pre-selects the
-  child who is up next as the first turn, so saving carries on from them.
+  child who is up next as the first turn, so saving carries on from them; the
+  default follows the latest overview (for example after a tick on the board
+  while the form is mounted) until the adult picks a first turn themselves.
 - A tick-to-advance rotation shows an "Up next" order instead of the 14-day
   preview, and its list entry notes that it moves on when ticked.
 - On today's board card, a tick-to-advance rotation offers a native, labelled
@@ -372,12 +388,15 @@ drops the table and the column.
   tick controls, and deactivation preserving the mode and next turn.
 - PostgreSQL integration (`TurnRotationEndpointsTests`): the migration
   defaulting existing revisions to daily, both behaviours end to end over
-  HTTP, permissions and conflicts, unticks persisted with who, and
-  simultaneous ticks moving the rotation on only once.
+  HTTP, permissions and conflicts, unticks persisted with who, simultaneous
+  ticks moving the rotation on only once, and A → B → a replay of A's
+  original request returning the original tick while a fresh request for that
+  stale turn is a conflict.
 - Vitest (`WhoseTurn.test.tsx`): ticking, unticking, the two-child undo, no
   controls for other children, other dates, or daily rotations, a refused
   tick, and the form's mode choice, "Up next" preview, and pre-selected next
-  child.
+  child — including an untouched default following a tick made while the
+  form was mounted, and a deliberately chosen first turn being kept.
 - Playwright (`whoseTurn.spec.ts`): a child ticks and unticks turns in two-
   and three-child rotations at phone and tablet widths, with keyboard ticking
   and no sideways scrolling.

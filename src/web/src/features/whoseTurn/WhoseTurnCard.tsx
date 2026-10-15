@@ -59,6 +59,8 @@ function TurnTick({ whoseTurn }: { whoseTurn: WhoseTurn }) {
     form.set("intent", intent);
     form.set("rotationId", whoseTurn.rotationId);
     if (intent === "take") {
+      form.set("revisionId", whoseTurn.revisionId);
+      form.set("turnNumber", String(whoseTurn.turnNumber));
       form.set("childId", whoseTurn.childId);
     } else if (undoable) {
       form.set("turnId", undoable.turnId);

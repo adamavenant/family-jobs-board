@@ -199,7 +199,8 @@ public sealed class TurnRotationRevision
         if (AdvanceMode == TurnAdvanceMode.Daily)
         {
             var daysSinceEffective = date.DayNumber - EffectiveFrom.DayNumber;
-            return new TurnRotationTurn(order[(startIndex + daysSinceEffective) % order.Count], false);
+            return new TurnRotationTurn(
+                order[(startIndex + daysSinceEffective) % order.Count], false, daysSinceEffective);
         }
 
         var counted = CountedTurns(takenTurns);
@@ -207,17 +208,21 @@ public sealed class TurnRotationRevision
         var takenOn = counted.Count(turn => turn.Date == date);
         var movedOnToday = date == today && MovesOnImmediately;
         var advanced = takenBefore + (movedOnToday ? takenOn : 0);
-        return new TurnRotationTurn(order[(startIndex + advanced) % order.Count], !movedOnToday && takenOn > 0);
+        return new TurnRotationTurn(
+            order[(startIndex + advanced) % order.Count], !movedOnToday && takenOn > 0, advanced);
     }
 
     /// <summary>
-    /// Ticks off <paramref name="childId"/>'s turn today. The tick must name the child whose
-    /// turn it currently is, so a repeated or stale tick never moves the rotation on twice, and
-    /// a rotation that is not moving on immediately can be ticked at most once a day.
+    /// Ticks off <paramref name="childId"/>'s turn today. The tick must name the current turn
+    /// by its <paramref name="turnNumber"/> as well as its child, so a repeated or stale tick
+    /// never moves the rotation on twice — even when the same child's turn has come round
+    /// again — and a rotation that is not moving on immediately can be ticked at most once a day.
     /// </summary>
     public TakenTurn TakeTurn(
         Guid id,
+        Guid requestId,
         DateOnly today,
+        int turnNumber,
         Guid childId,
         IReadOnlyCollection<TakenTurn> takenTurns,
         Guid recordedByMemberId,
@@ -235,20 +240,24 @@ public sealed class TurnRotationRevision
             throw new InvalidOperationException("Today's turn has already been ticked off.");
         }
 
-        if (turn.ChildId != childId)
+        if (turn.Number != turnNumber || turn.ChildId != childId)
         {
-            throw new InvalidOperationException("It is not that child's turn.");
+            throw new InvalidOperationException("That turn has already moved on.");
         }
 
-        return new TakenTurn(id, RotationId, Id, today, childId, recordedByMemberId, recordedAtUtc);
+        return new TakenTurn(
+            id, requestId, RotationId, Id, turnNumber, today, childId, recordedByMemberId, recordedAtUtc);
     }
 
-    /// <summary>The most recent tick of this revision that still counts, if any.</summary>
+    /// <summary>
+    /// The most recent tick of this revision that still counts, if any: the one that took the
+    /// highest-numbered turn, since only the latest tick can be unticked and the counted ticks
+    /// therefore always take turns 0, 1, 2… in order.
+    /// </summary>
     public TakenTurn? LatestTakenTurn(IReadOnlyCollection<TakenTurn> takenTurns)
     {
         return CountedTurns(takenTurns)
-            .OrderByDescending(turn => turn.RecordedAtUtc)
-            .ThenByDescending(turn => turn.Id)
+            .OrderByDescending(turn => turn.TurnNumber)
             .FirstOrDefault();
     }
 

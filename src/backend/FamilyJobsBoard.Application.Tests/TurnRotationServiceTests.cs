@@ -333,7 +333,7 @@ public sealed class TurnRotationServiceTests
         var service = CreateService(repository);
         Assert.Equal(ChildA.Id, await TurnOn(service, Today));
 
-        var taken = await service.TakeTurnAsync(ChildA.Id, Pink, new TakeTurn(ChildA.Id), CancellationToken.None);
+        var taken = await TakeAsync(service, ChildA.Id, Pink, ChildA);
 
         Assert.Equal((Today, ChildA.Id, "Alba", ChildA.Id), (taken.Date, taken.ChildId, taken.ChildDisplayName, taken.RecordedByMemberId));
         var today = Assert.Single(await service.GetTurnsAsync(Today, new TurnRotationViewer(ChildA.Id, false), CancellationToken.None));
@@ -342,7 +342,7 @@ public sealed class TurnRotationServiceTests
         Assert.Equal(ChildB.Id, await TurnOn(service, Today.AddDays(1)));
         Assert.Equal(ChildB.Id, await TurnOn(service, Today.AddDays(5)));
         var second = await Assert.ThrowsAsync<TakenTurnConflictException>(() =>
-            service.TakeTurnAsync(Adult.Id, Pink, new TakeTurn(ChildA.Id), CancellationToken.None));
+            TakeAsync(service, Adult.Id, Pink, ChildA));
         Assert.Contains("already been ticked off", second.Message);
     }
 
@@ -353,7 +353,7 @@ public sealed class TurnRotationServiceTests
         repository.AddTicked(Pink, Today, [ChildA, ChildB], ChildA);
         var service = CreateService(repository);
 
-        var taken = await service.TakeTurnAsync(Adult.Id, Pink, new TakeTurn(ChildA.Id), CancellationToken.None);
+        var taken = await TakeAsync(service, Adult.Id, Pink, ChildA);
 
         var forA = Assert.Single(await service.GetTurnsAsync(Today, new TurnRotationViewer(ChildA.Id, false), CancellationToken.None));
         var forB = Assert.Single(await service.GetTurnsAsync(Today, new TurnRotationViewer(ChildB.Id, false), CancellationToken.None));
@@ -362,7 +362,7 @@ public sealed class TurnRotationServiceTests
         Assert.Equal((ChildB.Id, true), (forB.ChildId, forB.CanTakeTurn));
         Assert.Null(forB.UndoableTurn);
 
-        await service.TakeTurnAsync(ChildB.Id, Pink, new TakeTurn(ChildB.Id), CancellationToken.None);
+        await TakeAsync(service, ChildB.Id, Pink, ChildB);
 
         Assert.Equal(ChildA.Id, await TurnOn(service, Today));
     }
@@ -375,9 +375,9 @@ public sealed class TurnRotationServiceTests
         var service = CreateService(repository);
 
         await Assert.ThrowsAsync<TakenTurnForbiddenException>(() =>
-            service.TakeTurnAsync(ChildB.Id, Pink, new TakeTurn(ChildA.Id), CancellationToken.None));
+            TakeAsync(service, ChildB.Id, Pink, ChildA));
         await Assert.ThrowsAsync<TakenTurnForbiddenException>(() =>
-            service.TakeTurnAsync(InactiveChild.Id, Pink, new TakeTurn(InactiveChild.Id), CancellationToken.None));
+            TakeAsync(service, InactiveChild.Id, Pink, InactiveChild));
         Assert.Empty(repository.TakenTurns);
 
         async Task<bool> CanTake(HouseholdMember viewer) =>
@@ -395,10 +395,10 @@ public sealed class TurnRotationServiceTests
         var repository = new FakeRepository();
         repository.AddTicked(Pink, Today, [ChildA, ChildB], ChildA);
         var service = CreateService(repository);
-        await service.TakeTurnAsync(ChildA.Id, Pink, new TakeTurn(ChildA.Id), CancellationToken.None);
+        await TakeAsync(service, ChildA.Id, Pink, ChildA);
 
         var stale = await Assert.ThrowsAsync<TakenTurnConflictException>(() =>
-            service.TakeTurnAsync(ChildA.Id, Pink, new TakeTurn(ChildA.Id), CancellationToken.None));
+            TakeAsync(service, ChildA.Id, Pink, ChildA));
 
         Assert.Contains("Ben's turn now", stale.Message);
         Assert.Single(repository.TakenTurns);
@@ -418,18 +418,23 @@ public sealed class TurnRotationServiceTests
         var service = CreateService(repository);
 
         var daily = await Assert.ThrowsAsync<InvalidTurnRotationException>(() =>
-            service.TakeTurnAsync(Adult.Id, Pink, new TakeTurn(ChildA.Id), CancellationToken.None));
+            TakeAsync(service, Adult.Id, Pink, ChildA));
         Assert.Contains("AdvanceMode", daily.Errors.Keys);
         await Assert.ThrowsAsync<TurnRotationNotFoundException>(() =>
-            service.TakeTurnAsync(Adult.Id, Guid.NewGuid(), new TakeTurn(ChildA.Id), CancellationToken.None));
+            TakeAsync(service, Adult.Id, Guid.NewGuid(), ChildA));
         await Assert.ThrowsAsync<TurnRotationNotFoundException>(() =>
-            service.TakeTurnAsync(Adult.Id, ended, new TakeTurn(ChildA.Id), CancellationToken.None));
+            TakeAsync(service, Adult.Id, ended, ChildA));
         await Assert.ThrowsAsync<TakenTurnConflictException>(() =>
-            service.TakeTurnAsync(Adult.Id, NextToMum, new TakeTurn(ChildA.Id), CancellationToken.None));
+            TakeAsync(service, Adult.Id, NextToMum, ChildA));
         repository.AddTicked(NextToMum, Today, [ChildA, ChildB], ChildA);
-        var noChild = await Assert.ThrowsAsync<InvalidTurnRotationException>(() =>
-            service.TakeTurnAsync(Adult.Id, NextToMum, new TakeTurn(null), CancellationToken.None));
-        Assert.Contains("ChildId", noChild.Errors.Keys);
+        var incomplete = await Assert.ThrowsAsync<InvalidTurnRotationException>(() =>
+            service.TakeTurnAsync(
+                Adult.Id, NextToMum, new TakeTurn(Guid.NewGuid(), null, null, null), CancellationToken.None));
+        Assert.Equal(["ChildId", "RevisionId", "TurnNumber"], incomplete.Errors.Keys.Order());
+        var noRequestId = await Assert.ThrowsAsync<InvalidTurnRotationException>(() =>
+            service.TakeTurnAsync(
+                Adult.Id, NextToMum, new TakeTurn(Guid.Empty, null, 0, ChildA.Id), CancellationToken.None));
+        Assert.Contains("RequestId", noRequestId.Errors.Keys);
         Assert.Empty(repository.TakenTurns);
     }
 
@@ -440,7 +445,7 @@ public sealed class TurnRotationServiceTests
         repository.AddTicked(Pink, Today, [ChildA, ChildB], ChildA);
         var service = CreateService(repository);
 
-        var taken = await service.TakeTurnAsync(Adult.Id, Pink, new TakeTurn(ChildA.Id), CancellationToken.None);
+        var taken = await TakeAsync(service, Adult.Id, Pink, ChildA);
         await service.UndoTurnAsync(Adult.Id, Pink, taken.Id, CancellationToken.None);
 
         Assert.Equal(2, repository.Locks.Count);
@@ -459,7 +464,7 @@ public sealed class TurnRotationServiceTests
         var repository = new FakeRepository();
         repository.AddTicked(Pink, Today, [ChildA, ChildB, ChildC], ChildA);
         var service = CreateService(repository);
-        var taken = await service.TakeTurnAsync(ChildA.Id, Pink, new TakeTurn(ChildA.Id), CancellationToken.None);
+        var taken = await TakeAsync(service, ChildA.Id, Pink, ChildA);
 
         var undone = await service.UndoTurnAsync(ChildA.Id, Pink, taken.Id, CancellationToken.None);
 
@@ -481,8 +486,8 @@ public sealed class TurnRotationServiceTests
         var revision = repository.AddTicked(Pink, Today.AddDays(-1), [ChildA, ChildB], ChildA);
         var yesterday = repository.Tick(revision, Today.AddDays(-1), ChildA);
         var service = CreateService(repository);
-        var first = await service.TakeTurnAsync(Adult.Id, Pink, new TakeTurn(ChildB.Id), CancellationToken.None);
-        var second = await service.TakeTurnAsync(Adult.Id, Pink, new TakeTurn(ChildA.Id), CancellationToken.None);
+        var first = await TakeAsync(service, Adult.Id, Pink, ChildB);
+        var second = await TakeAsync(service, Adult.Id, Pink, ChildA);
 
         var older = await Assert.ThrowsAsync<TakenTurnConflictException>(() =>
             service.UndoTurnAsync(Adult.Id, Pink, first.Id, CancellationToken.None));
@@ -502,7 +507,7 @@ public sealed class TurnRotationServiceTests
         repository.AddTicked(Pink, Today, [ChildA, ChildB], ChildA);
         repository.AddTicked(NextToMum, Today, [ChildA, ChildB], ChildA);
         var service = CreateService(repository);
-        var taken = await service.TakeTurnAsync(ChildA.Id, Pink, new TakeTurn(ChildA.Id), CancellationToken.None);
+        var taken = await TakeAsync(service, ChildA.Id, Pink, ChildA);
 
         await Assert.ThrowsAsync<TakenTurnForbiddenException>(() =>
             service.UndoTurnAsync(ChildB.Id, Pink, taken.Id, CancellationToken.None));
@@ -574,8 +579,83 @@ public sealed class TurnRotationServiceTests
         Assert.Equal((Guid?)ChildA.Id, repository.Revisions.Last().FirstChildId);
     }
 
+    [Fact]
+    public async Task A_replayed_request_returns_the_original_tick_without_ticking_again()
+    {
+        var repository = new FakeRepository();
+        repository.AddTicked(Pink, Today, [ChildA, ChildB], ChildA);
+        var service = CreateService(repository);
+        var original = await ShownTurnAsync(service, Pink, ChildA);
+        var taken = await service.TakeTurnAsync(ChildA.Id, Pink, original, CancellationToken.None);
+        await TakeAsync(service, ChildB.Id, Pink, ChildB);
+
+        var replayed = await service.TakeTurnAsync(ChildA.Id, Pink, original, CancellationToken.None);
+
+        Assert.Equal(taken, replayed);
+        Assert.Equal(2, repository.TakenTurns.Count);
+        var today = Assert.Single(await service.GetTurnsAsync(Today, CancellationToken.None));
+        Assert.Equal((ChildA.Id, 2), (today.ChildId, today.TurnNumber));
+    }
+
+    [Fact]
+    public async Task A_stale_tick_for_a_childs_earlier_turn_is_a_conflict_when_their_turn_comes_round_again()
+    {
+        var repository = new FakeRepository();
+        repository.AddTicked(Pink, Today, [ChildA, ChildB], ChildA);
+        var service = CreateService(repository);
+        var staleView = await ShownTurnAsync(service, Pink, ChildA);
+        await service.TakeTurnAsync(ChildA.Id, Pink, staleView, CancellationToken.None);
+        await TakeAsync(service, ChildB.Id, Pink, ChildB);
+
+        var stale = await Assert.ThrowsAsync<TakenTurnConflictException>(() => service.TakeTurnAsync(
+            ChildA.Id, Pink, staleView with { RequestId = Guid.NewGuid() }, CancellationToken.None));
+
+        Assert.Contains("already moved on", stale.Message);
+        Assert.Equal(2, repository.TakenTurns.Count);
+        Assert.Equal(ChildA.Id, await TurnOn(service, Today));
+    }
+
+    [Fact]
+    public async Task A_request_id_reused_for_a_different_tick_is_a_conflict()
+    {
+        var repository = new FakeRepository();
+        repository.AddTicked(Pink, Today, [ChildA, ChildB], ChildA);
+        var service = CreateService(repository);
+        var first = await ShownTurnAsync(service, Pink, ChildA);
+        await service.TakeTurnAsync(Adult.Id, Pink, first, CancellationToken.None);
+        var next = await ShownTurnAsync(service, Pink, ChildB);
+
+        var reused = await Assert.ThrowsAsync<TakenTurnConflictException>(() => service.TakeTurnAsync(
+            Adult.Id, Pink, next with { RequestId = first.RequestId }, CancellationToken.None));
+
+        Assert.Contains("request ID", reused.Message);
+        Assert.Single(repository.TakenTurns);
+    }
+
     private static async Task<Guid> TurnOn(TurnRotationService service, DateOnly date) =>
         (await service.GetTurnsAsync(date, CancellationToken.None))[0].ChildId;
+
+    /// <summary>
+    /// A tick for the turn the board shows today, as a client sends it; a rotation with no
+    /// answer today gets a made-up revision.
+    /// </summary>
+    private static async Task<TakeTurn> ShownTurnAsync(
+        TurnRotationService service,
+        Guid rotationId,
+        HouseholdMember child)
+    {
+        var shown = (await service.GetTurnsAsync(Today, CancellationToken.None))
+            .SingleOrDefault(turn => turn.RotationId == rotationId);
+        return new TakeTurn(Guid.NewGuid(), shown?.RevisionId ?? Guid.NewGuid(), shown?.TurnNumber ?? 0, child.Id);
+    }
+
+    private static async Task<TakenTurnDetails> TakeAsync(
+        TurnRotationService service,
+        Guid actorMemberId,
+        Guid rotationId,
+        HouseholdMember child) =>
+        await service.TakeTurnAsync(
+            actorMemberId, rotationId, await ShownTurnAsync(service, rotationId, child), CancellationToken.None);
 
     private static TurnRotationService CreateService(FakeRepository repository) =>
         new(repository, new FixedClock());
@@ -631,8 +711,10 @@ public sealed class TurnRotationServiceTests
         /// <summary>Records a tick directly, as if it had been made on <paramref name="date"/>.</summary>
         public TakenTurn Tick(TurnRotationRevision revision, DateOnly date, HouseholdMember child)
         {
+            var number = revision.GetTurn(date, date, TakenTurns)!.Value.Number;
             var taken = revision.TakeTurn(
-                Guid.NewGuid(), date, child.Id, TakenTurns, Adult.Id, Created.AddMinutes(TakenTurns.Count));
+                Guid.NewGuid(), Guid.NewGuid(), date, number, child.Id, TakenTurns, Adult.Id,
+                Created.AddMinutes(TakenTurns.Count));
             TakenTurns.Add(taken);
             return taken;
         }
@@ -649,6 +731,9 @@ public sealed class TurnRotationServiceTests
 
         public Task<TakenTurn?> FindTakenTurnAsync(Guid takenTurnId, CancellationToken cancellationToken) =>
             Task.FromResult(TakenTurns.SingleOrDefault(turn => turn.Id == takenTurnId));
+
+        public Task<TakenTurn?> GetTakenTurnByRequestAsync(Guid requestId, CancellationToken cancellationToken) =>
+            Task.FromResult(TakenTurns.SingleOrDefault(turn => turn.RequestId == requestId));
 
         public Task<HouseholdMember?> GetMemberAsync(Guid memberId, CancellationToken cancellationToken) =>
             Task.FromResult(Members.SingleOrDefault(member => member.Id == memberId));

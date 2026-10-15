@@ -3,6 +3,7 @@ using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.TurnRotations;
 using FamilyJobsBoard.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace FamilyJobsBoard.Infrastructure.TurnRotations;
 
@@ -41,6 +42,13 @@ public sealed class EfTurnRotationRepository : ITurnRotationRepository
         return _database.TakenTurns.SingleOrDefaultAsync(
             turn => turn.Id == takenTurnId,
             cancellationToken);
+    }
+
+    public Task<TakenTurn?> GetTakenTurnByRequestAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        return _database.TakenTurns
+            .AsNoTracking()
+            .SingleOrDefaultAsync(turn => turn.RequestId == requestId, cancellationToken);
     }
 
     public Task<HouseholdMember?> GetMemberAsync(Guid memberId, CancellationToken cancellationToken)
@@ -91,6 +99,25 @@ public sealed class EfTurnRotationRepository : ITurnRotationRepository
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
-        await _database.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _database.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception)
+            when (exception.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation,
+                ConstraintName: TakenTurnConfiguration.RequestIdIndexName
+                    or TakenTurnConfiguration.CountedTurnIndexName,
+            } violation)
+        {
+            // The rotation lock makes these unreachable for one rotation; they guard a request
+            // ID reused across rotations and any tick that bypassed the lock.
+            _database.ChangeTracker.Clear();
+            throw new TakenTurnConflictException(
+                violation.ConstraintName == TakenTurnConfiguration.RequestIdIndexName
+                    ? "That request ID was already used for a different tick."
+                    : "That turn has already moved on.");
+        }
     }
 }

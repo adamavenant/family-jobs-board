@@ -151,15 +151,18 @@ are every other day.
 ### Taken Turn
 A tick recording that a child took their turn in a when-ticked Turn Rotation.
 Any Adult, or the child whose turn it is, can tick it, and only for today
-(household-local); the tick names that child, so a repeated or stale tick
-never moves the rotation on twice. The most recent tick can be unticked the
+(household-local). A tick names the turn it takes — the revision and the
+turn's number within it, as well as the child — so a stale tick is refused
+even when the same child's turn has come round again, and it carries a
+request ID so a replayed request returns the original tick instead of ticking
+again. The most recent tick can be unticked the
 same day by an Adult or the child whose turn was ticked. Ticks are never
 deleted: unticking marks one undone with who and when, and an undone tick no
 longer counts.
 
 #### Characteristics
-- ID (GUID)
-- Rotation and the revision it counts towards
+- ID (GUID) and request ID (GUID, unique)
+- Rotation, the revision it counts towards, and the turn number it took
 - Household-local date and the child whose turn was taken
 - Recording member and UTC time
 - Unticking member and UTC time, when unticked

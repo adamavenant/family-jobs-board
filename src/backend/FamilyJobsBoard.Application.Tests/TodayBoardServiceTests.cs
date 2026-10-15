@@ -689,6 +689,9 @@ public sealed class TodayBoardServiceTests
         public Task<TakenTurn?> FindTakenTurnAsync(Guid takenTurnId, CancellationToken cancellationToken) =>
             Task.FromResult<TakenTurn?>(null);
 
+        public Task<TakenTurn?> GetTakenTurnByRequestAsync(Guid requestId, CancellationToken cancellationToken) =>
+            Task.FromResult<TakenTurn?>(null);
+
         public Task<HouseholdMember?> GetMemberAsync(Guid memberId, CancellationToken cancellationToken) =>
             Task.FromResult<HouseholdMember?>(null);
 

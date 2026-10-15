@@ -18,6 +18,8 @@ public sealed record TodayWhoseTurn(
     string Question,
     Guid ChildId,
     string ChildDisplayName,
+    Guid RevisionId,
+    int TurnNumber,
     string AdvanceMode,
     bool TurnTaken,
     bool CanTakeTurn,

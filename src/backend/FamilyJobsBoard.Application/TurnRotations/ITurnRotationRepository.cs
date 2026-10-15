@@ -15,6 +15,9 @@ public interface ITurnRotationRepository
     /// <summary>A tick, tracked for unticking, whether or not it has already been unticked.</summary>
     Task<TakenTurn?> FindTakenTurnAsync(Guid takenTurnId, CancellationToken cancellationToken);
 
+    /// <summary>The tick recorded by a request, whether or not it has since been unticked.</summary>
+    Task<TakenTurn?> GetTakenTurnByRequestAsync(Guid requestId, CancellationToken cancellationToken);
+
     Task<HouseholdMember?> GetMemberAsync(Guid memberId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<HouseholdMember>> GetMembersAsync(
