@@ -27,6 +27,11 @@ instead.
   route renders the toast stack, connects the router's `revalidate`, and sends
   queued work on `visibilitychange`/`pagehide`. Identity changes (sign out,
   sign in, PIN setup) send queued work first.
+- **Keep the session alive and the refresh single.** Because a queued
+  action sends nothing until it is saved, the browser refreshes the session
+  once at queue time when the server's inactivity limit would otherwise pass
+  first, and concurrent refreshes share one request so saving several actions
+  together never reuses the rotating refresh cookie (ADR 0003).
 - **Revalidate after the save, not the submission.** Routes skip revalidation
   for `queued` results (`revalidateUnlessQueued`), so nothing is fetched until
   the queue has saved; the queue then revalidates whether the save succeeded or

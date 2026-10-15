@@ -168,11 +168,13 @@ test("an approval waits out the undo time before it is saved", async ({
 
   await approve(page, "Clear the table");
   const toast = page.locator(".undo-toast");
-  await expect(
-    toast.getByRole("status").filter({
-      hasText: "Approved “Clear the table” for Fredster: +5 points",
-    }),
-  ).toBeVisible();
+  await expect(toast).toContainText(
+    "Approved “Clear the table” for Fredster: +5 points",
+  );
+  // Announced through the page's persistent status region.
+  await expect(page.locator("p.visually-hidden[role=status]")).toHaveText(
+    "Approved “Clear the table” for Fredster: +5 points. Undo is available for 10 seconds.",
+  );
   await expect(toast.getByText("10s")).toBeVisible();
   await expect(page.getByLabel("2 jobs awaiting review")).toBeVisible();
 
@@ -287,14 +289,17 @@ test("queued actions are sent before signing out", async ({ page }) => {
   ]);
 });
 
-test("keyboard users reach Undo and the countdown pauses while it has focus", async ({
+test("keyboard users reach Undo and the countdown pauses while it has keyboard focus", async ({
   page,
 }) => {
   const api = await household(page);
 
   await approve(page, "Clear the table");
   const undo = page.getByRole("button", { name: "Undo" });
-  await undo.focus();
+  // Arrive on Undo by keyboard, as a keyboard user would.
+  await page.getByRole("button", { name: "Dismiss and save now" }).focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(undo).toBeFocused();
   await expect(page.locator(".undo-toast").getByText("Paused")).toBeVisible();
   await page.clock.runFor(60_000);
   expect(api.sent).toEqual([]);

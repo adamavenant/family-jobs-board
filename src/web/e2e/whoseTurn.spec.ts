@@ -81,7 +81,9 @@ test("an adult runs several whose-turn rotations side by side", async ({
   await first.getByLabel("First turn").selectOption(albaId);
   await first.getByRole("button", { name: "Add rotation" }).click();
   await expect(
-    page.getByText("Started “Who is Pink today?” from 2026-09-21"),
+    page
+      .locator(".toast-stack")
+      .getByText("Started “Who is Pink today?” from 2026-09-21"),
   ).toBeVisible();
   await saveQueuedAction(page);
 

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { acceptSession, clearIdentity } from "../../api/auth";
 import { routes } from "../../app/routes";
-import { saveQueuedAction } from "../../test/undo";
+import { expectAnnounced, saveQueuedAction } from "../../test/undo";
 
 const addie = member("22eb0cc1-058e-4b2e-bb18-d7aaad564a6c", "Addie", true);
 const fredster = member(
@@ -67,9 +67,12 @@ describe("Redeem a reward", () => {
 
     expect(
       await screen.findByText("Fredster spent 5 points on Ice cream"),
-    ).toHaveAttribute("role", "status");
+    ).toBeInTheDocument();
+    expectAnnounced("Fredster spent 5 points on Ice cream");
+    await waitFor(() =>
+      expect(within(form).getByLabelText("Reward")).toHaveValue(""),
+    );
     expect(within(form).getByLabelText("Child")).toHaveValue("");
-    expect(within(form).getByLabelText("Reward")).toHaveValue("");
     // The queued spend already counts against the balance shown.
     await user.selectOptions(within(form).getByLabelText("Child"), "Fredster");
     expect(

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { acceptSession, clearIdentity } from "../../api/auth";
 import { routes } from "../../app/routes";
-import { saveQueuedAction } from "../../test/undo";
+import { expectAnnounced, saveQueuedAction } from "../../test/undo";
 
 const addie = member("22eb0cc1-058e-4b2e-bb18-d7aaad564a6c", "Addie", true);
 const fredster = member(
@@ -74,7 +74,8 @@ describe("Good behaviours", () => {
 
     expect(
       await screen.findByText("Logged “Being Helpful” for Harrie: +8 points"),
-    ).toHaveAttribute("role", "status");
+    ).toBeInTheDocument();
+    expectAnnounced("Logged “Being Helpful” for Harrie: +8 points");
     expect(api.logRequests).toHaveLength(0);
     await saveQueuedAction(user);
     await waitFor(() => expect(api.logRequests).toHaveLength(1));

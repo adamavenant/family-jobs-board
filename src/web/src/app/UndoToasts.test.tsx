@@ -1,7 +1,8 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { expectAnnounced } from "../test/undo";
 import { undoQueue } from "./undoQueue";
 import { UndoToasts } from "./UndoToasts";
 
@@ -40,7 +41,9 @@ describe("undo toast", () => {
     const message = screen.getByText(
       "Approved “Feed the dog” for Sam: +5 points",
     );
-    expect(message).toHaveAttribute("role", "status");
+    expectAnnounced(
+      "Approved “Feed the dog” for Sam: +5 points. Undo is available for 10 seconds.",
+    );
     const toast = message.closest(".undo-toast") as HTMLElement;
     expect(within(toast).getByText("10s")).toBeInTheDocument();
     expect(
@@ -142,6 +145,7 @@ describe("undo toast", () => {
     const first = queueApproval();
     const second = queueApproval();
 
+    // The newest toast comes first, so keyboard users reach it first.
     const undoButtons = screen.getAllByRole("button", { name: "Undo" });
     expect(undoButtons).toHaveLength(2);
     await user.click(undoButtons[0]!);
@@ -149,8 +153,8 @@ describe("undo toast", () => {
       screen.getByRole("button", { name: "Dismiss and save now" }),
     );
 
-    expect(first).not.toHaveBeenCalled();
-    expect(second).toHaveBeenCalledOnce();
+    expect(second).not.toHaveBeenCalled();
+    expect(first).toHaveBeenCalledOnce();
   });
 
   it("shows a refused save as an alert with Try again", async () => {
@@ -172,5 +176,84 @@ describe("undo toast", () => {
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(commit).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps a status region on the page before any toast appears", () => {
+    render(<UndoToasts />);
+
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    queueApproval();
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+  });
+
+  it("moves focus to the next toast when the focused one closes", async () => {
+    const user = setup();
+    render(<UndoToasts />);
+    queueApproval();
+    queueApproval();
+
+    const [newest, older] = screen.getAllByRole("button", { name: "Undo" });
+    newest!.focus();
+    await user.keyboard("{Enter}");
+
+    expect(older).toHaveFocus();
+  });
+
+  it("returns focus to where it came from when the last toast closes", async () => {
+    const user = setup();
+    render(
+      <>
+        <button type="button">Approve something</button>
+        <UndoToasts />
+      </>,
+    );
+    queueApproval();
+
+    screen.getByRole("button", { name: "Approve something" }).focus();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Undo" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+
+    expect(
+      screen.getByRole("button", { name: "Approve something" }),
+    ).toHaveFocus();
+  });
+
+  it("falls back to the main content when focus has nowhere to return", async () => {
+    const user = setup();
+    render(
+      <>
+        <main>Board</main>
+        <UndoToasts />
+      </>,
+    );
+    queueApproval();
+
+    screen.getByRole("button", { name: "Undo" }).focus();
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByRole("main")).toHaveFocus();
+  });
+
+  it("doesn't pause for a pointer that was already resting where the toast appears", async () => {
+    render(<UndoToasts />);
+    const commit = queueApproval();
+    const toast = screen
+      .getByText("Approved “Feed the dog” for Sam: +5 points")
+      .closest(".undo-toast") as HTMLElement;
+
+    fireEvent.pointerEnter(toast);
+    expect(within(toast).queryByText("Paused")).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(30_000));
+    expect(commit).toHaveBeenCalledOnce();
+  });
+
+  it("describes each dismiss control by its toast", () => {
+    render(<UndoToasts />);
+    queueApproval();
+
+    expect(
+      screen.getByRole("button", { name: "Dismiss and save now" }),
+    ).toHaveAccessibleDescription("Approved “Feed the dog” for Sam: +5 points");
   });
 });

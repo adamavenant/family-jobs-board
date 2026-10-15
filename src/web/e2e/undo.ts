@@ -8,7 +8,7 @@ import type { Page } from "@playwright/test";
 export async function saveQueuedAction(page: Page): Promise<void> {
   const dismiss = page
     .getByRole("button", { name: "Dismiss and save now" })
-    .last();
+    .first();
   await expect(dismiss).toBeVisible();
   await dismiss.click();
 }

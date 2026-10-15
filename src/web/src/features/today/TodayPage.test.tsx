@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { routes } from "../../app/routes";
 import { acceptSession, clearIdentity } from "../../api/auth";
 import type { FamilyMember } from "../../api/members";
-import { saveQueuedAction } from "../../test/undo";
+import { expectAnnounced, saveQueuedAction } from "../../test/undo";
 
 const addie = {
   id: "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c",
@@ -183,7 +183,8 @@ describe("Today page", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.getByText("Marked “Feed the dog” done for Fredster: +5 points"),
-    ).toHaveAttribute("role", "status");
+    ).toBeInTheDocument();
+    expectAnnounced("Marked “Feed the dog” done for Fredster: +5 points");
     expect(fetch).toHaveBeenCalledTimes(1);
 
     await saveQueuedAction(user);
@@ -635,8 +636,9 @@ describe("Today page", () => {
     ).toHaveTextContent("Arriving home · 15:45");
     expect(
       screen.getByText("Scheduled “Put toys away” for Fredster on 2026-08-29"),
-    ).toHaveAttribute("role", "status");
-    expect(screen.getByLabelText("Points")).toHaveValue(1);
+    ).toBeInTheDocument();
+    expectAnnounced("Scheduled “Put toys away” for Fredster on 2026-08-29");
+    await waitFor(() => expect(screen.getByLabelText("Points")).toHaveValue(1));
     expect(screen.getByLabelText("4 jobs on this day")).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(1);
 
@@ -952,8 +954,13 @@ describe("Today page", () => {
         await screen.findByText(
           "Created daily job “Feed the fish” for Fredster and Harrie",
         ),
-      ).toHaveAttribute("role", "status");
-      expect(screen.getByLabelText("Daily job name")).toHaveValue("");
+      ).toBeInTheDocument();
+      expectAnnounced(
+        "Created daily job “Feed the fish” for Fredster and Harrie",
+      );
+      await waitFor(() =>
+        expect(screen.getByLabelText("Daily job name")).toHaveValue(""),
+      );
       await saveQueuedAction(user);
 
       const headings = await screen.findAllByRole("heading", {
@@ -1019,7 +1026,10 @@ describe("Today page", () => {
       await screen.findByText(
         "Created take-turns daily job “Tidy the table” for Fredster and Harrie",
       ),
-    ).toHaveAttribute("role", "status");
+    ).toBeInTheDocument();
+    expectAnnounced(
+      "Created take-turns daily job “Tidy the table” for Fredster and Harrie",
+    );
     expect(fetch).toHaveBeenCalledTimes(1);
     await saveQueuedAction(user);
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
@@ -1116,7 +1126,8 @@ describe("Today page", () => {
         await screen.findByText(
           "Created weekly job “Pack sports kit” for Fredster",
         ),
-      ).toHaveAttribute("role", "status");
+      ).toBeInTheDocument();
+      expectAnnounced("Created weekly job “Pack sports kit” for Fredster");
       await saveQueuedAction(user);
 
       const heading = await screen.findByRole("heading", {
@@ -1214,7 +1225,8 @@ describe("Today page", () => {
         await screen.findByText(
           "Created monthly job “Clean the fridge” for Fredster",
         ),
-      ).toHaveAttribute("role", "status");
+      ).toBeInTheDocument();
+      expectAnnounced("Created monthly job “Clean the fridge” for Fredster");
       await saveQueuedAction(user);
 
       const heading = await screen.findByRole("heading", {
@@ -1323,7 +1335,8 @@ describe("Today page", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText("Approved “Clear the table” for Fredster: +5 points"),
-    ).toHaveAttribute("role", "status");
+    ).toBeInTheDocument();
+    expectAnnounced("Approved “Clear the table” for Fredster: +5 points");
     expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
     await saveQueuedAction(user);
     await waitFor(() =>
@@ -1384,7 +1397,8 @@ describe("Today page", () => {
 
     expect(
       await screen.findByText("Sent “Clear the table” back to Fredster"),
-    ).toHaveAttribute("role", "status");
+    ).toBeInTheDocument();
+    expectAnnounced("Sent “Clear the table” back to Fredster");
     expect(screen.getByLabelText("0 jobs awaiting review")).toBeInTheDocument();
     await saveQueuedAction(user);
 
@@ -1632,8 +1646,12 @@ describe("Today page", () => {
     expect(
       await screen.findByText(
         "Task and points data was reset. 3 jobs and 1 point entry were removed.",
+        { selector: ".status-toast > span" },
       ),
-    ).toHaveAttribute("role", "status");
+    ).toBeInTheDocument();
+    expectAnnounced(
+      "Task and points data was reset. 3 jobs and 1 point entry were removed.",
+    );
     expect(
       screen.getByText("No jobs are scheduled for this day."),
     ).toBeVisible();
@@ -1768,10 +1786,12 @@ describe("Today page", () => {
     await user.click(addButton);
 
     const createdToast = await screen.findByText("Added Fredster as a child");
-    expect(createdToast).toHaveAttribute("role", "status");
+    expectAnnounced(createdToast.textContent ?? "");
     expect(createdToast.closest(".undo-toast")).not.toBeNull();
     expect(screen.getByText("Being added")).toBeInTheDocument();
-    expect(createMember.getByLabelText("First name")).toHaveValue("");
+    await waitFor(() =>
+      expect(createMember.getByLabelText("First name")).toHaveValue(""),
+    );
     expect(created).toBe(false);
     await saveQueuedAction(user);
 
@@ -2070,10 +2090,12 @@ describe("Today page", () => {
     );
 
     const updateToast = await screen.findByText("Saved Freddie’s profile");
-    expect(updateToast).toHaveAttribute("role", "status");
-    expect(
-      within(fredsterProfile).getByText("Edit profile").closest("details"),
-    ).not.toHaveAttribute("open");
+    expectAnnounced(updateToast.textContent ?? "");
+    await waitFor(() =>
+      expect(
+        within(fredsterProfile).getByText("Edit profile").closest("details"),
+      ).not.toHaveAttribute("open"),
+    );
     expect(
       within(fredsterProfile).getByText("Freddie", { selector: "strong" }),
     ).toBeInTheDocument();
@@ -2141,7 +2163,8 @@ describe("Today page", () => {
 
     expect(
       await screen.findByText("Deactivated Freddie’s profile"),
-    ).toHaveAttribute("role", "status");
+    ).toBeInTheDocument();
+    expectAnnounced("Deactivated Freddie’s profile");
     await saveQueuedAction(user);
     await waitFor(() =>
       expect(
@@ -2166,7 +2189,8 @@ describe("Today page", () => {
 
     expect(
       await screen.findByText("Restored Freddie’s profile"),
-    ).toHaveAttribute("role", "status");
+    ).toBeInTheDocument();
+    expectAnnounced("Restored Freddie’s profile");
     await saveQueuedAction(user);
     await waitFor(() =>
       expect(

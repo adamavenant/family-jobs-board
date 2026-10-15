@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 import type { ShouldRevalidateFunctionArgs } from "react-router";
 
+import { AuthApiError } from "../api/auth";
+
 // Every in-scope action waits out a household-wide grace period before it is
 // sent to the API, so Undo never needs a server endpoint. Route actions queue
 // the API call here and return at once; the queue owns the countdown, sends
@@ -11,6 +13,8 @@ import type { ShouldRevalidateFunctionArgs } from "react-router";
 export const defaultUndoGracePeriodSeconds = 30;
 export const minimumUndoGracePeriodSeconds = 5;
 export const maximumUndoGracePeriodSeconds = 120;
+/** How long a saved action stays shown as saving while the page revalidates. */
+const revalidationLimitMs = 15_000;
 
 export interface QueuedAction {
   readonly id: string;
@@ -54,7 +58,17 @@ interface Entry {
   commit: () => Promise<unknown>;
   failure: (error: unknown) => string;
   timer?: ReturnType<typeof setTimeout>;
+  /** Settles once the request has been answered or has failed. */
+  committed?: Promise<void>;
+  /** Settles once the page has also revalidated and the entry is gone. */
   saved?: Promise<void>;
+}
+
+export interface QueueConnection {
+  /** Reloads the page's data from the server, for example the router's. */
+  revalidate: () => Promise<unknown> | void;
+  /** Called with how long an action will wait, so the session can outlast it. */
+  keepAlive?: (waitMs: number) => void;
 }
 
 export interface UndoQueue {
@@ -63,13 +77,21 @@ export interface UndoQueue {
   saveNow(id: string): void;
   pause(id: string): void;
   resume(id: string): void;
-  /** Sends every queued action now and resolves when they have all settled. */
+  /**
+   * Sends every queued action now and resolves when each request has been
+   * answered (without waiting for the page to revalidate).
+   */
   flush(): Promise<void>;
   setGracePeriodSeconds(seconds: number | undefined): void;
-  connect(revalidate: () => Promise<unknown> | void): () => void;
+  connect(connection: QueueConnection): () => void;
   notify(message: string): void;
   /** Sends a failed action again with the same request, then revalidates. */
   retry(noticeId: string): void;
+  /**
+   * Withdraws Try again from failed actions, so a different person signing in
+   * can never resend someone else's action as their own.
+   */
+  forgetRetries(): void;
   dismissNotice(id: string): void;
   subscribe(listener: () => void): () => void;
   getSnapshot(): UndoQueueSnapshot;
@@ -85,7 +107,7 @@ export function createUndoQueue(): UndoQueue {
   let notices: ToastNotice[] = [];
   let snapshot: UndoQueueSnapshot = { actions: [], notices };
   let gracePeriodMs = defaultUndoGracePeriodSeconds * 1000;
-  let revalidate: (() => Promise<unknown> | void) | undefined;
+  let connection: QueueConnection | undefined;
   let nextId = 0;
 
   function emit() {
@@ -108,17 +130,18 @@ export function createUndoQueue(): UndoQueue {
   function startTimer(entry: Entry) {
     clearTimeout(entry.timer);
     entry.timer = setTimeout(() => save(entry), entry.action.remainingMs);
+    connection?.keepAlive?.(entry.action.remainingMs);
   }
 
   function save(entry: Entry): Promise<void> {
-    if (entry.saved) {
-      return entry.saved;
+    if (entry.committed) {
+      return entry.committed;
     }
 
     clearTimeout(entry.timer);
     update(entry, { status: "saving", runningSince: null });
     emit();
-    entry.saved = (async () => {
+    entry.committed = (async () => {
       try {
         await entry.commit();
       } catch (error) {
@@ -129,15 +152,17 @@ export function createUndoQueue(): UndoQueue {
         );
         failed.set(noticeId, entry);
       }
+    })();
+    entry.saved = entry.committed.then(async () => {
       try {
         // Show the server's state, whether the action was saved or refused.
-        await revalidate?.();
+        await withinLimit(connection?.revalidate());
       } finally {
         entries.delete(entry.action.id);
         emit();
       }
-    })();
-    return entry.saved;
+    });
+    return entry.committed;
   }
 
   function addNotice(
@@ -155,6 +180,24 @@ export function createUndoQueue(): UndoQueue {
       { id, tone, message, canRetry },
     ];
     return id;
+  }
+
+  /**
+   * Waits for a revalidation, but never keeps an item locked as saving for
+   * longer than the limit if the reload stalls.
+   */
+  async function withinLimit(work: Promise<unknown> | void): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.resolve(work).catch(() => undefined),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, revalidationLimitMs);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   function removeNotice(id: string) {
@@ -185,8 +228,17 @@ export function createUndoQueue(): UndoQueue {
       return id;
     },
     undo(id) {
-      const entry = waiting(id);
+      const entry = entries.get(id);
       if (!entry) {
+        return;
+      }
+      if (entry.action.status !== "waiting") {
+        // The countdown won the race; say so rather than look undone.
+        addNotice(
+          "error",
+          `Too late to undo: ${entry.action.description}. It was already sent.`,
+        );
+        emit();
         return;
       }
 
@@ -229,6 +281,11 @@ export function createUndoQueue(): UndoQueue {
         [...entries.values()].map((entry) => save(entry)),
       ).then(() => undefined);
     },
+    forgetRetries() {
+      failed.clear();
+      notices = notices.map((notice) => ({ ...notice, canRetry: false }));
+      emit();
+    },
     setGracePeriodSeconds(seconds) {
       if (
         seconds !== undefined &&
@@ -239,11 +296,11 @@ export function createUndoQueue(): UndoQueue {
         gracePeriodMs = seconds * 1000;
       }
     },
-    connect(nextRevalidate) {
-      revalidate = nextRevalidate;
+    connect(nextConnection) {
+      connection = nextConnection;
       return () => {
-        if (revalidate === nextRevalidate) {
-          revalidate = undefined;
+        if (connection === nextConnection) {
+          connection = undefined;
         }
       };
     },
@@ -284,7 +341,7 @@ export function createUndoQueue(): UndoQueue {
       failed.clear();
       notices = [];
       gracePeriodMs = defaultUndoGracePeriodSeconds * 1000;
-      revalidate = undefined;
+      connection = undefined;
       emit();
     },
   };
@@ -305,7 +362,12 @@ export function queueUndoableAction<T extends object>(
   result: T,
   action: UndoableAction,
 ): T & QueuedActionResult {
-  undoQueue.enqueue(action);
+  undoQueue.enqueue({
+    ...action,
+    // A lapsed session explains itself better than a route's fallback text.
+    failure: (error) =>
+      error instanceof AuthApiError ? error.message : action.failure(error),
+  });
   return { ...result, queued: true };
 }
 
@@ -331,19 +393,4 @@ export function revalidateUnlessQueued({
 
 export function useUndoQueue(): UndoQueueSnapshot {
   return useSyncExternalStore(undoQueue.subscribe, undoQueue.getSnapshot);
-}
-
-/**
- * The form of a queued or saving action that matches, like `fetcher.formData`
- * for a submission, so the page can show the action as already done.
- */
-export function useQueuedSubmission(
-  matches: (form: FormData) => boolean,
-): FormData | undefined {
-  return useUndoQueue().actions.find((action) => matches(action.formData))
-    ?.formData;
-}
-
-export function useQueuedSubmissions(): FormData[] {
-  return useUndoQueue().actions.map((action) => action.formData);
 }

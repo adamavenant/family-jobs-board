@@ -12,6 +12,7 @@ import {
   currentPinSetup,
   currentSession,
   getAuthenticationStart,
+  keepSessionActiveFor,
   logout,
   refreshSession,
   setupPin,
@@ -244,8 +245,10 @@ async function todayAction({
     intent === "bootstrap" ||
     intent === "setupPin"
   ) {
-    // Queued actions belong to whoever is signed in now, so send them first.
+    // Queued actions belong to whoever is signed in now, so send them first,
+    // and never let the next person resend one of them as their own.
     await undoQueue.flush();
+    undoQueue.forgetRetries();
   }
   if (form.get("intent") === "bootstrap") {
     return bootstrapAction(form);
@@ -1338,7 +1341,10 @@ export const routes: RouteObject[] = [
 function AppShell() {
   const { revalidate } = useRevalidator();
 
-  useEffect(() => undoQueue.connect(revalidate), [revalidate]);
+  useEffect(
+    () => undoQueue.connect({ revalidate, keepAlive: keepSessionActiveFor }),
+    [revalidate],
+  );
 
   useEffect(() => {
     function flushWhenHidden() {

@@ -10,7 +10,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   queue = createUndoQueue();
   revalidate = vi.fn<() => Promise<void>>(async () => undefined);
-  queue.connect(revalidate);
+  queue.connect({ revalidate });
 });
 
 afterEach(() => {
@@ -90,7 +90,7 @@ describe("undo queue", () => {
     expect(revalidate).toHaveBeenCalledOnce();
   });
 
-  it("ignores Undo once saving has started", async () => {
+  it("says it's too late when Undo loses the race with the countdown", async () => {
     let finishCommit = () => {};
     const commit = vi.fn(
       () => new Promise<void>((resolve) => (finishCommit = resolve)),
@@ -103,6 +103,13 @@ describe("undo queue", () => {
     await vi.waitFor(() => expect(revalidate).toHaveBeenCalledOnce());
 
     expect(commit).toHaveBeenCalledOnce();
+    expect(queue.getSnapshot().notices).toEqual([
+      expect.objectContaining({
+        tone: "error",
+        message:
+          "Too late to undo: Approved “Feed the dog” for Sam. It was already sent.",
+      }),
+    ]);
   });
 
   it("pauses the countdown and resumes with the time that was left", async () => {
@@ -224,5 +231,58 @@ describe("undo queue", () => {
     expect(queue.getSnapshot().notices.map((notice) => notice.message)).toEqual(
       ["Data was reset."],
     );
+  });
+
+  it("lets sign-out wait for the saves without waiting for the page to reload", async () => {
+    revalidate.mockImplementation(() => new Promise<void>(() => undefined));
+    const { commit } = enqueue();
+
+    await queue.flush();
+
+    expect(commit).toHaveBeenCalledOnce();
+    expect(queue.getSnapshot().actions[0]?.status).toBe("saving");
+  });
+
+  it("stops showing an action as saving if the page never finishes reloading", async () => {
+    revalidate.mockImplementation(() => new Promise<void>(() => undefined));
+    const { id } = enqueue();
+
+    queue.saveNow(id);
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(queue.getSnapshot().actions).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(queue.getSnapshot().actions).toHaveLength(0);
+  });
+
+  it("can withdraw Try again so nobody else can resend a failed action", async () => {
+    const commit = vi.fn(async () => {
+      throw new Error("Refused.");
+    });
+    enqueue(commit);
+    await vi.advanceTimersByTimeAsync(30_000);
+    const [notice] = queue.getSnapshot().notices;
+    expect(notice?.canRetry).toBe(true);
+
+    queue.forgetRetries();
+    queue.retry(notice!.id);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(commit).toHaveBeenCalledOnce();
+    expect(queue.getSnapshot().notices).toEqual([
+      expect.objectContaining({ canRetry: false }),
+    ]);
+  });
+
+  it("asks the session to outlast each wait, including after a pause", async () => {
+    const keepAlive = vi.fn();
+    queue.connect({ revalidate, keepAlive });
+    const { id } = enqueue();
+    expect(keepAlive).toHaveBeenLastCalledWith(30_000);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    queue.pause(id);
+    queue.resume(id);
+
+    expect(keepAlive).toHaveBeenLastCalledWith(20_000);
   });
 });

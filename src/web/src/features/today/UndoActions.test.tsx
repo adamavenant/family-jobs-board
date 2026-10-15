@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { acceptSession, clearIdentity } from "../../api/auth";
 import { routes } from "../../app/routes";
+import { saveQueuedAction } from "../../test/undo";
+import { expectAnnounced } from "../../test/undo";
 
 const addie = member("22eb0cc1-058e-4b2e-bb18-d7aaad564a6c", "Addie", true);
 const fredster = member(
@@ -51,7 +53,12 @@ afterEach(() => {
 function fakeApi({
   viewer = addie,
   undoGracePeriodSeconds = 10,
-}: { viewer?: typeof addie; undoGracePeriodSeconds?: number } = {}) {
+  refuseApprovals = false,
+}: {
+  viewer?: typeof addie;
+  undoGracePeriodSeconds?: number;
+  refuseApprovals?: boolean;
+} = {}) {
   const state = {
     undoGracePeriodSeconds,
     approved: false,
@@ -90,6 +97,12 @@ function fakeApi({
         });
       }
       if (url.pathname.endsWith("/approve")) {
+        if (refuseApprovals) {
+          return jsonResponse(
+            { detail: "This job's points changed." },
+            { status: 409 },
+          );
+        }
         state.approved = true;
         return jsonResponse({
           job: { ...pendingJob, status: "approved" },
@@ -292,8 +305,11 @@ describe("undoable actions", () => {
     );
 
     expect(
-      await screen.findByText("Undo time saved: 45 seconds on every device."),
-    ).toHaveAttribute("role", "status");
+      await screen.findByText("Undo time saved: 45 seconds on every device.", {
+        selector: ".status-toast > span",
+      }),
+    ).toBeInTheDocument();
+    expectAnnounced("Undo time saved: 45 seconds on every device.");
     expect(api.sent).toEqual([
       {
         method: "PUT",
@@ -359,6 +375,48 @@ describe("undoable actions", () => {
 
     await screen.findByRole("heading", { name: "Good day, Fredster!" });
     expect(document.querySelector(".household-settings")).toBeNull();
+  });
+
+  it("withdraws Try again once the person who failed signs out", async () => {
+    fakeApi({ refuseApprovals: true });
+    const user = renderApp();
+
+    await approve(user);
+    await saveQueuedAction(user);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Not saved: Approved “Clear the table” for Fredster: +5 points. This job's points changed.",
+    );
+    expect(screen.getByRole("button", { name: "Try again" })).toBeVisible();
+
+    await user.click(screen.getByText("Addie", { selector: "summary" }));
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Try again" }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("explains a session that lapsed while the action waited", async () => {
+    const api = fakeApi();
+    const user = renderApp();
+
+    await approve(user);
+    // The session ends on the server while the toast counts down.
+    acceptSession({
+      accessToken: "expired-token",
+      accessTokenExpiresAtUtc: "2000-01-01T00:00:00Z",
+      member: { id: addie.id, displayName: "Addie", role: "adult" },
+    });
+    await saveQueuedAction(user);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Not saved: Approved “Clear the table” for Fredster: +5 points. Your session has expired. Sign in again.",
+    );
+    expect(api.sent.some((request) => request.path.endsWith("/approve"))).toBe(
+      false,
+    );
   });
 });
 

@@ -49,11 +49,21 @@ previewing a recurring change, and saving the undo time itself.
   device, shown as already done, and sent only when its toast expires or is
   dismissed. Undo drops it without a request. No reversal endpoints exist.
 - Each queued action is sent at most once. Several queued actions are
-  independent: each has its own toast, countdown, and request.
+  independent: each has its own toast, countdown, and request. Pressing Undo
+  after the countdown has already sent an action says it is too late rather
+  than appearing to undo it.
 - Queued actions are sent straight away when the page is hidden
   (`visibilitychange`) or closed (`pagehide`), and before signing out, signing
   in, or finishing PIN setup, so they are sent with the identity that made
-  them. Saves use `fetch` `keepalive` so they can finish as the page closes.
+  them; after that, Try again is withdrawn from any failed save so the next
+  person can't resend it as their own. Saves use `fetch` `keepalive` so they
+  can finish as the page closes.
+- Sending nothing during the undo time must not let the session time out: if
+  the session's ten-minute inactivity limit would pass before a queued action
+  is sent, the browser refreshes the session once when the action is queued
+  (or its countdown resumes). That refresh is the only request made early, and
+  concurrent refreshes share one request so the rotating refresh cookie is
+  never reused.
 - Validation that the browser can check (required fields, ranges, choices)
   still happens before queueing, so mistakes are shown at once. Rules only the
   server can check (stale points, insufficient points, conflicts) are reported
@@ -92,19 +102,27 @@ points" leaves the setting alone.
 - **Saved:** the toast closes, the request is sent once, and the page
   revalidates to the server's state.
 - **Refused:** an error toast (`role="alert"`) names the action and the
-  server's reason, offers **Try again** (which resends the same request,
-  including its request ID), and the page revalidates to the server's state.
-  Form entries cleared at queue time are not restored.
+  server's reason (or that the session expired), offers **Try again** (which
+  resends the same request, including its request ID), and the page
+  revalidates to the server's state. Form entries cleared at queue time are
+  not restored. A saved action stays locked as saving for at most 15 seconds
+  while the page revalidates.
 - **Settings:** grown-ups find "Undo time" in the grown-up tools; it loads the
   current value on open, saves at once, and confirms with a message. Children
   don't see it.
-- **Accessibility:** each toast's description has `role="status"`; Undo is a
-  native button reachable by keyboard and described by the toast's text; the
-  countdown is hidden from screen readers so it isn't announced every second,
-  and it pauses (showing "Paused") while the toast has keyboard focus or the
-  pointer is over it. Toasts stack inside the screen at phone widths, scroll
-  when there are many, and the page reserves space below so content behind
-  them can be scrolled into view. The progress bar respects reduced motion.
+- **Accessibility:** one `role="status"` region is always on the page and
+  announces each new toast with how long Undo is available ("… Undo is
+  available for 30 seconds."); errors use `role="alert"`. Undo and the dismiss
+  control are native buttons described by the toast's text. The countdown is
+  hidden from screen readers so it isn't announced every second, and it pauses
+  (showing "Paused") while a toast has keyboard focus or the pointer moves over
+  it — a toast that appears under a resting cursor doesn't pause itself. When
+  a focused toast closes, focus moves to the next toast, else back to where it
+  came from, else the main content. The newest toast is first in keyboard
+  order and drawn at the bottom of the stack, in view. Toasts stack inside the
+  screen at phone widths, scroll when there are many, and the page reserves
+  space below so content behind them can be scrolled into view. The progress
+  bar respects reduced motion.
 
 ## Audit and security
 

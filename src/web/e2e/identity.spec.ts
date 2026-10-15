@@ -261,7 +261,9 @@ test("a grown-up creates a child and hands over PIN setup on a phone", async ({
   await createForm.getByLabel("Surname", { exact: true }).fill("Avenant");
   await createForm.getByLabel("Nickname (optional)").fill("Harrie");
   await addButton.click();
-  await expect(page.getByText("Added Harrie as a child")).toBeVisible();
+  await expect(
+    page.locator(".toast-stack").getByText("Added Harrie as a child"),
+  ).toBeVisible();
   await saveQueuedAction(page);
   await page.getByRole("button", { name: "Set up PIN now" }).click();
   await expect(
@@ -560,7 +562,9 @@ test("a grown-up assigns a recurring schedule to one child on a phone", async ({
   await form.getByLabel("Daily job name").fill("Feed the fish");
   await form.getByRole("button", { name: "Create daily job" }).click();
   await expect(
-    page.getByText("Created daily job “Feed the fish” for Fredster"),
+    page
+      .locator(".toast-stack")
+      .getByText("Created daily job “Feed the fish” for Fredster"),
   ).toBeVisible();
   await saveQueuedAction(page);
 
@@ -654,9 +658,9 @@ test("a grown-up changes a daily schedule to weekdays for all future jobs", asyn
   await card.getByRole("button", { name: "Confirm changes" }).click();
 
   await expect(
-    page.getByText(
-      "Saved changes to “Empty school bags” (this and later jobs)",
-    ),
+    page
+      .locator(".toast-stack")
+      .getByText("Saved changes to “Empty school bags” (this and later jobs)"),
   ).toBeVisible();
   expect(appliedChange).toBeNull();
   await saveQueuedAction(page);
@@ -940,7 +944,9 @@ for (const viewport of [
     await childProfile.getByLabel("First name").fill("Frederick");
     await childProfile.getByLabel("Nickname (optional)").fill("Freddie");
     await childProfile.getByRole("button", { name: "Save profile" }).click();
-    await expect(page.getByText("Saved Freddie’s profile")).toBeVisible();
+    await expect(
+      page.locator(".toast-stack").getByText("Saved Freddie’s profile"),
+    ).toBeVisible();
 
     const editedProfile = activeList
       .getByRole("listitem")
@@ -977,7 +983,9 @@ for (const viewport of [
     await editedProfile
       .getByRole("button", { name: "Yes, deactivate" })
       .click();
-    await expect(page.getByText("Deactivated Freddie’s profile")).toBeVisible();
+    await expect(
+      page.locator(".toast-stack").getByText("Deactivated Freddie’s profile"),
+    ).toBeVisible();
     await saveQueuedAction(page);
 
     const inactiveList = page.getByRole("list", {
@@ -985,7 +993,9 @@ for (const viewport of [
     });
     await expect(inactiveList.getByText("Freddie")).toBeVisible();
     await inactiveList.getByRole("button", { name: "Restore profile" }).click();
-    await expect(page.getByText("Restored Freddie’s profile")).toBeVisible();
+    await expect(
+      page.locator(".toast-stack").getByText("Restored Freddie’s profile"),
+    ).toBeVisible();
     await saveQueuedAction(page);
     await expect(activeList.getByText("Freddie")).toBeVisible();
   });
