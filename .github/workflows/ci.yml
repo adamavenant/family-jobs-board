@@ -54,11 +54,16 @@ jobs:
   compose:
     name: Compose validation
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Validate Compose configurations
         run: ./scripts/check-compose-config.sh
+      - name: Validate observability configuration
+        run: ./scripts/check-observability-config.sh
+      - name: Test observability stack
+        run: ./scripts/test-observability-stack.sh
 
   publish:
     name: Publish ${{ matrix.image }} image
