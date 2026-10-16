@@ -3,9 +3,10 @@
 ## Status
 
 Accepted foundation contract. Issue #127 delivers the independently deployable
-storage and visualisation stack. Application instrumentation, host-capacity
-collection, final product dashboards, reverse-proxy/DNS integration, and live
-Serendipity deployment are separate increments.
+storage and visualisation stack, issue #128 adds privacy-safe application
+telemetry, and issue #129 adds bounded host/service/container health.
+Final product dashboards, reverse-proxy/DNS integration, and live Serendipity
+deployment are separate increments.
 
 ## Outcome and user value
 
@@ -48,8 +49,11 @@ a public deployment.
 
 The observability project has its own project name, configuration, backend
 network, named volumes, and containers. It does not share the application
-project's lifecycle or volumes and has no Docker socket, host filesystem,
-PostgreSQL, or privileged-container access.
+project's lifecycle or volumes and has no PostgreSQL or privileged-container
+access. Issue #129 adds narrowly scoped, read-only host mounts to Node Exporter
+and a Docker socket bind only to the private, privacy-bounded container
+exporter; neither Grafana nor the other telemetry services receive those
+mounts.
 
 The only cross-project resource is an external, internal Docker bridge named
 `family-jobs-board-telemetry`. An operator creates and validates it before
@@ -71,6 +75,29 @@ LAN ingress (later) --> Grafana --> query-only gateway --> Prometheus (read)
 Prometheus, Loki, Alloy, Blackbox Exporter, the query gateway, and direct
 Grafana ports remain unpublished. A loopback-only Grafana port exists solely
 in the automated test override and must not be used for deployment.
+
+### Serendipity and service health
+
+Issue #129 adds a separate **Server and service health** dashboard. Its
+platform-neutral workload label is the fixed Compose service name, which maps
+cleanly to a future Kubernetes workload label without changing panel meaning.
+It includes Serendipity CPU/load, memory, uptime, and root-filesystem capacity;
+web/API liveness/readiness probes; and the four Family Jobs Board runtime
+containers' presence, running/state, Docker health, restart count, OOM result,
+start/age, image tag, and immutable Docker image content ID.
+
+The container-state path is deliberately narrower than a general Docker
+exporter. One unprivileged sanitizer is the only service with a read-only
+socket bind. Its Docker client permits only container-list and container-inspect
+reads, applies exact Compose labels plus the fixed `api`, `db`, `proxy`, and
+`web` allowlist, rechecks inspected labels, and exposes only sanitized metrics
+and fail-closed health over the private backend network. No raw Docker API,
+unrelated container inventory, names, IDs, environment, commands, mounts,
+arbitrary labels, logs, host processes, host connections, or host filesystem
+contents are exposed. Collector success and last-success timestamps make stale
+container data visible. The socket remains root-equivalent despite its
+read-only bind, so compromise of the sanitizer could bypass its policy; the
+small surface and container hardening reduce but do not remove that risk.
 
 ## Application telemetry wire contract
 

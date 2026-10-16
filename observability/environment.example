@@ -6,6 +6,15 @@ GRAFANA_ADMIN_PASSWORD_FILE=/etc/family-jobs-board-observability/grafana-admin-p
 # Compose project. Both projects treat it as external, so `down` cannot remove it.
 TELEMETRY_NETWORK_NAME=family-jobs-board-telemetry
 
+# Numeric group owner of Docker's Unix socket on Serendipity. Resolve it with:
+# stat -c '%g' /var/run/docker.sock
+# Only the privacy-bounded container exporter uses this group.
+DOCKER_GID=998
+
+# Compose project label used to select the four Family Jobs Board runtime
+# services. The collector also enforces its own fixed api/db/proxy/web allowlist.
+FJB_COMPOSE_PROJECT_NAME=family-jobs-board
+
 # Required only with compose.storage-bounds.yaml. Each directory must already
 # exist and be the root of its own local, POSIX filesystem with the stated cap.
 PROMETHEUS_DATA_DIR=/srv/family-jobs-board-observability/prometheus
