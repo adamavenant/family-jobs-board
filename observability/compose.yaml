@@ -188,6 +188,7 @@ services:
     environment:
       DOCKER_API_URL: unix:///var/run/docker.sock
       FJB_COMPOSE_PROJECT_NAME: ${FJB_COMPOSE_PROJECT_NAME:-family-jobs-board}
+      OBSERVABILITY_RESOURCE_PREFIX: ${OBSERVABILITY_RESOURCE_PREFIX:-family-jobs-board-observability}
     expose:
       - "9400"
     volumes:
@@ -300,7 +301,7 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_AUTH_BASIC_ENABLED: "true"
       GF_AUTH_DISABLE_LOGIN_FORM: "false"
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/telemetry-stack-health.json
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/family-jobs-board-overview.json
       GF_EXPLORE_ENABLED: "false"
       GF_NEWS_NEWS_FEED_ENABLED: "false"
       GF_PLUGINS_PLUGIN_ADMIN_ENABLED: "false"

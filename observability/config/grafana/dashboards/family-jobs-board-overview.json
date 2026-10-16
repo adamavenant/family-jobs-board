@@ -1,0 +1,272 @@
+{
+  "annotations": { "list": [] },
+  "description": "Read-only Family Jobs Board operational overview: current health, runtime errors, noteworthy events, traffic, latency, and deployment identity.",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    { "asDropdown": false, "icon": "external link", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Server health", "tooltip": "Open Serendipity capacity and container health", "type": "link", "url": "/d/server-and-service-health/server-and-service-health" },
+    { "asDropdown": false, "icon": "external link", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Telemetry stack", "tooltip": "Open collector and storage health", "type": "link", "url": "/d/telemetry-stack-health/telemetry-stack-health" }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Current state across required telemetry, endpoint probes, and the four allowlisted runtime containers. Missing inputs are NO DATA; samples older than two minutes are STALE.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "0": { "color": "red", "text": "UNHEALTHY" }, "1": { "color": "yellow", "text": "DEGRADED" }, "2": { "color": "green", "text": "HEALTHY" }, "3": { "color": "orange", "text": "STALE" }, "4": { "color": "gray", "text": "NO DATA" } }, "type": "value" },
+            { "options": { "match": "null", "result": { "color": "gray", "text": "NO DATA" } }, "type": "special" }
+          ],
+          "noValue": "NO DATA",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 1 }, { "color": "green", "value": 2 }, { "color": "orange", "value": 3 }, { "color": "gray", "value": 4 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "(vector(0) and on() ((min(up{job=~\"family-jobs-board-service-health|family-jobs-board-containers\"}) == 0) or (min(probe_success{job=\"family-jobs-board-service-health\"}) == 0) or (min(family_jobs_board_container_running) == 0) or (family_jobs_board_container_collector_success == 0) or (max(family_jobs_board_container_oom_killed) == 1) or (min(family_jobs_board_container_health{status!=\"none\"}) == 0))) or (vector(4) and on() (((count(probe_success{job=\"family-jobs-board-service-health\"}) or vector(0)) < 3) or ((count(family_jobs_board_container_present) or vector(0)) < 4) or ((count(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"}) or vector(0)) < 1) or ((count(family_jobs_board_telemetry_storage_collector_success) or vector(0)) < 1))) or (vector(3) and on() (time() - min(timestamp(probe_success{job=\"family-jobs-board-service-health\"}) or family_jobs_board_container_collector_last_success_timestamp_seconds or timestamp(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})) > 120)) or (vector(1) and on() ((family_jobs_board_telemetry_storage_collector_success == 0) or (min(family_jobs_board_container_health{status!=\"none\"}) < 1) or (max(changes(family_jobs_board_container_restart_count[15m])) > 0))) or vector(2)", "instant": true, "legendFormat": "state", "range": false, "refId": "A" }],
+      "title": "Overall state",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Age of the oldest required probe, container-collector success, or application-telemetry sample. More than two minutes is stale, not healthy zero.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 60 }, { "color": "red", "value": 120 }] }, "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 4, "x": 6, "y": 0 },
+      "id": 2,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "time() - min(timestamp(probe_success{job=\"family-jobs-board-service-health\"}) or family_jobs_board_container_collector_last_success_timestamp_seconds or timestamp(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"}))", "instant": true, "legendFormat": "oldest sample", "range": false, "refId": "A" }],
+      "title": "Telemetry freshness",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Exact sanitized Error and Critical events since the current API process started. The trend panel below follows the selected range.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 4, "x": 10, "y": 0 },
+      "id": 3,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "(sum(family_jobs_board_application_runtime_error_count_total{service_name=\"family-jobs-board-api\"} and (timestamp(family_jobs_board_application_runtime_error_count_total{service_name=\"family-jobs-board-api\"}) >= scalar(max(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})))) or (0 * max(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"}))) and on() (time() - max(timestamp(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})) < 120)", "instant": true, "legendFormat": "runtime errors", "range": false, "refId": "A" }],
+      "title": "Runtime errors",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Exact unhandled ASP.NET Core exceptions since the current API process started. Kept separate from handled exceptions and expected HTTP failures.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 4, "x": 14, "y": 0 },
+      "id": 4,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "(sum(aspnetcore_diagnostics_exceptions_total{service_name=\"family-jobs-board-api\",aspnetcore_diagnostics_exception_result=\"unhandled\"} and (timestamp(aspnetcore_diagnostics_exceptions_total{service_name=\"family-jobs-board-api\",aspnetcore_diagnostics_exception_result=\"unhandled\"}) >= scalar(max(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})))) or (0 * max(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"}))) and on() (time() - max(timestamp(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})) < 120)", "instant": true, "legendFormat": "unhandled", "range": false, "refId": "A" }],
+      "title": "Unhandled exceptions",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Exact warnings since the current API process started. Warnings are noteworthy but never counted as runtime errors.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 3, "x": 18, "y": 0 },
+      "id": 5,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "(sum(family_jobs_board_application_warning_count_total{service_name=\"family-jobs-board-api\"} and (timestamp(family_jobs_board_application_warning_count_total{service_name=\"family-jobs-board-api\"}) >= scalar(max(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})))) or (0 * max(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"}))) and on() (time() - max(timestamp(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})) < 120)", "instant": true, "legendFormat": "warnings", "range": false, "refId": "A" }],
+      "title": "Warnings",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Exact expected authentication/authorization rejections since process start. These 401/403/429 outcomes do not count as runtime errors.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 3, "x": 21, "y": 0 },
+      "id": 6,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "(sum(family_jobs_board_authentication_rejection_count_total{service_name=\"family-jobs-board-api\"} and (timestamp(family_jobs_board_authentication_rejection_count_total{service_name=\"family-jobs-board-api\"}) >= scalar(max(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})))) or (0 * max(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"}))) and on() (time() - max(timestamp(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})) < 120)", "instant": true, "legendFormat": "rejections", "range": false, "refId": "A" }],
+      "title": "Auth rejections",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Public web, API liveness, and API readiness. A failed migration prevents readiness and therefore appears here as DOWN or NO DATA.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [{ "options": { "0": { "color": "red", "text": "DOWN" }, "1": { "color": "green", "text": "UP" } }, "type": "value" }], "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 7, "x": 0, "y": 6 },
+      "id": 7,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "probe_success{job=\"family-jobs-board-service-health\"} and on(service) (time() - timestamp(probe_success{job=\"family-jobs-board-service-health\"}) < 120)", "instant": true, "legendFormat": "{{service}}", "range": false, "refId": "A" }],
+      "title": "Service readiness",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Presence and running state for the four fixed Family Jobs Board runtime services.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [{ "options": { "0": { "color": "red", "text": "DOWN" }, "1": { "color": "green", "text": "RUNNING" } }, "type": "value" }], "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 7, "x": 7, "y": 6 },
+      "id": 8,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "family_jobs_board_container_running and on() (time() - family_jobs_board_container_collector_last_success_timestamp_seconds < 120) and on() (min(up{job=\"family-jobs-board-containers\"}) == 1)", "instant": true, "legendFormat": "{{service}}", "range": false, "refId": "A" }],
+      "title": "Running containers",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Elapsed time since the instrumented API process started.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 3, "x": 14, "y": 6 },
+      "id": 9,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "(time() - max(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})) and on() (time() - max(timestamp(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})) < 120)", "instant": true, "legendFormat": "API age", "range": false, "refId": "A" }],
+      "title": "API process age",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Exact completed HTTP requests since the current API process started. Request rate below follows the selected range.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 3, "x": 17, "y": 6 },
+      "id": 10,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "(sum(http_server_request_duration_seconds_count{service_name=\"family-jobs-board-api\"} and (timestamp(http_server_request_duration_seconds_count{service_name=\"family-jobs-board-api\"}) >= scalar(max(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})))) or (0 * max(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"}))) and on() (time() - max(timestamp(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})) < 120)", "instant": true, "legendFormat": "requests", "range": false, "refId": "A" }],
+      "title": "Requests since start",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Exact HTTP 4xx responses since the current API process started. Expected client/auth outcomes remain separate from runtime failures.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 6 },
+      "id": 20,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "(sum(http_server_request_duration_seconds_count{service_name=\"family-jobs-board-api\",http_response_status_code=~\"4..\"} and (timestamp(http_server_request_duration_seconds_count{service_name=\"family-jobs-board-api\",http_response_status_code=~\"4..\"}) >= scalar(max(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})))) or (0 * max(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"}))) and on() (time() - max(timestamp(family_jobs_board_process_start_time_seconds{service_name=\"family-jobs-board-api\"})) < 120)", "instant": true, "legendFormat": "4xx responses", "range": false, "refId": "A" }],
+      "title": "HTTP 4xx since start",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Aggregate request throughput. Health probes are included because they are real application traffic.",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "noValue": "NO DATA", "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 12 },
+      "id": 11,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [{ "editorMode": "code", "expr": "sum(rate(http_server_request_duration_seconds_count{service_name=\"family-jobs-board-api\"}[$__rate_interval]))", "legendFormat": "requests/s", "range": true, "refId": "A" }],
+      "title": "Traffic rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Request rate grouped by bounded HTTP status code. Expected 4xx/auth responses remain distinct from runtime failures.",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "noValue": "NO DATA", "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 12 },
+      "id": 12,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "editorMode": "code", "expr": "sum by (http_response_status_code) (rate(http_server_request_duration_seconds_count{service_name=\"family-jobs-board-api\"}[$__rate_interval]))", "legendFormat": "HTTP {{http_response_status_code}}", "range": true, "refId": "A" }],
+      "title": "HTTP status trends",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Server request latency from the reviewed histogram buckets.",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "noValue": "NO DATA", "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 12 },
+      "id": 13,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "histogram_quantile(0.50, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"family-jobs-board-api\"}[$__rate_interval])))", "legendFormat": "p50", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"family-jobs-board-api\"}[$__rate_interval])))", "legendFormat": "p95", "range": true, "refId": "B" }
+      ],
+      "title": "Request latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Highest-volume reviewed route templates. Raw URLs and unmatched paths are never shown.",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "noValue": "NO DATA", "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "id": 14,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "editorMode": "code", "expr": "topk(10, sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name=\"family-jobs-board-api\",http_route!=\"\"}[$__rate_interval])))", "legendFormat": "{{http_route}}", "range": true, "refId": "A" }],
+      "title": "Top stable routes",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Operational signal rates remain separate: Error/Critical events, warnings, unhandled exceptions, and expected authentication rejections.",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "noValue": "NO DATA", "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "id": 15,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "sum(rate(family_jobs_board_application_runtime_error_count_total{service_name=\"family-jobs-board-api\"}[$__rate_interval]))", "legendFormat": "runtime errors/s", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "sum(rate(family_jobs_board_application_warning_count_total{service_name=\"family-jobs-board-api\"}[$__rate_interval]))", "legendFormat": "warnings/s", "range": true, "refId": "B" },
+        { "editorMode": "code", "expr": "sum(rate(aspnetcore_diagnostics_exceptions_total{service_name=\"family-jobs-board-api\",aspnetcore_diagnostics_exception_result=\"unhandled\"}[$__rate_interval]))", "legendFormat": "unhandled/s", "range": true, "refId": "C" },
+        { "editorMode": "code", "expr": "sum(rate(family_jobs_board_authentication_rejection_count_total{service_name=\"family-jobs-board-api\"}[$__rate_interval]))", "legendFormat": "auth rejections/s", "range": true, "refId": "D" }
+      ],
+      "title": "Operational event rates",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Aggregate-only application lifecycle, unhandled-failure, and telemetry-configuration events. No raw log message, exception, request, or household content is stored.",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "noValue": "NO DATA", "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "id": 16,
+      "options": { "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "editorMode": "code", "expr": "sum by (event_name) (count_over_time({service_name=\"family-jobs-board-api\", event_name=~\"application.started|http.request.unhandled_failure|telemetry.configuration.ignored\"}[$__interval]))", "legendFormat": "{{event_name}}", "queryType": "range", "refId": "A" }],
+      "title": "Noteworthy application events",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Readiness failures, boolean collector-stale periods, container churn, and OOM results over the selected range. Current telemetry age is shown separately above. A migration/startup failure manifests as readiness down or absent.",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "noValue": "NO DATA", "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "id": 17,
+      "options": { "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "family_jobs_board_container_restart_count", "legendFormat": "{{service}} restarts", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "family_jobs_board_container_oom_killed", "legendFormat": "{{service}} OOM", "range": true, "refId": "B" },
+        { "editorMode": "code", "expr": "1 - probe_success{job=\"family-jobs-board-service-health\"}", "legendFormat": "{{service}} readiness failure", "range": true, "refId": "C" },
+        { "editorMode": "code", "expr": "(time() - family_jobs_board_container_collector_last_success_timestamp_seconds) > bool 120", "legendFormat": "collector stale", "range": true, "refId": "D" },
+        { "editorMode": "code", "expr": "1 - family_jobs_board_container_running", "legendFormat": "{{service}} not running", "range": true, "refId": "E" },
+        { "editorMode": "code", "expr": "1 - family_jobs_board_container_health{status!=\"none\"}", "legendFormat": "{{service}} Docker {{status}}", "range": true, "refId": "F" }
+      ],
+      "title": "Availability and container incidents",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Current sanitized image tag and immutable Docker content ID for each runtime service.",
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" }, "noValue": "NO DATA" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "id": 18,
+      "options": { "colorMode": "none", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "name", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "family_jobs_board_container_info", "instant": true, "legendFormat": "{{service}}: {{image_tag}} ({{image_id}})", "range": false, "refId": "A" }],
+      "title": "Current deployment",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Image series across the selected range. A change in tag or immutable content ID creates a new labelled series, making deployments visible without exposing repository names.",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 70, "lineWidth": 0 }, "noValue": "NO DATA" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "id": 19,
+      "options": { "alignValue": "left", "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "mergeValues": true, "rowHeight": 0.9, "showValue": "never", "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [{ "editorMode": "code", "expr": "family_jobs_board_container_info", "legendFormat": "{{service}}: {{image_tag}} ({{image_id}})", "range": true, "refId": "A" }],
+      "title": "Deployment changes",
+      "type": "state-timeline"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 42,
+  "tags": ["family-jobs-board", "observability", "application"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": { "refresh_intervals": ["30s", "1m", "5m"], "time_options": ["15m", "1h", "6h", "24h", "7d", "30d"] },
+  "timezone": "browser",
+  "title": "Family Jobs Board overview",
+  "uid": "family-jobs-board-overview",
+  "version": 1,
+  "weekStart": ""
+}

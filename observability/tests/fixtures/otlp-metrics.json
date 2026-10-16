@@ -462,6 +462,11 @@
                   {
                     "startTimeUnixNano": "0",
                     "timeUnixNano": "0",
+                    "asInt": "1"
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
                     "asInt": "1",
                     "attributes": [
                       {
@@ -491,10 +496,85 @@
                       {
                         "key": "event.severity",
                         "value": {
+                          "stringValue": "error"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "event.severity",
+                        "value": {
+                          "stringValue": "critical"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asInt": "1",
+                    "attributes": [
+                      {
+                        "key": "event.severity",
+                        "value": {
                           "stringValue": "PRIVATE-SEVERITY-must-not-survive"
                         }
                       }
                     ]
+                  }
+                ]
+              }
+            },
+            {
+              "name": "family_jobs_board.authentication.rejection.count",
+              "description": "Expected authentication rejection fixture",
+              "unit": "{rejection}",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "asInt": "1",
+                    "attributes": [
+                      {
+                        "key": "http.request.method",
+                        "value": {
+                          "stringValue": "POST"
+                        }
+                      },
+                      {
+                        "key": "http.route",
+                        "value": {
+                          "stringValue": "/api/auth/sign-in"
+                        }
+                      },
+                      {
+                        "key": "http.response.status_code",
+                        "value": {
+                          "intValue": "401"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "name": "family_jobs_board.process.start.time",
+              "description": "API process start fixture",
+              "unit": "s",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "0",
+                    "asInt": "1700000000"
                   }
                 ]
               }
