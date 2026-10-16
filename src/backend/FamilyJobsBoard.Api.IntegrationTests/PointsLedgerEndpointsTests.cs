@@ -393,5 +393,6 @@ public sealed class PointsLedgerEndpointsTests : IAsyncLifetime
         int Points,
         int BalanceAfter,
         DateTimeOffset AwardedAtUtc,
-        string? RecordedByDisplayName);
+        string? RecordedByDisplayName,
+        bool IsApprovalReversal);
 }

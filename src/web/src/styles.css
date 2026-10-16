@@ -1577,6 +1577,46 @@ a.hero__balance:focus-visible {
 .complete-state--approved {
   color: var(--approved-text);
 }
+.reverse-approval {
+  display: grid;
+  gap: 10px;
+}
+.job-card h3:focus-visible {
+  outline: 4px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.job-card .reverse-approval__trigger {
+  min-height: 44px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+.job-card .reverse-approval__trigger:hover {
+  background: var(--open-bg);
+}
+/* The error pair contrasts in both themes; white on the dark theme's pink doesn't. */
+.job-card .reverse-approval .button--danger {
+  color: var(--error-bg);
+  background: var(--error-text);
+}
+.job-card .reverse-approval .button--danger:hover {
+  background: color-mix(in srgb, var(--error-text) 85%, var(--text));
+}
+/* The card's generic button hover is light in the dark theme, under light text. */
+.job-card .inline-confirmation .button--quiet:hover {
+  color: var(--text);
+  background: var(--open-bg);
+}
+.earning-list__reversal {
+  justify-self: start;
+  padding: 2px 8px;
+  color: var(--error-text);
+  background: var(--error-bg);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
 .complete-state--approved span {
   background: #4e8060;
 }

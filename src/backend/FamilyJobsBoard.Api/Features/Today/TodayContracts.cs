@@ -176,3 +176,5 @@ public sealed record JobRejectionResponse(
     DateTimeOffset RejectedAtUtc);
 
 public sealed record JobApprovalResponse(JobResponse Job, int PointsBalance);
+
+public sealed record JobApprovalReversalResponse(JobResponse Job, int PointsBalance);

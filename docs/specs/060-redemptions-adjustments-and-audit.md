@@ -5,7 +5,8 @@
 Partially specified. The **manual point adjustments** section below is
 implemented by issue #83, **redemptions** by issue #82, and the **points ledger
 view** by issue #77. Issue #82 also removed negative balances and added
-attribution to the ledger. The searchable audit view is not yet specified or
+attribution to the ledger. Issue #138 added approval reversals as a third kind of
+points removal; their rules are in `030-completions-approvals-and-points.md`. The searchable audit view is not yet specified or
 implemented; it needs its own section before its issue is cut.
 
 ## Manual point adjustments
@@ -31,8 +32,9 @@ cannot make them.
   signed non-zero whole-number amount, and a required reason (trimmed, at most
   500 characters).
 - Each adjustment writes exactly one `PointsLedgerEntry` in the same
-  transaction. Adjustments and redemptions are the only ledger sources that
-  remove points; job and behaviour awards stay non-negative.
+  transaction. Adjustments, redemptions, and job approval reversals are the
+  only ledger entries that remove points; job and behaviour awards stay
+  non-negative.
 - Adjustments are append-only. There is no edit or delete. A mistake is
   corrected by recording a new, opposite adjustment; both entries remain in
   history.
@@ -42,12 +44,13 @@ cannot make them.
   current balance, and nothing is written. Issue #82 removed the earlier
   "adjust anyway" confirmation. A balance that was already negative before
   then stays as recorded, because history is never rewritten.
-- **Removals are serialized per child.** Every adjustment and redemption locks
-  the child's `household_members` row (`SELECT … FOR UPDATE`) for its
-  transaction. Under the lock it re-checks its request ID, reads the balance,
-  applies the rule above, writes, and commits. Two removals for the same child
-  can't both pass the check against the same balance. Job and behaviour awards
-  only add points and take no lock.
+- **Removals are serialized per child.** Every adjustment, redemption, and job
+  approval reversal locks the child's `household_members` row
+  (`SELECT … FOR UPDATE`) for its transaction. Under the lock it re-checks its
+  request ID (an approval reversal instead finds the award it takes back),
+  reads the balance, applies the rule above, writes, and commits. Two removals
+  for the same child can't both pass the check against the same balance. Job
+  and behaviour awards only add points and take no lock.
 
 ### Idempotency
 
@@ -248,8 +251,10 @@ this view.
 ### Rules
 
 - **Entry content.** Each entry has:
-  - the name: the job name, the behaviour type name as it was logged, the
-    adjustment reason, or the redeemed reward;
+  - the name: the job name as it was when the entry was written, the behaviour
+    type name as it was logged, the adjustment reason, or the redeemed reward.
+    An approval reversal carries the same job name as the award it takes back
+    and is marked as a reversal;
   - the award date and time;
   - the signed points;
   - the child's balance after the entry;
@@ -258,8 +263,10 @@ this view.
     after that adult is deactivated;
   - the child's name, in the adult all-children view only.
 
-  Descriptions and source labels are not shown. Job awards don't show who
-  approved them yet, because approvals don't record the deciding adult. Issue
+  Descriptions and source labels are not shown, except that an approval
+  reversal is labelled **Approval reversed**. The award it takes back stays
+  listed, unchanged. Job awards and their reversals don't show who decided
+  them yet, because review decisions don't record the deciding adult. Issue
   #122 tracks that. Issue #82 reversed the earlier choice to leave out the
   attributing adult: seeing who gave or spent points is useful transparency in
   a household, and matches the product brief's "approving parent".
@@ -292,7 +299,8 @@ member, returns `200` with:
   selectedChildId: uuid | null,
   children: [{ id, displayName, isActive, balance }],
   entries: [{ id, childId, childDisplayName, name, points,
-              balanceAfter, awardedAtUtc, recordedByDisplayName }],
+              balanceAfter, awardedAtUtc, recordedByDisplayName,
+              isApprovalReversal }],
   nextCursor: string | null
 }
 ```
@@ -305,7 +313,9 @@ member, returns `200` with:
   returns a `400` validation problem.
 - **Anyone:** a malformed cursor returns `400`.
 - `recordedByDisplayName` is the recording adult's display name, or `null`
-  for job awards (see #122).
+  for job awards and their reversals (see #122).
+- `isApprovalReversal` is `true` only for the negative entry that takes back a
+  job's award when its approval is reversed (issue #138).
 
 `GET /api/today` keeps `pointsBalance` for children and no longer returns
 `pointEarnings`.
