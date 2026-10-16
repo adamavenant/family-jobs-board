@@ -145,7 +145,8 @@ drops both tables.
   a "first turn" picker restricted to the selected children, an effective
   date input (its minimum enforced client-side and re-validated
   server-side), an optional question field, and — once configured — a
-  14-day upcoming-turns preview.
+  14-day upcoming-turns preview. Starting, changing, and ending a rotation
+  wait behind the undo toast (`100-undo-and-household-settings.md`).
 
 ## Audit and security
 

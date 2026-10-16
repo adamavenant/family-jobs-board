@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { useFetcher, useNavigate } from "react-router";
 
 import type { TodayActionResult } from "../../app/routes";
-import { useSuccessToast } from "../../app/SuccessToast";
 import type { HouseholdMember } from "../../api/today";
 import { ChildAssignmentPicker } from "./ChildAssignmentPicker";
 
@@ -19,15 +18,15 @@ export function AddJobForm({
 }) {
   const fetcher = useFetcher<TodayActionResult>();
   const navigate = useNavigate();
-  const { showSuccess } = useSuccessToast();
   const formRef = useRef<HTMLFormElement>(null);
   const result = fetcher.data?.intent === "add" ? fetcher.data : undefined;
   const isSubmitting = fetcher.state !== "idle";
 
+  // Once queued, the form is ready for the next job and the agenda shows the
+  // day the job will appear on.
   useEffect(() => {
-    if (fetcher.state === "idle" && result?.success) {
+    if (fetcher.state === "idle" && result?.queued) {
       formRef.current?.reset();
-      showSuccess(`Job scheduled for ${result.scheduledDate}.`);
       if (result.scheduledDate && result.scheduledDate !== selectedDate) {
         const search = new URLSearchParams({ date: result.scheduledDate });
         if (selectedChildId) {
@@ -36,15 +35,7 @@ export function AddJobForm({
         void navigate(`/?${search.toString()}`);
       }
     }
-  }, [
-    fetcher.state,
-    navigate,
-    result?.scheduledDate,
-    result?.success,
-    selectedChildId,
-    selectedDate,
-    showSuccess,
-  ]);
+  }, [fetcher.state, navigate, result, selectedChildId, selectedDate]);
 
   const defaultDate = selectedDate < currentDate ? currentDate : selectedDate;
 

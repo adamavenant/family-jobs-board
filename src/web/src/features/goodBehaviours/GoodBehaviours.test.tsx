@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { acceptSession, clearIdentity } from "../../api/auth";
 import { routes } from "../../app/routes";
+import { expectAnnounced, saveQueuedAction } from "../../test/undo";
 
 const addie = member("22eb0cc1-058e-4b2e-bb18-d7aaad564a6c", "Addie", true);
 const fredster = member(
@@ -72,9 +73,12 @@ describe("Good behaviours", () => {
     );
 
     expect(
-      await screen.findByText("Logged Being Helpful for Harrie: +8 points."),
-    ).toHaveAttribute("role", "status");
-    expect(api.logRequests).toHaveLength(1);
+      await screen.findByText("Logged “Being Helpful” for Harrie: +8 points"),
+    ).toBeInTheDocument();
+    expectAnnounced("Logged “Being Helpful” for Harrie: +8 points");
+    expect(api.logRequests).toHaveLength(0);
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.logRequests).toHaveLength(1));
     expect(api.logRequests[0]).toEqual({
       requestId: expect.any(String),
       typeId: helpful.id,
@@ -106,10 +110,11 @@ describe("Good behaviours", () => {
 
     expect(
       await screen.findByText(
-        "Logged Being Brave for Fredster and Harrie: +10 points each.",
+        "Logged “Being Brave” for Fredster and Harrie: +10 points each",
       ),
     ).toBeInTheDocument();
-    expect(api.logRequests).toHaveLength(1);
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.logRequests).toHaveLength(1));
     expect(api.logRequests[0]?.childIds).toEqual([fredster.id, harrie.id]);
   });
 
@@ -134,7 +139,7 @@ describe("Good behaviours", () => {
     expect(api.logRequests).toHaveLength(0);
   });
 
-  it("reuses the request ID after a failure and uses a new one after success", async () => {
+  it("tries a failed log again with the same request ID and uses a new one for the next log", async () => {
     const api = fakeApi(adultBoard, [brave]);
     api.failNextLog = true;
     const user = userEvent.setup();
@@ -148,12 +153,16 @@ describe("Good behaviours", () => {
     const submit = within(form).getByRole("button", { name: "Log behaviour" });
 
     await user.click(submit);
-    expect(await within(form).findByRole("alert")).toBeInTheDocument();
+    await saveQueuedAction(user);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Not saved: Logged “Being Brave” for Fredster: +10 points. The log could not be saved.",
+    );
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(api.logRequests).toHaveLength(2));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     await user.click(submit);
-    await screen.findByText("Logged Being Brave for Fredster: +10 points.");
-    await vi.waitFor(() => expect(submit).toBeEnabled());
-    await user.click(submit);
-    await vi.waitFor(() => expect(api.logRequests).toHaveLength(3));
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.logRequests).toHaveLength(3));
 
     const [failed, retried, next] = api.logRequests;
     expect(retried?.requestId).toBe(failed?.requestId);
@@ -177,9 +186,18 @@ describe("Good behaviours", () => {
       within(create).getByRole("button", { name: "Add good behaviour" }),
     );
 
-    expect(await screen.findByText("Added Sharing.")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Added good behaviour “Sharing”: usually 3 points",
+      ),
+    ).toBeInTheDocument();
     const list = screen.getByRole("list", { name: "Good behaviours" });
-    expect(within(list).getByText("Sharing")).toBeInTheDocument();
+    expect(within(list).getByText("Being added")).toBeInTheDocument();
+    expect(api.types).toHaveLength(1);
+    await saveQueuedAction(user);
+    expect(
+      await within(list).findByRole("button", { name: "Delete Sharing" }),
+    ).toBeInTheDocument();
     expect(api.types.map((type) => type.name)).toEqual([
       "Being Brave",
       "Sharing",
@@ -192,7 +210,18 @@ describe("Good behaviours", () => {
     await user.clear(editName as HTMLElement);
     await user.type(editName as HTMLElement, "Sharing toys");
     await user.click(screen.getByRole("button", { name: "Save Sharing" }));
-    expect(await screen.findByText("Saved Sharing toys.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Saved good behaviour “Sharing toys”"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Delete Sharing toys" }),
+    ).toBeDisabled();
+    await saveQueuedAction(user);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Delete Sharing toys" }),
+      ).toBeEnabled(),
+    );
 
     await user.click(
       screen.getByRole("button", { name: "Delete Sharing toys" }),
@@ -203,10 +232,15 @@ describe("Good behaviours", () => {
     await user.click(screen.getByRole("button", { name: "Yes, delete" }));
     expect(
       await screen.findByText(
-        "Good behaviour deleted. Past points are unchanged.",
+        "Deleted good behaviour “Sharing toys”. Past points are unchanged",
       ),
     ).toBeInTheDocument();
-    expect(api.types.map((type) => type.name)).toEqual(["Being Brave"]);
+    expect(screen.queryByText("Sharing toys")).not.toBeInTheDocument();
+    expect(api.types).toHaveLength(2);
+    await saveQueuedAction(user);
+    await waitFor(() =>
+      expect(api.types.map((type) => type.name)).toEqual(["Being Brave"]),
+    );
   });
 
   it("shows children the available behaviours read-only", async () => {

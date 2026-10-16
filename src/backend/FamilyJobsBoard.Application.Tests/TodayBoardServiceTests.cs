@@ -1,4 +1,5 @@
 using FamilyJobsBoard.Application.Clock;
+using FamilyJobsBoard.Application.Settings;
 using FamilyJobsBoard.Application.Today;
 using FamilyJobsBoard.Application.TurnRotations;
 using FamilyJobsBoard.Domain.Households;
@@ -579,7 +580,8 @@ public sealed class TodayBoardServiceTests
         return new TodayBoardService(
             repository,
             householdClock,
-            new TurnRotationService(new EmptyTurnRotationRepository(), householdClock));
+            new TurnRotationService(new EmptyTurnRotationRepository(), householdClock),
+            new HouseholdSettingsService(new InMemoryHouseholdSettingsRepository(), householdClock));
     }
 
     [Fact]

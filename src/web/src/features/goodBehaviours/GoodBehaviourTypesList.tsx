@@ -1,9 +1,9 @@
 import { useFetcher } from "react-router";
 
-import type { GoodBehavioursActionResult } from "./goodBehavioursRoute";
+import type { GoodBehavioursLoaderData } from "./goodBehavioursRoute";
 
 export function GoodBehaviourTypesList() {
-  const fetcher = useFetcher<GoodBehavioursActionResult>();
+  const fetcher = useFetcher<GoodBehavioursLoaderData>();
   const types = fetcher.data?.types ?? [];
 
   return (

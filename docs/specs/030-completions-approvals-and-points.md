@@ -87,7 +87,10 @@ child and points award; confirming still completes, approves, and awards in one
 server operation, while keeping the job open makes no request. Initial focus
 lands on the safe Keep open action, and the prompt closes if revalidation
 changes the job's status or points.
-Rejection feedback remains in the form if submission fails. Children see
+Completing, approving, and rejecting wait behind the undo toast described in
+`100-undo-and-household-settings.md`: the job shows its new state at once and
+is saved when the toast expires. A refusal after the undo time is reported in
+an error toast and the job shows the server's state. Children see
 pending, rejected-for-retry, and approved states, plus their balance, which
 opens their newest-first points ledger. Loading, empty, submitting, success,
 and error states are covered.

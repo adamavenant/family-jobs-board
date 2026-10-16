@@ -668,7 +668,7 @@
           "Today"
         ],
         "summary": "Get the authenticated family member's daily board.",
-        "description": "Returns the child-owned or adult household view for the optional household-local date and adult-only child filter.",
+        "description": "Returns the child-owned or adult household view for the optional household-local date and adult-only child filter. undoGracePeriodSeconds is the household's undo time, so every device delays saving actions by the same amount.",
         "operationId": "GetToday",
         "parameters": [
           {
@@ -2228,6 +2228,87 @@
           }
         ]
       }
+    },
+    "/api/household-settings": {
+      "get": {
+        "tags": [
+          "Household settings"
+        ],
+        "summary": "Get the household's shared settings.",
+        "description": "Any signed-in family member may read the settings every device in the household uses. undoGracePeriodSeconds is how long an action waits with an Undo toast before it is saved; a household that has never changed it uses 30 seconds.",
+        "operationId": "GetHouseholdSettings",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HouseholdSettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Household settings"
+        ],
+        "summary": "Change the household's shared settings.",
+        "description": "Adult-only; children receive 403. undoGracePeriodSeconds must be whole seconds from 5 to 120, otherwise 400 with validation errors. The change applies to later actions on every device.",
+        "operationId": "UpdateHouseholdSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateHouseholdSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HouseholdSettingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2978,6 +3059,40 @@
             "items": {
               "$ref": "#/components/schemas/GoodBehaviourTypeResponse"
             }
+          }
+        }
+      },
+      "HouseholdSettingsResponse": {
+        "required": [
+          "undoGracePeriodSeconds",
+          "minimumUndoGracePeriodSeconds",
+          "maximumUndoGracePeriodSeconds"
+        ],
+        "type": "object",
+        "properties": {
+          "undoGracePeriodSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "minimumUndoGracePeriodSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "maximumUndoGracePeriodSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -4264,7 +4379,8 @@
           "jobs",
           "pointsBalance",
           "pendingApprovalCount",
-          "whoseTurns"
+          "whoseTurns",
+          "undoGracePeriodSeconds"
         ],
         "type": "object",
         "properties": {
@@ -4320,6 +4436,14 @@
             "items": {
               "$ref": "#/components/schemas/WhoseTurnResponse"
             }
+          },
+          "undoGracePeriodSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -4464,6 +4588,23 @@
           }
         }
       },
+      "UpdateHouseholdSettingsRequest": {
+        "required": [
+          "undoGracePeriodSeconds"
+        ],
+        "type": "object",
+        "properties": {
+          "undoGracePeriodSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "UpdateJobRequest": {
         "required": [
           "name",
@@ -4582,6 +4723,9 @@
     },
     {
       "name": "Whose turn"
+    },
+    {
+      "name": "Household settings"
     }
   ]
 }

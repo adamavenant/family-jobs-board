@@ -94,8 +94,10 @@ The reset audit row does not yet count them.
 ### UI
 
 - Adults get an "Adjust points" tool: child, add or remove, number of points,
-  and reason. Removing more points than the child has shows the server's
-  message with the current balance, and nothing is recorded.
+  and reason. The adjustment waits behind the undo toast
+  (`100-undo-and-household-settings.md`). Removing more points than the child
+  has shows the server's message with the current balance in an error toast,
+  and nothing is recorded.
 - Children see adjustments in their points ledger with a signed amount, the
   reason, the time, and who made them.
 
@@ -197,10 +199,12 @@ audit row doesn't count them.
   points", with fields for the child, the number of points, and the reward.
   Opening the panel loads each active child's current balance. The chosen
   child's balance is shown and caps the points field.
-- A successful redemption shows a confirmation with the new balance and resets
-  the form. A retry after an error reuses the request ID. Asking for more
-  points than the child has shows the server's message with the current
-  balance.
+- A valid redemption waits behind the undo toast
+  (`100-undo-and-household-settings.md`), which names the child, points, and
+  reward; the form resets and the balance shown already counts it. If the
+  server refuses it, the error toast's Try again resends the same request ID.
+  Asking for more points than the child has shows the server's message with
+  the current balance.
 - Children see redemptions in their points ledger with a negative amount, the
   reward, the time, and who redeemed them. Children cannot redeem.
 

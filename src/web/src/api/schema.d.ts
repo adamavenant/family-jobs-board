@@ -222,7 +222,7 @@ export interface paths {
         };
         /**
          * Get the authenticated family member's daily board.
-         * @description Returns the child-owned or adult household view for the optional household-local date and adult-only child filter.
+         * @description Returns the child-owned or adult household view for the optional household-local date and adult-only child filter. undoGracePeriodSeconds is the household's undo time, so every device delays saving actions by the same amount.
          */
         get: operations["GetToday"];
         put?: never;
@@ -649,6 +649,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/household-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the household's shared settings.
+         * @description Any signed-in family member may read the settings every device in the household uses. undoGracePeriodSeconds is how long an action waits with an Undo toast before it is saved; a household that has never changed it uses 30 seconds.
+         */
+        get: operations["GetHouseholdSettings"];
+        /**
+         * Change the household's shared settings.
+         * @description Adult-only; children receive 403. undoGracePeriodSeconds must be whole seconds from 5 to 120, otherwise 400 with validation errors. The change applies to later actions on every device.
+         */
+        put: operations["UpdateHouseholdSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -825,6 +849,14 @@ export interface components {
         };
         GoodBehaviourTypesResponse: {
             types: components["schemas"]["GoodBehaviourTypeResponse"][];
+        };
+        HouseholdSettingsResponse: {
+            /** Format: int32 */
+            undoGracePeriodSeconds: number | string;
+            /** Format: int32 */
+            minimumUndoGracePeriodSeconds: number | string;
+            /** Format: int32 */
+            maximumUndoGracePeriodSeconds: number | string;
         };
         HttpValidationProblemDetails: {
             type?: null | string;
@@ -1150,6 +1182,8 @@ export interface components {
             /** Format: int32 */
             pendingApprovalCount: number | string;
             whoseTurns: components["schemas"]["WhoseTurnResponse"][];
+            /** Format: int32 */
+            undoGracePeriodSeconds: number | string;
         };
         TurnRotationConfigurationResponse: {
             /** Format: uuid */
@@ -1186,6 +1220,10 @@ export interface components {
             firstName: null | string;
             surname: null | string;
             nickname: null | string;
+        };
+        UpdateHouseholdSettingsRequest: {
+            /** Format: int32 */
+            undoGracePeriodSeconds: null | number | string;
         };
         UpdateJobRequest: {
             name: null | string;
@@ -2792,6 +2830,80 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProblemDetails"];
                 };
+            };
+        };
+    };
+    GetHouseholdSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HouseholdSettingsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    UpdateHouseholdSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateHouseholdSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HouseholdSettingsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

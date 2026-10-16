@@ -3,10 +3,12 @@ import { useFetcher } from "react-router";
 
 import type { HouseholdMember } from "../../api/today";
 import type { TurnRotationSummary } from "../../api/turnRotation";
-import { useSuccessToast } from "../../app/SuccessToast";
-import type { WhoseTurnActionResult } from "./whoseTurnRoute";
-
-type WhoseTurnFetcher = ReturnType<typeof useFetcher<WhoseTurnActionResult>>;
+import { formText } from "../../app/actionDescriptions";
+import { useUndoQueue } from "../../app/undoQueue";
+import type {
+  WhoseTurnActionResult,
+  WhoseTurnLoaderData,
+} from "./whoseTurnRoute";
 
 export function WhoseTurnPanel({
   children,
@@ -15,17 +17,28 @@ export function WhoseTurnPanel({
   children: HouseholdMember[];
   currentDate: string;
 }) {
-  const fetcher = useFetcher<WhoseTurnActionResult>();
-  const { showSuccess } = useSuccessToast();
+  const fetcher = useFetcher<WhoseTurnLoaderData>();
+  const { actions } = useUndoQueue();
+  const [newFormKey, setNewFormKey] = useState(0);
   const overview = fetcher.data?.overview;
   const hasLoaded = overview !== undefined;
-  const message = fetcher.data?.error ? undefined : fetcher.data?.message;
-
-  useEffect(() => {
-    if (fetcher.state === "idle" && message) {
-      showSuccess(message);
-    }
-  }, [fetcher.state, message, showSuccess]);
+  const rotationActions = actions.filter(
+    (action) =>
+      action.formData.get("participantChildIds") !== null ||
+      action.formData.get("intent") === "end",
+  );
+  const queuedFor = (rotationId: string) =>
+    rotationActions.find(
+      (action) => action.formData.get("rotationId") === rotationId,
+    )?.formData;
+  const rotations = (overview?.rotations ?? []).filter(
+    (rotation) => queuedFor(rotation.rotationId)?.get("intent") !== "end",
+  );
+  const adding = rotationActions.filter(
+    (action) =>
+      action.formData.get("intent") === "save" &&
+      !formText(action.formData, "rotationId"),
+  );
 
   return (
     <details
@@ -74,31 +87,42 @@ export function WhoseTurnPanel({
           <p role="status">Loading…</p>
         ) : (
           <>
-            {overview.rotations.length === 0 ? (
+            {rotations.length === 0 && adding.length === 0 ? (
               <p className="inactive-family-members__empty">
                 No rotations yet. Add the first one below.
               </p>
             ) : (
               <ul className="whose-turn-rotations" aria-label="Rotations">
-                {overview.rotations.map((rotation) => (
+                {rotations.map((rotation) => (
                   <RotationItem
                     key={rotation.rotationId}
                     rotation={rotation}
-                    fetcher={fetcher}
+                    queued={queuedFor(rotation.rotationId) !== undefined}
                     children={children}
                     currentDate={currentDate}
                   />
+                ))}
+                {adding.map((action) => (
+                  <li key={action.id} className="whose-turn--queued">
+                    <div className="family-member-list__identity">
+                      <strong>
+                        {formText(action.formData, "question").trim() ||
+                          "Who is Pink today?"}
+                      </strong>
+                      <span>Being added</span>
+                    </div>
+                  </li>
                 ))}
               </ul>
             )}
             <section aria-labelledby="whose-turn-add-heading">
               <h3 id="whose-turn-add-heading">Add a rotation</h3>
               <WhoseTurnForm
-                key={overview.rotations.length}
-                fetcher={fetcher}
+                key={newFormKey}
                 children={children}
                 currentDate={currentDate}
                 rotation={null}
+                onQueued={() => setNewFormKey((key) => key + 1)}
               />
             </section>
           </>
@@ -110,29 +134,30 @@ export function WhoseTurnPanel({
 
 function RotationItem({
   rotation,
-  fetcher,
+  queued,
   children,
   currentDate,
 }: {
   rotation: TurnRotationSummary;
-  fetcher: WhoseTurnFetcher;
+  queued: boolean;
   children: HouseholdMember[];
   currentDate: string;
 }) {
+  const fetcher = useFetcher<WhoseTurnActionResult>();
   const [confirmingEnd, setConfirmingEnd] = useState(false);
   const title = rotation.current?.question ?? "Scheduled rotation";
-  const submitting = fetcher.state !== "idle";
+  // A queued change can still be undone; until it is saved the rotation is locked.
+  const submitting = fetcher.state !== "idle" || queued;
   const endError =
-    fetcher.data?.intent === "end" &&
-    fetcher.data.rotationId === rotation.rotationId
-      ? fetcher.data.error
-      : undefined;
+    fetcher.data?.intent === "end" ? fetcher.data.error : undefined;
 
   return (
     <li>
       <div className="family-member-list__identity">
         <strong>{title}</strong>
-        {rotation.upcomingTurns[0] ? (
+        {queued ? (
+          <span>Changes being saved</span>
+        ) : rotation.upcomingTurns[0] ? (
           <span>Today: {rotation.upcomingTurns[0].childDisplayName}</span>
         ) : (
           <span>Not started yet</span>
@@ -141,10 +166,10 @@ function RotationItem({
       <details className="family-member-edit">
         <summary>Edit {title}</summary>
         <WhoseTurnForm
-          fetcher={fetcher}
           children={children}
           currentDate={currentDate}
           rotation={rotation}
+          locked={queued}
         />
       </details>
       {confirmingEnd ? (
@@ -170,6 +195,7 @@ function RotationItem({
                 name="rotationId"
                 value={rotation.rotationId}
               />
+              <input type="hidden" name="rotationTitle" value={title} />
               <button
                 type="submit"
                 className="button--danger"
@@ -193,6 +219,7 @@ function RotationItem({
           type="button"
           className="button--quiet"
           onClick={() => setConfirmingEnd(true)}
+          disabled={queued}
         >
           End {title}
         </button>
@@ -202,16 +229,19 @@ function RotationItem({
 }
 
 function WhoseTurnForm({
-  fetcher,
   children,
   currentDate,
   rotation,
+  locked = false,
+  onQueued,
 }: {
-  fetcher: WhoseTurnFetcher;
   children: HouseholdMember[];
   currentDate: string;
   rotation: TurnRotationSummary | null;
+  locked?: boolean;
+  onQueued?: () => void;
 }) {
+  const fetcher = useFetcher<WhoseTurnActionResult>();
   const current = rotation?.current ?? null;
   const upcomingTurns = rotation?.upcomingTurns ?? [];
   const idPrefix = `whose-turn-${rotation?.rotationId ?? "new"}`;
@@ -230,12 +260,15 @@ function WhoseTurnForm({
     ? addDaysIso(currentDate, 1)
     : currentDate;
   const [effectiveFrom, setEffectiveFrom] = useState(minimumEffectiveFrom);
-  const submitting = fetcher.state !== "idle";
-  const result =
-    fetcher.data?.intent === "save" &&
-    (fetcher.data.rotationId ?? "") === (rotation?.rotationId ?? "")
-      ? fetcher.data
-      : undefined;
+  const submitting = fetcher.state !== "idle" || locked;
+  const result = fetcher.data?.intent === "save" ? fetcher.data : undefined;
+
+  // A new rotation's form starts again once its rotation is queued.
+  useEffect(() => {
+    if (fetcher.state === "idle" && result?.queued) {
+      onQueued?.();
+    }
+  }, [fetcher.state, onQueued, result]);
 
   function toggleChild(id: string) {
     setOrder((previous) => {
@@ -280,6 +313,11 @@ function WhoseTurnForm({
           type="hidden"
           name="rotationId"
           value={rotation?.rotationId ?? ""}
+        />
+        <input
+          type="hidden"
+          name="rotationTitle"
+          value={current?.question ?? ""}
         />
         <fieldset className="assignee-picker">
           <legend>Participants</legend>

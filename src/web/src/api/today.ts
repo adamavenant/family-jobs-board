@@ -97,6 +97,7 @@ export interface TodayBoard {
   pointsBalance: number | null;
   pendingApprovalCount: number;
   whoseTurns: WhoseTurn[];
+  undoGracePeriodSeconds: number;
 }
 
 export interface WhoseTurn {
@@ -171,6 +172,7 @@ export async function getToday(
       data.pointsBalance === null ? null : Number(data.pointsBalance),
     pendingApprovalCount: Number(data.pendingApprovalCount),
     whoseTurns: data.whoseTurns ?? [],
+    undoGracePeriodSeconds: Number(data.undoGracePeriodSeconds),
   };
 }
 
