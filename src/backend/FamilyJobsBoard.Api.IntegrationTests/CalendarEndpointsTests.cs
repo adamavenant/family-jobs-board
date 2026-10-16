@@ -415,5 +415,6 @@ public sealed class CalendarEndpointsTests : IAsyncLifetime
         DateOnly RangeStart,
         DateOnly RangeEnd,
         Guid? SelectedChildId,
+        int PendingApprovalCount,
         IReadOnlyList<CalendarDayResponse> Days);
 }

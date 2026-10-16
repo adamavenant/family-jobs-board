@@ -1,5 +1,6 @@
 using FamilyJobsBoard.Api.Composition;
 using FamilyJobsBoard.Api.Features.Administration;
+using FamilyJobsBoard.Api.Features.Approvals;
 using FamilyJobsBoard.Api.Features.Health;
 using FamilyJobsBoard.Api.Features.Calendar;
 using FamilyJobsBoard.Api.Features.Identity;
@@ -55,6 +56,7 @@ app.MapPointAdjustmentEndpoints();
 app.MapPointRedemptionEndpoints();
 app.MapPointsLedgerEndpoints();
 app.MapCalendarEndpoints();
+app.MapApprovalEndpoints();
 app.MapTurnRotationEndpoints();
 
 app.Run();

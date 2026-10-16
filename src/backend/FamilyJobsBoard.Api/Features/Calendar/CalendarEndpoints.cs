@@ -82,6 +82,7 @@ internal static class CalendarEndpoints
             board.RangeStart,
             board.RangeEnd,
             board.SelectedChildId,
+            board.PendingApprovalCount,
             board.Days
                 .Select(day => new CalendarDayResponse(
                     day.Date,

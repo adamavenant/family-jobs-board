@@ -11,6 +11,7 @@ public sealed record CalendarResponse(
     DateOnly RangeStart,
     DateOnly RangeEnd,
     Guid? SelectedChildId,
+    int PendingApprovalCount,
     IReadOnlyList<CalendarDayResponse> Days);
 
 public sealed record CalendarDayResponse(

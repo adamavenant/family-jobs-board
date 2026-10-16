@@ -601,6 +601,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/approvals/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every job awaiting an adult's review.
+         * @description Adult-only. Returns pending-approval jobs for every active child across all scheduled dates, oldest scheduled date first and in agenda order within a date. Decisions use the existing approve and reject operations.
+         */
+        get: operations["GetPendingApprovals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/turn-rotations": {
         parameters: {
             query?: never;
@@ -718,6 +738,8 @@ export interface components {
             rangeEnd: string;
             /** Format: uuid */
             selectedChildId: null | string;
+            /** Format: int32 */
+            pendingApprovalCount: number | string;
             days: components["schemas"]["CalendarDayResponse"][];
         };
         CancelJobRequest: {
@@ -894,6 +916,9 @@ export interface components {
             nickname: null | string;
             displayName: string;
             isAdult: boolean;
+        };
+        PendingApprovalsResponse: {
+            jobs: components["schemas"]["JobResponse"][];
         };
         PinSetupResponse: {
             setupToken: string;
@@ -2654,6 +2679,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    GetPendingApprovals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingApprovalsResponse"];
                 };
             };
         };
