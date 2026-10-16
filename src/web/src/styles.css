@@ -874,6 +874,31 @@ a.hero__balance:focus-visible {
 .form-group textarea {
   resize: vertical;
 }
+.optional-date {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.optional-date input {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+.optional-date .optional-date__clear {
+  flex: none;
+  width: auto;
+  min-height: 44px;
+  padding: 10px 14px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.optional-date .optional-date__clear:hover {
+  background: var(--input);
+}
 .add-job__form button {
   min-height: 46px;
   padding: 11px 18px;
