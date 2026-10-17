@@ -320,7 +320,14 @@ public sealed class TurnRotationService
         }
 
         var taken = applicable.TakeTurn(
-            Guid.NewGuid(), request.RequestId, today, turnNumber, childId, takenTurns, actor.Id, _clock.UtcNow);
+            Guid.NewGuid(),
+            request.RequestId,
+            today,
+            turnNumber,
+            childId,
+            takenTurns,
+            actor.Id,
+            ToStoredPrecision(_clock.UtcNow));
         await _repository.AddTakenTurnAsync(taken, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
         await rotationLock.CommitAsync(cancellationToken);
@@ -402,6 +409,13 @@ public sealed class TurnRotationService
             cancellationToken);
         return MapTakenTurn(replayed, names);
     }
+
+    /// <summary>
+    /// Drops sub-microsecond ticks, which PostgreSQL does not keep, so the answer to a tick
+    /// matches what a replay of the same request later reads back.
+    /// </summary>
+    private static DateTimeOffset ToStoredPrecision(DateTimeOffset value) =>
+        value.AddTicks(-(value.Ticks % TimeSpan.TicksPerMicrosecond));
 
     private async Task EnsureAdultAsync(Guid actorMemberId, CancellationToken cancellationToken)
     {

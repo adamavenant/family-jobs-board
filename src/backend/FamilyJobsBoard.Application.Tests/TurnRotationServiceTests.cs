@@ -580,6 +580,22 @@ public sealed class TurnRotationServiceTests
     }
 
     [Fact]
+    public async Task A_tick_is_recorded_at_the_precision_the_database_keeps()
+    {
+        var repository = new FakeRepository();
+        repository.AddTicked(Pink, Today, [ChildA, ChildB], ChildA);
+        var clock = new FineGrainedClock();
+        var service = CreateService(repository, clock);
+
+        var taken = await TakeAsync(service, ChildA.Id, Pink, ChildA);
+
+        var expected = clock.UtcNow.AddTicks(-(clock.UtcNow.Ticks % TimeSpan.TicksPerMicrosecond));
+        Assert.NotEqual(clock.UtcNow, expected);
+        Assert.Equal(expected, taken.RecordedAtUtc);
+        Assert.Equal(expected, Assert.Single(repository.TakenTurns).RecordedAtUtc);
+    }
+
+    [Fact]
     public async Task A_replayed_request_returns_the_original_tick_without_ticking_again()
     {
         var repository = new FakeRepository();
@@ -657,14 +673,20 @@ public sealed class TurnRotationServiceTests
         await service.TakeTurnAsync(
             actorMemberId, rotationId, await ShownTurnAsync(service, rotationId, child), CancellationToken.None);
 
-    private static TurnRotationService CreateService(FakeRepository repository) =>
-        new(repository, new FixedClock());
+    private static TurnRotationService CreateService(FakeRepository repository, IHouseholdClock? clock = null) =>
+        new(repository, clock ?? new FixedClock());
 
-    private sealed class FixedClock : IHouseholdClock
+    private class FixedClock : IHouseholdClock
     {
         public DateOnly Today => TurnRotationServiceTests.Today;
 
-        public DateTimeOffset UtcNow => new(2026, 9, 21, 8, 0, 0, TimeSpan.Zero);
+        public virtual DateTimeOffset UtcNow => new(2026, 9, 21, 8, 0, 0, TimeSpan.Zero);
+    }
+
+    /// <summary>A clock with sub-microsecond ticks, as on Linux, which PostgreSQL cannot store.</summary>
+    private sealed class FineGrainedClock : FixedClock
+    {
+        public override DateTimeOffset UtcNow => base.UtcNow.AddTicks(1_234_567);
     }
 
     private sealed class FakeRepository : ITurnRotationRepository
