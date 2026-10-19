@@ -14,8 +14,10 @@ test("an adult runs several whose-turn rotations side by side", async ({
     question: string;
     order: string[];
     first: string;
+    ended?: boolean;
   }
   const saved: Saved[] = [];
+  let signedIn = false;
   const names: Record<string, string> = { [albaId]: "Alba", [benId]: "Ben" };
 
   await page.route("**/api/**", async (route) => {
@@ -26,7 +28,9 @@ test("an adult runs several whose-turn rotations side by side", async ({
     }
 
     if (path === "/api/auth/refresh") {
-      return problem(route, 401);
+      return signedIn
+        ? json(route, auth(addieId, "Addie", "adult"))
+        : problem(route, 401);
     }
     if (path === "/api/auth/start") {
       return json(route, {
@@ -35,6 +39,7 @@ test("an adult runs several whose-turn rotations side by side", async ({
       });
     }
     if (path === "/api/auth/sign-in") {
+      signedIn = true;
       return json(route, auth(addieId, "Addie", "adult"));
     }
     if (path === "/api/turn-rotations" && request.method() === "GET") {
@@ -48,6 +53,17 @@ test("an adult runs several whose-turn rotations side by side", async ({
         order: body.participantChildIds,
         first: body.firstChildId,
       });
+      return json(route, overview());
+    }
+    if (
+      path.startsWith("/api/turn-rotations/") &&
+      request.method() === "DELETE"
+    ) {
+      const rotation = saved.find(
+        (item) => item.rotationId === path.split("/")[3],
+      );
+      if (!rotation) return problem(route, 404);
+      rotation.ended = true;
       return json(route, overview());
     }
     if (path === "/api/today") {
@@ -113,6 +129,38 @@ test("an adult runs several whose-turn rotations side by side", async ({
     "Alba",
   );
 
+  await page.goto("/");
+  await page.getByText("Manage rotations").click();
+  await page
+    .getByRole("button", { name: "End Who is Pink today?", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Yes, end it" }).click();
+  await expect(
+    page.getByText("Ends tomorrow. Today’s answer stays as it is."),
+  ).toBeVisible();
+  await expect(page.locator(".whose-turn-card")).toHaveCount(2);
+  await expect(
+    page.getByRole("button", { name: "End Who is Pink today?", exact: true }),
+  ).toHaveCount(0);
+  await page.reload();
+  await page.getByText("Manage rotations").click();
+  await expect(
+    page.getByText("Ends tomorrow. Today’s answer stays as it is."),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Next day →" }).click();
+  await expect(page.locator(".whose-turn-card")).toHaveCount(1);
+  await expect(page.locator(".whose-turn-card")).toContainText(
+    "Who sits next to Mum?",
+  );
+  for (const width of [768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+  }
+
   function turnFor(rotation: Saved, date: string) {
     const offset = date === "2026-09-22" ? 1 : 0;
     const start = rotation.order.indexOf(rotation.first);
@@ -163,7 +211,9 @@ test("an adult runs several whose-turn rotations side by side", async ({
       jobs: [],
       pointsBalance: null,
       pendingApprovalCount: 0,
-      whoseTurns: saved.map((rotation) => turnFor(rotation, date)),
+      whoseTurns: saved
+        .filter((rotation) => !rotation.ended || date === "2026-09-21")
+        .map((rotation) => turnFor(rotation, date)),
     };
   }
 
@@ -180,12 +230,10 @@ test("an adult runs several whose-turn rotations side by side", async ({
           createdByMemberId: addieId,
           createdAtUtc: "2026-09-21T08:00:00Z",
         },
-        upcomingTurns: [
-          {
-            ...turnFor(rotation, "2026-09-21"),
-            date: "2026-09-21",
-          },
-        ],
+        upcomingTurns: (rotation.ended
+          ? ["2026-09-21"]
+          : ["2026-09-21", "2026-09-22"]
+        ).map((date) => ({ ...turnFor(rotation, date), date })),
       })),
     };
   }

@@ -58,6 +58,15 @@ export function WhoseTurnPanel({
           </div>
         </div>
 
+        {hasLoaded &&
+        fetcher.data?.error &&
+        !overview.rotations.some(
+          (rotation) => rotation.rotationId === fetcher.data?.rotationId,
+        ) ? (
+          <p className="error-message" role="alert">
+            {fetcher.data.error}
+          </p>
+        ) : null}
         {!hasLoaded && fetcher.data?.error ? (
           <div className="family-members__load-error">
             <p className="error-message" role="alert">
@@ -122,6 +131,11 @@ function RotationItem({
   const [confirmingEnd, setConfirmingEnd] = useState(false);
   const title = rotation.current?.question ?? "Scheduled rotation";
   const submitting = fetcher.state !== "idle";
+  const endsTomorrow =
+    rotation.current !== null &&
+    !rotation.upcomingTurns.some(
+      (turn) => turn.date === addDaysIso(currentDate, 1),
+    );
   const endError =
     fetcher.data?.intent === "end" &&
     fetcher.data.rotationId === rotation.rotationId
@@ -138,64 +152,70 @@ function RotationItem({
           <span>Not started yet</span>
         )}
       </div>
-      <details className="family-member-edit">
-        <summary>Edit {title}</summary>
-        <WhoseTurnForm
-          fetcher={fetcher}
-          children={children}
-          currentDate={currentDate}
-          rotation={rotation}
-        />
-      </details>
-      {confirmingEnd ? (
-        <div
-          className="deactivate-confirmation"
-          role="group"
-          aria-label={`End ${title}`}
-        >
-          <p>
-            End “{title}”? It stops appearing on the board from tomorrow; past
-            answers stay as they were.
-          </p>
-          {endError ? (
-            <p className="error-message" role="alert">
-              {endError}
-            </p>
-          ) : null}
-          <div>
-            <fetcher.Form method="post" action="/whose-turn">
-              <input type="hidden" name="intent" value="end" />
-              <input
-                type="hidden"
-                name="rotationId"
-                value={rotation.rotationId}
-              />
-              <button
-                type="submit"
-                className="button--danger"
-                disabled={submitting}
-              >
-                Yes, end it
-              </button>
-            </fetcher.Form>
+      {endsTomorrow ? (
+        <p role="status">Ends tomorrow. Today’s answer stays as it is.</p>
+      ) : (
+        <>
+          <details className="family-member-edit">
+            <summary>Edit {title}</summary>
+            <WhoseTurnForm
+              fetcher={fetcher}
+              children={children}
+              currentDate={currentDate}
+              rotation={rotation}
+            />
+          </details>
+          {confirmingEnd ? (
+            <div
+              className="deactivate-confirmation"
+              role="group"
+              aria-label={`End ${title}`}
+            >
+              <p>
+                End “{title}”? It stops appearing on the board from tomorrow;
+                past answers stay as they were.
+              </p>
+              {endError ? (
+                <p className="error-message" role="alert">
+                  {endError}
+                </p>
+              ) : null}
+              <div>
+                <fetcher.Form method="post" action="/whose-turn">
+                  <input type="hidden" name="intent" value="end" />
+                  <input
+                    type="hidden"
+                    name="rotationId"
+                    value={rotation.rotationId}
+                  />
+                  <button
+                    type="submit"
+                    className="button--danger"
+                    disabled={submitting}
+                  >
+                    Yes, end it
+                  </button>
+                </fetcher.Form>
+                <button
+                  type="button"
+                  className="button--quiet"
+                  onClick={() => setConfirmingEnd(false)}
+                  disabled={submitting}
+                >
+                  Keep it
+                </button>
+              </div>
+            </div>
+          ) : (
             <button
               type="button"
               className="button--quiet"
-              onClick={() => setConfirmingEnd(false)}
-              disabled={submitting}
+              onClick={() => setConfirmingEnd(true)}
             >
-              Keep it
+              End {title}
             </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          className="button--quiet"
-          onClick={() => setConfirmingEnd(true)}
-        >
-          End {title}
-        </button>
+          )}
+        </>
       )}
     </li>
   );

@@ -136,6 +136,58 @@ public sealed class TurnRotationServiceTests
     }
 
     [Fact]
+    public async Task Ending_a_still_visible_rotation_twice_succeeds_without_changing_its_same_name_neighbour()
+    {
+        var repository = new FakeRepository();
+        repository.Add(Pink, Today.AddDays(-2), [ChildA], ChildA);
+        repository.Add(NextToMum, Today.AddDays(-2), [ChildB], ChildB);
+        var service = CreateService(repository);
+        await service.EndAsync(Adult.Id, Pink, CancellationToken.None);
+        Assert.Contains((await service.GetOverviewAsync(CancellationToken.None)).Rotations,
+            rotation => rotation.RotationId == Pink);
+        var count = repository.Revisions.Count;
+
+        var overview = await service.EndAsync(Adult.Id, Pink, CancellationToken.None);
+
+        Assert.Equal(count, repository.Revisions.Count);
+        Assert.Equal(2, overview.Rotations.Count);
+        Assert.Equal(2, (await service.GetTurnsAsync(Today, CancellationToken.None)).Count);
+        Assert.Equal(NextToMum,
+            Assert.Single(await service.GetTurnsAsync(Today.AddDays(1), CancellationToken.None)).RotationId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Ending_cancels_future_starts_and_scheduled_edits(bool alreadyStarted)
+    {
+        var repository = new FakeRepository();
+        if (alreadyStarted)
+        {
+            repository.Add(Pink, Today.AddDays(-2), [ChildA], ChildA);
+        }
+        repository.Add(Pink, Today.AddDays(3), [ChildB], ChildB);
+        var service = CreateService(repository);
+
+        await service.EndAsync(Adult.Id, Pink, CancellationToken.None);
+
+        for (var offset = 1; offset < 20; offset++)
+        {
+            Assert.Empty(await service.GetTurnsAsync(Today.AddDays(offset), CancellationToken.None));
+        }
+        Assert.Equal(alreadyStarted ? 1 : 0,
+            (await service.GetTurnsAsync(Today, CancellationToken.None)).Count);
+        Assert.Equal(alreadyStarted ? 1 : 0,
+            (await service.GetOverviewAsync(CancellationToken.None)).Rotations.Count);
+        var count = repository.Revisions.Count;
+        await service.EndAsync(Adult.Id, Pink, CancellationToken.None);
+        Assert.Equal(count, repository.Revisions.Count);
+        await Assert.ThrowsAsync<TurnRotationNotFoundException>(() => service.SaveAsync(
+            Adult.Id, Pink, new SaveTurnRotation([ChildA.Id], ChildA.Id, Today.AddDays(4), null),
+            CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Updating_an_unknown_rotation_is_not_found()
     {
         var service = CreateService(new FakeRepository());

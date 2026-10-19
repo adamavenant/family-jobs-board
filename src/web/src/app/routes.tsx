@@ -1226,7 +1226,8 @@ export const routes: RouteObject[] = [
         actionResult &&
         typeof actionResult === "object" &&
         "error" in actionResult &&
-        actionResult.error
+        actionResult.error &&
+        !("overview" in actionResult)
       ) {
         return false;
       }

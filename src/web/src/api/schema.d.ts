@@ -641,7 +641,7 @@ export interface paths {
         post?: never;
         /**
          * End a rotation from tomorrow.
-         * @description Adult-only. The rotation stops appearing on the board from tomorrow; earlier dates keep their answers.
+         * @description Adult-only. The rotation stops appearing on the board from tomorrow, including any scheduled configurations; earlier dates keep their answers. Repeating End for a known rotation succeeds without adding duplicate revisions.
          */
         delete: operations["EndTurnRotation"];
         options?: never;

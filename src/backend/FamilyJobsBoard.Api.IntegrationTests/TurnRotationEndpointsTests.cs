@@ -123,10 +123,10 @@ public sealed class TurnRotationEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Ending_one_rotation_leaves_the_others_running()
+    public async Task Ending_one_same_name_rotation_is_idempotent_and_leaves_the_other_running()
     {
         var first = await CreateAsync([DemoDataIds.Fredster], DemoDataIds.Fredster, _today, "Who is Pink today?");
-        await CreateAsync([DemoDataIds.Harrie], DemoDataIds.Harrie, _today, "Who sits next to Mum?");
+        await CreateAsync([DemoDataIds.Harrie], DemoDataIds.Harrie, _today, "Who is Pink today?");
 
         using var end = await SendAsync(
             HttpMethod.Delete, $"/api/turn-rotations/{first.Rotations[0].RotationId}", DemoDataIds.Addie);
@@ -134,11 +134,47 @@ public sealed class TurnRotationEndpointsTests : IAsyncLifetime
 
         Assert.Equal(2, (await GetTodayAsync(DemoDataIds.Fredster, _today)).WhoseTurns.Count);
         var tomorrow = Assert.Single((await GetTodayAsync(DemoDataIds.Fredster, _today.AddDays(1))).WhoseTurns);
-        Assert.Equal("Who sits next to Mum?", tomorrow.Question);
+        Assert.Equal("Who is Pink today?", tomorrow.Question);
         Assert.Equal(2, (await GetOverviewAsync(DemoDataIds.Addie)).Rotations.Count);
         using var again = await SendAsync(
             HttpMethod.Delete, $"/api/turn-rotations/{first.Rotations[0].RotationId}", DemoDataIds.Addie);
-        Assert.Equal(HttpStatusCode.NotFound, again.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
+        var remaining = Assert.Single((await GetTodayAsync(DemoDataIds.Fredster, _today.AddDays(1))).WhoseTurns);
+        Assert.Equal(DemoDataIds.Harrie, remaining.ChildId);
+        Assert.NotEqual(first.Rotations[0].RotationId, remaining.RotationId);
+        using var missing = await SendAsync(HttpMethod.Delete,
+            $"/api/turn-rotations/{Guid.NewGuid()}", DemoDataIds.Addie);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task End_supersedes_future_configurations_and_survives_reload(bool alreadyStarted)
+    {
+        var created = await CreateAsync([DemoDataIds.Fredster], DemoDataIds.Fredster,
+            alreadyStarted ? _today : _today.AddDays(3), null);
+        var id = created.Rotations[0].RotationId;
+        if (alreadyStarted)
+        {
+            using var edit = await SendAsync(HttpMethod.Put, $"/api/turn-rotations/{id}", DemoDataIds.Addie,
+                Body([DemoDataIds.Harrie], DemoDataIds.Harrie, _today.AddDays(3), null));
+            Assert.Equal(HttpStatusCode.OK, edit.StatusCode);
+        }
+
+        using var end = await SendAsync(HttpMethod.Delete, $"/api/turn-rotations/{id}", DemoDataIds.Addie);
+        Assert.Equal(HttpStatusCode.OK, end.StatusCode);
+        using var retry = await SendAsync(HttpMethod.Delete, $"/api/turn-rotations/{id}", DemoDataIds.Addie);
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        foreach (var offset in new[] { 1, 3, 30 })
+        {
+            Assert.Empty((await GetTodayAsync(DemoDataIds.Fredster, _today.AddDays(offset))).WhoseTurns);
+        }
+        Assert.Equal(alreadyStarted ? 1 : 0, (await GetOverviewAsync(DemoDataIds.Addie)).Rotations.Count);
+        Assert.Equal(alreadyStarted ? 1 : 0, (await GetTodayAsync(DemoDataIds.Fredster)).WhoseTurns.Count);
+        using var staleEdit = await SendAsync(HttpMethod.Put, $"/api/turn-rotations/{id}", DemoDataIds.Addie,
+            Body([DemoDataIds.Harrie], DemoDataIds.Harrie, _today.AddDays(4), null));
+        Assert.Equal(HttpStatusCode.NotFound, staleEdit.StatusCode);
     }
 
     [Fact]

@@ -98,18 +98,40 @@ public sealed class TurnRotationService
         await EnsureAdultAsync(actorMemberId, cancellationToken);
         var revisions = await _repository.GetRevisionsAsync(cancellationToken);
         var group = Groups(revisions).FirstOrDefault(item => item[0].RotationId == rotationId);
-        var applicable = group is null ? null : ResolveRevision(group, _clock.Today.AddDays(1));
-        if (applicable is null || applicable.IsCleared)
+        if (group is null)
         {
             throw new TurnRotationNotFoundException(rotationId);
         }
 
-        var ended = TurnRotationRevision.Cleared(
-            Guid.NewGuid(), rotationId, _clock.Today.AddDays(1), applicable.Question,
-            actorMemberId, _clock.UtcNow);
-        await _repository.AddRevisionAsync(ended, cancellationToken);
-        await _repository.SaveChangesAsync(cancellationToken);
-        return await BuildOverviewAsync([.. revisions, ended], cancellationToken);
+        var tomorrow = _clock.Today.AddDays(1);
+        var ended = new List<TurnRotationRevision>();
+        // Supersede every scheduled configuration too, so a later edit cannot
+        // bring the rotation back after End. Keep the original revisions intact.
+        var effectiveDates = group.Select(revision => revision.EffectiveFrom)
+            .Where(date => date >= tomorrow)
+            .Append(tomorrow)
+            .Distinct();
+        foreach (var date in effectiveDates)
+        {
+            var applicable = ResolveRevision(group, date);
+            if (applicable is null || applicable.IsCleared)
+            {
+                continue;
+            }
+
+            var revision = TurnRotationRevision.Cleared(
+                Guid.NewGuid(), rotationId, date, applicable.Question,
+                actorMemberId, _clock.UtcNow);
+            ended.Add(revision);
+            await _repository.AddRevisionAsync(revision, cancellationToken);
+        }
+
+        // A retry of End is successful without adding duplicate revisions.
+        if (ended.Count > 0)
+        {
+            await _repository.SaveChangesAsync(cancellationToken);
+        }
+        return await BuildOverviewAsync([.. revisions, .. ended], cancellationToken);
     }
 
     /// <summary>
@@ -130,7 +152,7 @@ public sealed class TurnRotationService
             var group = Groups(revisions).FirstOrDefault(item => item[0].RotationId == rotationId);
             var latest = group is null ? null : ResolveRevision(group, DateOnly.MaxValue);
             var applicable = group is null ? null : ResolveRevision(group, _clock.Today.AddDays(1));
-            if (group is null || latest is null || (applicable?.IsCleared ?? false))
+            if (group is null || latest is null || latest.IsCleared || (applicable?.IsCleared ?? false))
             {
                 throw new TurnRotationNotFoundException(rotationId!.Value);
             }
@@ -220,7 +242,8 @@ public sealed class TurnRotationService
         foreach (var group in Groups(revisions))
         {
             var current = ResolveRevision(group, today);
-            if (current is { IsCleared: true })
+            if (current is { IsCleared: true }
+                || (current is null && ResolveRevision(group, DateOnly.MaxValue) is { IsCleared: true }))
             {
                 continue;
             }
@@ -290,6 +313,7 @@ public sealed class TurnRotationService
             .Where(revision => revision.EffectiveFrom <= date)
             .OrderByDescending(revision => revision.EffectiveFrom)
             .ThenByDescending(revision => revision.CreatedAtUtc)
+            .ThenByDescending(revision => revision.IsCleared)
             .FirstOrDefault();
     }
 
