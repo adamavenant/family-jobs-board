@@ -237,6 +237,208 @@ public sealed class TurnRotationEndpointsTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, tomorrow.StatusCode);
     }
 
+    [Fact]
+    public async Task Rotations_default_to_daily_and_can_be_saved_to_move_on_when_ticked()
+    {
+        var daily = await CreateAsync([DemoDataIds.Fredster, DemoDataIds.Harrie], DemoDataIds.Fredster, _today, null);
+        var dailyId = daily.Rotations[0].RotationId;
+        Assert.Equal("daily", daily.Rotations[0].Current!.AdvanceMode);
+        var dailyTurn = Assert.Single((await GetTodayAsync(DemoDataIds.Addie)).WhoseTurns);
+        Assert.Equal(("daily", false, false), (dailyTurn.AdvanceMode, dailyTurn.TurnTaken, dailyTurn.CanTakeTurn));
+
+        var ticked = await CreateAsync(
+            [DemoDataIds.Fredster, DemoDataIds.Harrie], DemoDataIds.Harrie, _today, "Who is first in the shower?", "whenTicked");
+
+        var summary = ticked.Rotations.Single(rotation => rotation.RotationId != dailyId);
+        Assert.Equal("whenTicked", summary.Current!.AdvanceMode);
+        Assert.Equal([DemoDataIds.Harrie, DemoDataIds.Fredster], summary.UpNext.Select(child => child.ChildId));
+        Assert.Equal(DemoDataIds.Harrie, Assert.Single(summary.UpcomingTurns).ChildId);
+        using var unknownMode = await SendAsync(
+            HttpMethod.Post,
+            "/api/turn-rotations",
+            DemoDataIds.Addie,
+            Body([DemoDataIds.Fredster], DemoDataIds.Fredster, _today, null, "weekly"));
+        Assert.Equal(HttpStatusCode.BadRequest, unknownMode.StatusCode);
+    }
+
+    [Fact]
+    public async Task Rotations_saved_before_the_migration_keep_moving_on_daily()
+    {
+        var rotationId = Guid.NewGuid();
+        var revisionId = Guid.NewGuid();
+        await using (var scope = _factory!.Services.CreateAsyncScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await database.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO turn_rotation_revisions
+                    (id, rotation_id, effective_from, question, first_child_id, created_by_member_id, created_at_utc)
+                VALUES
+                    ({revisionId}, {rotationId}, {_today}, {"Who is Pink today?"}, {DemoDataIds.Harrie},
+                     {DemoDataIds.Addie}, {DateTimeOffset.UtcNow});
+                INSERT INTO turn_rotation_participants (turn_rotation_revision_id, order_index, child_id)
+                VALUES ({revisionId}, 0, {DemoDataIds.Fredster}), ({revisionId}, 1, {DemoDataIds.Harrie});
+                """);
+        }
+
+        var rotation = Assert.Single((await GetOverviewAsync(DemoDataIds.Addie)).Rotations);
+        var tomorrow = Assert.Single((await GetTodayAsync(DemoDataIds.Addie, _today.AddDays(1))).WhoseTurns);
+
+        Assert.Equal("daily", rotation.Current!.AdvanceMode);
+        Assert.Equal(14, rotation.UpcomingTurns.Count);
+        Assert.Equal(("daily", DemoDataIds.Fredster), (tomorrow.AdvanceMode, tomorrow.ChildId));
+    }
+
+    [Fact]
+    public async Task Three_child_ticked_rotation_marks_today_done_and_moves_on_from_tomorrow()
+    {
+        var ivy = await CreateChildAsync("Ivy");
+        var created = await CreateAsync(
+            [DemoDataIds.Fredster, DemoDataIds.Harrie, ivy], DemoDataIds.Fredster, _today, "Who is first in the shower?", "whenTicked");
+        var rotationId = created.Rotations[0].RotationId;
+        var before = Assert.Single((await GetTodayAsync(DemoDataIds.Fredster)).WhoseTurns);
+        Assert.Equal((DemoDataIds.Fredster, false, true), (before.ChildId, before.TurnTaken, before.CanTakeTurn));
+        Assert.False(Assert.Single((await GetTodayAsync(DemoDataIds.Harrie)).WhoseTurns).CanTakeTurn);
+
+        var taken = await TickAsync(rotationId, DemoDataIds.Fredster, DemoDataIds.Fredster);
+
+        Assert.Equal((DemoDataIds.Fredster, DemoDataIds.Fredster, _today), (taken.ChildId, taken.RecordedByMemberId, taken.Date));
+        var after = Assert.Single((await GetTodayAsync(DemoDataIds.Fredster)).WhoseTurns);
+        Assert.Equal((DemoDataIds.Fredster, true, false), (after.ChildId, after.TurnTaken, after.CanTakeTurn));
+        Assert.Equal(taken.Id, after.UndoableTurn!.TurnId);
+        foreach (var offset in new[] { 1, 3 })
+        {
+            var later = Assert.Single((await GetTodayAsync(DemoDataIds.Harrie, _today.AddDays(offset))).WhoseTurns);
+            Assert.Equal((DemoDataIds.Harrie, false, false), (later.ChildId, later.TurnTaken, later.CanTakeTurn));
+        }
+
+        using var again = await SendTickAsync(rotationId, DemoDataIds.Addie, DemoDataIds.Fredster);
+        using var next = await SendTickAsync(rotationId, DemoDataIds.Harrie, DemoDataIds.Harrie);
+        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, next.StatusCode);
+    }
+
+    [Fact]
+    public async Task Two_child_ticked_rotation_moves_on_immediately_and_the_latest_tick_can_be_unticked()
+    {
+        var created = await CreateAsync(
+            [DemoDataIds.Fredster, DemoDataIds.Harrie], DemoDataIds.Fredster, _today, "Who is first in the shower?", "whenTicked");
+        var rotationId = created.Rotations[0].RotationId;
+
+        var first = await TickAsync(rotationId, DemoDataIds.Fredster, DemoDataIds.Fredster);
+
+        var forHarrie = Assert.Single((await GetTodayAsync(DemoDataIds.Harrie)).WhoseTurns);
+        var forFredster = Assert.Single((await GetTodayAsync(DemoDataIds.Fredster)).WhoseTurns);
+        Assert.Equal((DemoDataIds.Harrie, true), (forHarrie.ChildId, forHarrie.CanTakeTurn));
+        Assert.Null(forHarrie.UndoableTurn);
+        Assert.Equal((DemoDataIds.Harrie, false), (forFredster.ChildId, forFredster.CanTakeTurn));
+        Assert.Equal(first.Id, forFredster.UndoableTurn!.TurnId);
+
+        var second = await TickAsync(rotationId, DemoDataIds.Harrie, DemoDataIds.Harrie);
+        Assert.Equal(DemoDataIds.Fredster, Assert.Single((await GetTodayAsync(DemoDataIds.Fredster)).WhoseTurns).ChildId);
+
+        using var older = await SendAsync(
+            HttpMethod.Delete, $"/api/turn-rotations/{rotationId}/turns/{first.Id}", DemoDataIds.Addie);
+        Assert.Equal(HttpStatusCode.Conflict, older.StatusCode);
+        using var undo = await SendAsync(
+            HttpMethod.Delete, $"/api/turn-rotations/{rotationId}/turns/{second.Id}", DemoDataIds.Harrie);
+        Assert.Equal(HttpStatusCode.OK, undo.StatusCode);
+        var undone = (await undo.Content.ReadFromJsonAsync<TakenTurnResponse>())!;
+        Assert.Equal(DemoDataIds.Harrie, undone.UndoneByMemberId);
+        Assert.NotNull(undone.UndoneAtUtc);
+        Assert.Equal(DemoDataIds.Harrie, Assert.Single((await GetTodayAsync(DemoDataIds.Harrie)).WhoseTurns).ChildId);
+
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var rows = await database.TakenTurns.AsNoTracking().OrderBy(turn => turn.RecordedAtUtc).ToListAsync();
+        Assert.Equal([first.Id, second.Id], rows.Select(turn => turn.Id));
+        Assert.Equal([null, DemoDataIds.Harrie], rows.Select(turn => turn.UndoneByMemberId));
+    }
+
+    [Fact]
+    public async Task Only_adults_and_the_child_whose_turn_it_is_can_tick_or_untick()
+    {
+        var created = await CreateAsync(
+            [DemoDataIds.Fredster, DemoDataIds.Harrie], DemoDataIds.Fredster, _today, null, "whenTicked");
+        var rotationId = created.Rotations[0].RotationId;
+        var daily = await CreateAsync([DemoDataIds.Harrie], DemoDataIds.Harrie, _today, "Who feeds the fish?");
+        var dailyId = daily.Rotations.Single(rotation => rotation.RotationId != rotationId).RotationId;
+
+        using var someoneElses = await SendTickAsync(rotationId, DemoDataIds.Harrie, DemoDataIds.Fredster);
+        using var notYourTurn = await SendTickAsync(rotationId, DemoDataIds.Harrie, DemoDataIds.Harrie);
+        using var dailyTick = await SendTickAsync(dailyId, DemoDataIds.Addie, DemoDataIds.Harrie);
+        using var unknown = await SendTickAsync(Guid.NewGuid(), DemoDataIds.Addie, DemoDataIds.Fredster);
+        Assert.Equal(HttpStatusCode.Forbidden, someoneElses.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, notYourTurn.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, dailyTick.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+
+        var taken = await TickAsync(rotationId, DemoDataIds.Addie, DemoDataIds.Fredster);
+        using var harrieUndo = await SendAsync(
+            HttpMethod.Delete, $"/api/turn-rotations/{rotationId}/turns/{taken.Id}", DemoDataIds.Harrie);
+        using var unknownUndo = await SendAsync(
+            HttpMethod.Delete, $"/api/turn-rotations/{rotationId}/turns/{Guid.NewGuid()}", DemoDataIds.Addie);
+        Assert.Equal(HttpStatusCode.Forbidden, harrieUndo.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, unknownUndo.StatusCode);
+        Assert.Equal(DemoDataIds.Harrie, Assert.Single((await GetTodayAsync(DemoDataIds.Harrie)).WhoseTurns, turn => turn.RotationId == rotationId).ChildId);
+    }
+
+    [Fact]
+    public async Task Simultaneous_ticks_for_the_same_turn_move_the_rotation_on_only_once()
+    {
+        var created = await CreateAsync(
+            [DemoDataIds.Fredster, DemoDataIds.Harrie], DemoDataIds.Fredster, _today, null, "whenTicked");
+        var rotationId = created.Rotations[0].RotationId;
+
+        var shown = await ShownTurnAsync(rotationId, DemoDataIds.Fredster);
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 4)
+            .Select(_ => SendTickAsync(rotationId, DemoDataIds.Addie, shown with { RequestId = Guid.NewGuid() })));
+
+        try
+        {
+            Assert.Single(responses, response => response.StatusCode == HttpStatusCode.OK);
+            Assert.Equal(3, responses.Count(response => response.StatusCode == HttpStatusCode.Conflict));
+            Assert.Equal(DemoDataIds.Harrie, Assert.Single((await GetTodayAsync(DemoDataIds.Addie)).WhoseTurns).ChildId);
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task A_replayed_or_stale_tick_never_moves_the_rotation_on_again()
+    {
+        var created = await CreateAsync(
+            [DemoDataIds.Fredster, DemoDataIds.Harrie], DemoDataIds.Fredster, _today, null, "whenTicked");
+        var rotationId = created.Rotations[0].RotationId;
+        var original = await ShownTurnAsync(rotationId, DemoDataIds.Fredster);
+        using var first = await SendTickAsync(rotationId, DemoDataIds.Fredster, original);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var firstTick = (await first.Content.ReadFromJsonAsync<TakenTurnResponse>())!;
+        await TickAsync(rotationId, DemoDataIds.Harrie, DemoDataIds.Harrie);
+
+        using var replay = await SendTickAsync(rotationId, DemoDataIds.Fredster, original);
+        using var stale = await SendTickAsync(
+            rotationId, DemoDataIds.Fredster, original with { RequestId = Guid.NewGuid() });
+
+        Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
+        Assert.Equal(firstTick, await replay.Content.ReadFromJsonAsync<TakenTurnResponse>());
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        var today = Assert.Single((await GetTodayAsync(DemoDataIds.Fredster)).WhoseTurns);
+        Assert.Equal((DemoDataIds.Fredster, 2), (today.ChildId, today.TurnNumber));
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(
+            [0, 1],
+            await database.TakenTurns.AsNoTracking().OrderBy(turn => turn.TurnNumber)
+                .Select(turn => turn.TurnNumber).ToListAsync());
+    }
+
     private async Task<BoardResponse> GetTodayAsync(Guid memberId, DateOnly? date = null)
     {
         var url = date is null ? "/api/today" : $"/api/today?date={date:yyyy-MM-dd}";
@@ -256,16 +458,53 @@ public sealed class TurnRotationEndpointsTests : IAsyncLifetime
         Guid[] participantChildIds,
         Guid firstChildId,
         DateOnly effectiveFrom,
-        string? question)
+        string? question,
+        string? advanceMode = null)
     {
         using var response = await SendAsync(
             HttpMethod.Post,
             "/api/turn-rotations",
             DemoDataIds.Addie,
-            Body(participantChildIds, firstChildId, effectiveFrom, question));
+            Body(participantChildIds, firstChildId, effectiveFrom, question, advanceMode));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<OverviewResponse>())!;
     }
+
+    private async Task<Guid> CreateChildAsync(string firstName)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            "/api/users",
+            DemoDataIds.Addie,
+            new { firstName, surname = "Avenant", nickname = (string?)null, role = "child" });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<CreatedMemberResponse>())!.Id;
+    }
+
+    private async Task<TakenTurnResponse> TickAsync(Guid rotationId, Guid memberId, Guid childId)
+    {
+        using var response = await SendTickAsync(rotationId, memberId, childId);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<TakenTurnResponse>())!;
+    }
+
+    /// <summary>
+    /// A tick for the turn today's board shows, as a client sends it; a rotation with no
+    /// answer today gets a made-up revision.
+    /// </summary>
+    private async Task<TickRequest> ShownTurnAsync(Guid rotationId, Guid childId)
+    {
+        var shown = (await GetTodayAsync(DemoDataIds.Addie)).WhoseTurns
+            .SingleOrDefault(turn => turn.RotationId == rotationId);
+        return new TickRequest(
+            Guid.NewGuid(), shown?.RevisionId ?? Guid.NewGuid(), shown?.TurnNumber ?? 0, childId);
+    }
+
+    private async Task<HttpResponseMessage> SendTickAsync(Guid rotationId, Guid memberId, Guid childId) =>
+        await SendTickAsync(rotationId, memberId, await ShownTurnAsync(rotationId, childId));
+
+    private Task<HttpResponseMessage> SendTickAsync(Guid rotationId, Guid memberId, TickRequest tick) =>
+        SendAsync(HttpMethod.Post, $"/api/turn-rotations/{rotationId}/turns", memberId, tick);
 
     private Task<HttpResponseMessage> SendCreateAsync(
         Guid[] participantChildIds,
@@ -281,8 +520,9 @@ public sealed class TurnRotationEndpointsTests : IAsyncLifetime
         Guid[] participantChildIds,
         Guid firstChildId,
         DateOnly effectiveFrom,
-        string? question) =>
-        new { participantChildIds, firstChildId, effectiveFrom, question };
+        string? question,
+        string? advanceMode = null) =>
+        new { participantChildIds, firstChildId, effectiveFrom, question, advanceMode };
 
     private Task<HttpResponseMessage> SendAsync(
         HttpMethod method,
@@ -304,7 +544,15 @@ public sealed class TurnRotationEndpointsTests : IAsyncLifetime
         Guid RotationId,
         string Question,
         Guid ChildId,
-        string ChildDisplayName);
+        string ChildDisplayName,
+        Guid RevisionId,
+        int TurnNumber,
+        string AdvanceMode,
+        bool TurnTaken,
+        bool CanTakeTurn,
+        UndoableTurnResponse? UndoableTurn);
+
+    private sealed record UndoableTurnResponse(Guid TurnId, Guid ChildId, string ChildDisplayName);
 
     private sealed record BoardResponse(IReadOnlyList<WhoseTurnResponse> WhoseTurns);
 
@@ -313,14 +561,36 @@ public sealed class TurnRotationEndpointsTests : IAsyncLifetime
         DateOnly EffectiveFrom,
         string Question,
         IReadOnlyList<Guid> ParticipantChildIds,
-        Guid FirstChildId);
+        Guid FirstChildId,
+        string AdvanceMode);
 
     private sealed record TurnResponse(DateOnly Date, string Question, Guid ChildId);
+
+    private sealed record ChildResponse(Guid ChildId, string ChildDisplayName);
 
     private sealed record SummaryResponse(
         Guid RotationId,
         ConfigurationResponse? Current,
-        IReadOnlyList<TurnResponse> UpcomingTurns);
+        IReadOnlyList<TurnResponse> UpcomingTurns,
+        IReadOnlyList<ChildResponse> UpNext);
+
+    private sealed record TickRequest(Guid RequestId, Guid RevisionId, int TurnNumber, Guid ChildId);
+
+    private sealed record TakenTurnResponse(
+        Guid Id,
+        Guid RequestId,
+        Guid RotationId,
+        Guid RevisionId,
+        int TurnNumber,
+        DateOnly Date,
+        Guid ChildId,
+        string ChildDisplayName,
+        Guid RecordedByMemberId,
+        DateTimeOffset RecordedAtUtc,
+        Guid? UndoneByMemberId,
+        DateTimeOffset? UndoneAtUtc);
+
+    private sealed record CreatedMemberResponse(Guid Id);
 
     private sealed record OverviewResponse(IReadOnlyList<SummaryResponse> Rotations);
 }
