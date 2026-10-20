@@ -87,6 +87,12 @@ for (const viewport of [
     await shower
       .getByRole("checkbox", { name: "Alba has had their turn" })
       .click();
+    // The tick waits behind the undo toast, shown as done, until it is saved.
+    await expect(
+      shower.getByRole("checkbox", { name: "Alba has had their turn" }),
+    ).toBeChecked();
+    expect(showerTickBodies).toEqual([]);
+    await saveQueuedAction(page);
     await expect(shower.locator(".whose-turn-card__child")).toHaveText(/Ben/);
     expect(showerTickBodies).toEqual([
       {
@@ -101,6 +107,7 @@ for (const viewport of [
     await expectNoSidewaysScroll(page);
 
     await shower.getByRole("button", { name: "Undo Alba’s turn" }).click();
+    await saveQueuedAction(page);
     await expect(shower.locator(".whose-turn-card__child")).toHaveText(/Alba/);
     await expect(
       shower.getByRole("checkbox", { name: "Alba has had their turn" }),
