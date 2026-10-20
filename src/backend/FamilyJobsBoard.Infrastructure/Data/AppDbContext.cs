@@ -54,6 +54,8 @@ public sealed class AppDbContext : DbContext
 
     public DbSet<TurnRotationRevision> TurnRotationRevisions => Set<TurnRotationRevision>();
 
+    public DbSet<TakenTurn> TakenTurns => Set<TakenTurn>();
+
     public DbSet<HouseholdSettings> HouseholdSettings => Set<HouseholdSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

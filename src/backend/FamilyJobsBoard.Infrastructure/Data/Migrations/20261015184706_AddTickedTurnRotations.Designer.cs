@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261014185117_AddHouseholdSettings")]
-    partial class AddHouseholdSettings
+    [Migration("20261015184706_AddTickedTurnRotations")]
+    partial class AddTickedTurnRotations
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -1005,34 +1005,76 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("FamilyJobsBoard.Domain.Settings.HouseholdSettings", b =>
+            modelBuilder.Entity("FamilyJobsBoard.Domain.TurnRotations.TakenTurn", b =>
                 {
-                    b.Property<int>("Id")
-                        .HasColumnType("integer")
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<int>("UndoGracePeriodSeconds")
-                        .HasColumnType("integer")
-                        .HasColumnName("undo_grace_period_seconds");
-
-                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at_utc");
-
-                    b.Property<Guid?>("UpdatedByMemberId")
+                    b.Property<Guid>("ChildId")
                         .HasColumnType("uuid")
-                        .HasColumnName("updated_by_member_id");
+                        .HasColumnName("child_id");
 
-                    b.HasKey("Id")
-                        .HasName("pk_household_settings");
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date")
+                        .HasColumnName("turn_date");
 
-                    b.HasIndex("UpdatedByMemberId");
+                    b.Property<DateTimeOffset>("RecordedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at_utc");
 
-                    b.ToTable("household_settings", null, t =>
+                    b.Property<Guid>("RecordedByMemberId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recorded_by_member_id");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_id");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("turn_rotation_revision_id");
+
+                    b.Property<Guid>("RotationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rotation_id");
+
+                    b.Property<int>("TurnNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("turn_number");
+
+                    b.Property<DateTimeOffset?>("UndoneAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("undone_at_utc");
+
+                    b.Property<Guid?>("UndoneByMemberId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("undone_by_member_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChildId");
+
+                    b.HasIndex("RecordedByMemberId");
+
+                    b.HasIndex("RequestId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_turn_rotation_taken_turns_request_id");
+
+                    b.HasIndex("UndoneByMemberId");
+
+                    b.HasIndex("RevisionId", "Date")
+                        .HasDatabaseName("ix_turn_rotation_taken_turns_revision_date");
+
+                    b.HasIndex("RevisionId", "TurnNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ux_turn_rotation_taken_turns_revision_turn")
+                        .HasFilter("undone_at_utc IS NULL");
+
+                    b.ToTable("turn_rotation_taken_turns", null, t =>
                         {
-                            t.HasCheckConstraint("ck_household_settings_singleton", "id = 1");
-
-                            t.HasCheckConstraint("ck_household_settings_undo_grace_period_seconds", "undo_grace_period_seconds BETWEEN 5 AND 120");
+                            t.HasCheckConstraint("ck_turn_rotation_taken_turns_undone", "(undone_at_utc IS NULL) = (undone_by_member_id IS NULL)");
                         });
                 });
 
@@ -1042,6 +1084,12 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("AdvanceMode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("advance_mode");
 
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone")
@@ -1331,11 +1379,29 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
-            modelBuilder.Entity("FamilyJobsBoard.Domain.Settings.HouseholdSettings", b =>
+            modelBuilder.Entity("FamilyJobsBoard.Domain.TurnRotations.TakenTurn", b =>
                 {
                     b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
                         .WithMany()
-                        .HasForeignKey("UpdatedByMemberId")
+                        .HasForeignKey("ChildId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
+                        .WithMany()
+                        .HasForeignKey("RecordedByMemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FamilyJobsBoard.Domain.TurnRotations.TurnRotationRevision", null)
+                        .WithMany()
+                        .HasForeignKey("RevisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
+                        .WithMany()
+                        .HasForeignKey("UndoneByMemberId")
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 

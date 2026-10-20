@@ -39,6 +39,14 @@ export OBSERVABILITY_RESOURCE_PREFIX="$test_prefix"
 export TELEMETRY_NETWORK_NAME="$test_network"
 export GRAFANA_ADMIN_PASSWORD_FILE="$test_root/secret/grafana-admin-password"
 export GRAFANA_TEST_PORT=0
+export FJB_COMPOSE_PROJECT_NAME="$test_project-application"
+
+DOCKER_GID=$(docker run --rm \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  busybox:1.37.0-uclibc stat -c '%g' /var/run/docker.sock)
+export DOCKER_GID
+
+fixture_containers=""
 
 compose_test() {
   docker compose \
@@ -57,6 +65,9 @@ cleanup() {
   fi
 
   compose_test down --volumes --remove-orphans >/dev/null 2>&1 || true
+  if [ -n "$fixture_containers" ]; then
+    docker rm --force $fixture_containers >/dev/null 2>&1 || true
+  fi
   OBSERVABILITY_PROJECT_NAME="$storage_project" \
     OBSERVABILITY_RESOURCE_PREFIX="$storage_prefix" \
     PROMETHEUS_DATA_DIR="$test_root/oversize-prometheus" \
@@ -79,6 +90,23 @@ network_properties=$(docker network inspect \
   "$test_network")
 [ "$network_properties" = "true bridge local" ] \
   || fail "telemetry network is not a private local bridge ($network_properties)"
+
+for service_name in api db proxy web; do
+  fixture_id=$(docker run --detach \
+    --label "com.docker.compose.project=$FJB_COMPOSE_PROJECT_NAME" \
+    --label "com.docker.compose.service=$service_name" \
+    --health-cmd 'true' \
+    --health-interval 1s \
+    --health-retries 2 \
+    busybox:1.37.0-uclibc sleep 600)
+  fixture_containers="$fixture_containers $fixture_id"
+done
+unrelated_fixture_id=$(docker run --detach \
+  --label 'com.docker.compose.project=unrelated-test-project' \
+  --label 'com.docker.compose.service=api' \
+  --health-cmd 'false' \
+  busybox:1.37.0-uclibc sleep 600)
+fixture_containers="$fixture_containers $unrelated_fixture_id"
 
 # A normal host filesystem is deliberately too large. Production must fail
 # closed instead of mistaking these directories for bounded allocations.
@@ -107,7 +135,7 @@ OBSERVABILITY_PROJECT_NAME="$storage_project" \
 
 compose_test up --detach --build --wait --wait-timeout 180
 
-for service_name in alloy blackbox grafana loki prometheus query-gateway; do
+for service_name in alloy blackbox container-exporter grafana loki node-exporter prometheus query-gateway; do
   container_id=$(compose_test ps -q "$service_name")
   [ -n "$container_id" ] || fail "$service_name container was not created"
   health=$(docker inspect --format '{{.State.Health.Status}}' "$container_id")
@@ -119,7 +147,7 @@ storage_init_id=$(compose_test ps --all -q storage-init)
 [ "$(docker inspect --format '{{.State.ExitCode}}' "$storage_init_id")" = "0" ] \
   || fail "storage initializer did not complete successfully"
 
-for service_name in alloy blackbox loki prometheus query-gateway; do
+for service_name in alloy blackbox container-exporter loki node-exporter prometheus query-gateway; do
   container_id=$(compose_test ps -q "$service_name")
   port_bindings=$(docker inspect --format '{{json .NetworkSettings.Ports}}' "$container_id")
   printf '%s\n' "$port_bindings" | jq -e 'all(.[]; . == null)' >/dev/null \
@@ -159,8 +187,10 @@ assert_service_networks() {
 }
 
 assert_service_networks alloy "$backend_network" "$test_network"
-assert_service_networks blackbox "$backend_network"
+assert_service_networks blackbox "$backend_network" "$test_prefix-probes"
+assert_service_networks container-exporter "$backend_network"
 assert_service_networks loki "$backend_network"
+assert_service_networks node-exporter "$backend_network"
 assert_service_networks prometheus "$backend_network"
 
 docker exec --user 472:0 "$grafana_id" sh -euc '
@@ -201,6 +231,19 @@ jq -e '
   and .meta.provisioned == true
 ' "$test_root/dashboard.json" >/dev/null \
   || fail "anonymous dashboard permissions are not Viewer-only"
+
+curl --fail --silent --show-error \
+  "$grafana_url/api/dashboards/uid/server-and-service-health" \
+  > "$test_root/server-dashboard.json"
+jq -e '
+  .dashboard.title == "Server and service health"
+  and .meta.canSave == false
+  and .meta.canEdit == false
+  and .meta.canAdmin == false
+  and .meta.canDelete == false
+  and .meta.provisioned == true
+' "$test_root/server-dashboard.json" >/dev/null \
+  || fail "anonymous server dashboard permissions are not Viewer-only"
 
 admin_status=$(curl --silent --show-error --output /dev/null \
   --write-out '%{http_code}' "$grafana_url/api/admin/stats")
@@ -288,7 +331,7 @@ while :; do
   attempt=$((attempt + 1))
   backend_get 'http://prometheus:9090/api/v1/targets' > "$test_root/targets.json"
   if jq -e '
-    (.data.activeTargets | length) >= 10
+    (.data.activeTargets | length) >= 15
     and all(.data.activeTargets[]; .health == "up")
   ' "$test_root/targets.json" >/dev/null; then
     break
@@ -296,6 +339,102 @@ while :; do
   [ "$attempt" -lt 40 ] || fail "Prometheus scrape targets did not all become healthy"
   sleep 2
 done
+
+container_exporter_status() {
+  request_method=$1
+  request_path=$2
+  docker run --rm --network "$backend_network" \
+    --entrypoint /usr/bin/curl \
+    grafana/grafana:13.2.3 \
+    --silent --show-error --output /dev/null \
+    --write-out '%{http_code}' \
+    --request "$request_method" \
+    "http://container-exporter:9400$request_path"
+}
+
+[ "$(container_exporter_status GET '/health')" = "200" ] \
+  || fail "container exporter health does not verify a live bounded collection"
+[ "$(container_exporter_status GET '/metrics')" = "200" ] \
+  || fail "container exporter does not expose sanitized metrics"
+for denied_request in \
+  'GET:/v1.41/containers/json?all=true' \
+  'GET:/v1.41/containers/'"$unrelated_fixture_id"'/json' \
+  'GET:/v1.41/images/json' \
+  'POST:/metrics' \
+  'DELETE:/metrics'; do
+  denied_method=${denied_request%%:*}
+  denied_path=${denied_request#*:}
+  denied_status=$(container_exporter_status "$denied_method" "$denied_path")
+  case "$denied_status" in
+    404|405|501) ;;
+    *) fail "container exporter exposed $denied_method $denied_path (HTTP $denied_status)" ;;
+  esac
+done
+
+for node_metric in \
+  'node_boot_time_seconds%7Bjob%3D%22node-exporter%22%7D' \
+  'node_cpu_seconds_total%7Bjob%3D%22node-exporter%22%2Cmode%3D%22idle%22%7D' \
+  'node_load1%7Bjob%3D%22node-exporter%22%7D' \
+  'node_memory_MemTotal_bytes%7Bjob%3D%22node-exporter%22%7D'; do
+  backend_get "http://prometheus:9090/api/v1/query?query=$node_metric" \
+    > "$test_root/node-metric.json"
+  jq -e '.data.result | length > 0' "$test_root/node-metric.json" >/dev/null \
+    || fail "required host metric $node_metric was not scraped"
+done
+backend_get 'http://prometheus:9090/api/v1/query?query=node_filesystem_size_bytes%7Bjob%3D%22node-exporter%22%7D' \
+  > "$test_root/node-filesystem-metric.json"
+if ! jq -e '.data.result | length > 0' "$test_root/node-filesystem-metric.json" >/dev/null; then
+  docker_operating_system=$(docker info --format '{{.OperatingSystem}}')
+  case "$docker_operating_system" in
+    *Docker\ Desktop*)
+      echo "Skipping host-root filesystem metric assertion on Docker Desktop's Linux VM."
+      ;;
+    *) fail "required host root-filesystem metric was not scraped" ;;
+  esac
+fi
+for forbidden_node_metric in node_uname_info node_time_seconds; do
+  backend_get "http://prometheus:9090/api/v1/query?query=$forbidden_node_metric" \
+    > "$test_root/node-metric.json"
+  jq -e '.data.result | length == 0' "$test_root/node-metric.json" >/dev/null \
+    || fail "privacy-sensitive Node Exporter metric $forbidden_node_metric was scraped"
+done
+
+backend_get 'http://prometheus:9090/api/v1/query?query=family_jobs_board_container_collector_success' \
+  > "$test_root/container-collector-success.json"
+jq -e '(.data.result[0].value[1] | tonumber) == 1' \
+  "$test_root/container-collector-success.json" >/dev/null \
+  || fail "container collector does not report a successful bounded scrape"
+backend_get 'http://prometheus:9090/api/v1/query?query=family_jobs_board_container_running' \
+  > "$test_root/container-running.json"
+jq -e '
+  ([.data.result[] | .metric.service] | sort) == ["api", "db", "proxy", "web"]
+  and all(.data.result[]; (.value[1] | tonumber) == 1)
+' "$test_root/container-running.json" >/dev/null \
+  || fail "container collector did not export only the four expected services"
+if grep -q 'unrelated-test-project' "$test_root/container-running.json"; then
+  fail "container collector exposed the unrelated labeled container"
+fi
+backend_get 'http://prometheus:9090/api/v1/query?query=family_jobs_board_container_health' \
+  > "$test_root/container-health.json"
+jq -e '
+  ([.data.result[] | .metric.service] | sort) == ["api", "db", "proxy", "web"]
+  and all(.data.result[]; .metric.status == "healthy")
+' "$test_root/container-health.json" >/dev/null \
+  || fail "container health fixtures were not exported as expected"
+backend_get 'http://prometheus:9090/api/v1/query?query=family_jobs_board_container_info' \
+  > "$test_root/container-info.json"
+jq -e '
+  ([.data.result[] | .metric.service] | sort) == ["api", "db", "proxy", "web"]
+  and all(.data.result[]; .metric.image_id | test("^sha256:[a-f0-9]{64}$"))
+' "$test_root/container-info.json" >/dev/null \
+  || fail "container image metrics do not include an immutable content ID"
+backend_get 'http://prometheus:9090/api/v1/query?query=probe_success%7Bjob%3D%22family-jobs-board-service-health%22%7D' \
+  > "$test_root/application-probes.json"
+jq -e '
+  ([.data.result[] | .metric.service] | sort) == ["api-live", "api-ready", "web"]
+  and all(.data.result[]; (.value[1] | tonumber) == 1)
+' "$test_root/application-probes.json" >/dev/null \
+  || fail "Family Jobs Board endpoint probes are not all healthy"
 
 backend_get 'http://prometheus:9090/api/v1/query?query=prometheus_tsdb_retention_limit_seconds' \
   > "$test_root/retention-time.json"

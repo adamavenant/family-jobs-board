@@ -113,11 +113,14 @@ implemented.
 - Do not expire
 
 ### Turn Rotation ("Whose Turn Is It?")
-An informational daily household rota, independent of jobs, completions,
-approvals, and points, and distinct from take-turns recurring-job
-assignments. It answers a standing household question (default "Who is Pink
-today?") by cycling through an ordered list of children, one per calendar
-day, with no interaction or completion step.
+An informational household rota, independent of jobs, completions, approvals,
+and points, and distinct from take-turns recurring-job assignments. It answers
+a standing household question (default "Who is Pink today?") by cycling
+through an ordered list of children. Each rotation moves on in one of two
+ways (its advance mode): every calendar day, with no interaction, or only
+when the current child's turn is ticked off on the board — for turns that
+don't happen every day, such as "Who is first in the shower?" when showers
+are every other day.
 
 #### Characteristics
 - A household can run any number of independent rotations (for example "Who
@@ -127,18 +130,48 @@ day, with no interaction or completion step.
 - Each revision has an effective date, a question, an ordered list of
   distinct active-child participants, which participant is assigned on the
   effective date, and the creating Adult and UTC creation time.
-- For any date, the assignee is the number of days since the revision's
-  effective date, modulo the participant count, starting from the configured
-  first child; every calendar day counts and the calculation needs no
-  background job.
+- Each revision has an advance mode: every day (the default, and the mode of
+  every rotation saved before tick-to-advance existed) or when ticked.
+- In a daily revision, the assignee for any date is the number of days since
+  the revision's effective date, modulo the participant count, starting from
+  the configured first child; every calendar day counts and the calculation
+  needs no background job.
+- In a when-ticked revision, the turn starts with the first child and moves to
+  the next participant once per Taken Turn recorded against that revision.
+  With two children a tick passes the turn straight to the other child the
+  same day; with one, or three or more, the ticked child shows as done for
+  the rest of the day and the next child is up from the following day, so a
+  rotation can be ticked at most once a day. A past date shows whose turn it
+  was at the start of that day and whether a turn was ticked; a future date
+  shows whose turn it is now.
 - A rotation's first revision may take effect today; every later revision of
   it takes effect no earlier than the next household-local day, so reconfiguring
   never changes an answer that already happened.
 
+### Taken Turn
+A tick recording that a child took their turn in a when-ticked Turn Rotation.
+Any Adult, or the child whose turn it is, can tick it, and only for today
+(household-local). A tick names the turn it takes — the revision and the
+turn's number within it, as well as the child — so a stale tick is refused
+even when the same child's turn has come round again, and it carries a
+request ID so a replayed request returns the original tick instead of ticking
+again. The most recent tick can be unticked the
+same day by an Adult or the child whose turn was ticked. Ticks are never
+deleted: unticking marks one undone with who and when, and an undone tick no
+longer counts.
+
+#### Characteristics
+- ID (GUID) and request ID (GUID, unique)
+- Rotation, the revision it counts towards, and the turn number it took
+- Household-local date and the child whose turn was taken
+- Recording member and UTC time
+- Unticking member and UTC time, when unticked
+
 ### Household Settings
 Preferences that every device in the household shares. Today it holds the undo
 time: how long a household action — completing, approving, or rejecting a job,
-changing jobs, points, behaviours, family members, or rotations — waits with
+changing jobs, points, behaviours, family members, or rotations, or ticking a
+turn — waits with
 an Undo toast before it is saved.
 
 #### Characteristics
@@ -168,6 +201,8 @@ Functions available to Adult users for managing the system.
 5. Child → Good Behaviour Type (planned relationship; not yet implemented)
 6. Adult → Turn Rotation revision (creator relationship)
 7. Child → Turn Rotation participant (ordered membership relationship)
+8. Turn Rotation revision → Taken Turn (a when-ticked revision counts its ticks)
+9. Adult or Child → Taken Turn (recorder and unticker relationships)
 
 ## Constraints
 

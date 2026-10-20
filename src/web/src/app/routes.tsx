@@ -81,6 +81,7 @@ import {
 import {
   whoseTurnAction,
   whoseTurnLoader,
+  whoseTurnTickAction,
 } from "../features/whoseTurn/whoseTurnRoute";
 import {
   householdSettingsAction,
@@ -1300,6 +1301,10 @@ export const routes: RouteObject[] = [
         loader: whoseTurnLoader,
         action: whoseTurnAction,
         shouldRevalidate: revalidateUnlessQueued,
+      },
+      {
+        path: "/whose-turn/turns",
+        action: whoseTurnTickAction,
       },
       {
         path: "/point-adjustments",

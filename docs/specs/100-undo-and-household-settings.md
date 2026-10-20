@@ -34,7 +34,9 @@ Actions that wait behind the undo toast:
 - logging a good behaviour, adjusting points, and redeeming a reward;
 - creating, editing, and deleting a good-behaviour type;
 - creating, updating, deactivating, and restoring a family member;
-- starting, changing, and ending a Whose Turn rotation.
+- starting, changing, and ending a Whose Turn rotation, and ticking a turn
+  off or unticking it on the board (issue #135). A tick's request ID is chosen
+  when it is queued, so Try again resends the same tick.
 
 Not covered, and saved at once: sign in and out, bootstrap, PIN setup and
 reset, "Reset jobs and points" (it already needs a typed confirmation),

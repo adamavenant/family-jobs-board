@@ -26,3 +26,27 @@ public sealed class TurnRotationNotFoundException : Exception
     {
     }
 }
+
+public sealed class TakenTurnForbiddenException : Exception
+{
+    public TakenTurnForbiddenException()
+        : base("Only an adult or the child whose turn it is can tick a turn off or untick it.")
+    {
+    }
+}
+
+public sealed class TakenTurnNotFoundException : Exception
+{
+    public TakenTurnNotFoundException(Guid takenTurnId)
+        : base($"Taken turn {takenTurnId} was not found.")
+    {
+    }
+}
+
+public sealed class TakenTurnConflictException : Exception
+{
+    public TakenTurnConflictException(string message)
+        : base(message)
+    {
+    }
+}

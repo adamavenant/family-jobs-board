@@ -1,6 +1,6 @@
 import createClient from "openapi-fetch";
 
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
 import { authenticatedFetch } from "./auth";
 
 export interface TodayJob {
@@ -100,12 +100,7 @@ export interface TodayBoard {
   undoGracePeriodSeconds: number;
 }
 
-export interface WhoseTurn {
-  rotationId: string;
-  question: string;
-  childId: string;
-  childDisplayName: string;
-}
+export type WhoseTurn = components["schemas"]["WhoseTurnResponse"];
 
 export interface HouseholdMember {
   id: string;
