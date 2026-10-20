@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { useFetcher } from "react-router";
 
 import type { HouseholdMember } from "../../api/today";
-import type { TurnRotationSummary } from "../../api/turnRotation";
+import type {
+  TurnAdvanceMode,
+  TurnRotationSummary,
+} from "../../api/turnRotation";
 import { useSuccessToast } from "../../app/SuccessToast";
 import type { WhoseTurnActionResult } from "./whoseTurnRoute";
 
@@ -51,9 +54,10 @@ export function WhoseTurnPanel({
           <div>
             <h2>Whose Turn Is It?</h2>
             <p>
-              Run as many daily rotations as you like — who is Pink, who sits
-              next to Mum — each cycling through its own children. Changes never
-              rewrite an answer that already happened.
+              Run as many rotations as you like — who is Pink, who sits next to
+              Mum, who is first in the shower — each cycling through its own
+              children, either every day or whenever a turn is ticked off.
+              Changes never rewrite an answer that already happened.
             </p>
           </div>
         </div>
@@ -137,6 +141,9 @@ function RotationItem({
         ) : (
           <span>Not started yet</span>
         )}
+        {rotation.current?.advanceMode === "whenTicked" ? (
+          <span>Moves on when a turn is ticked off</span>
+        ) : null}
       </div>
       <details className="family-member-edit">
         <summary>Edit {title}</summary>
@@ -214,18 +221,34 @@ function WhoseTurnForm({
 }) {
   const current = rotation?.current ?? null;
   const upcomingTurns = rotation?.upcomingTurns ?? [];
+  const upNext = rotation?.upNext ?? [];
   const idPrefix = `whose-turn-${rotation?.rotationId ?? "new"}`;
   const activeIds = new Set(children.map((child) => child.id));
   const initialOrder = (current?.participantChildIds ?? []).filter((id) =>
     activeIds.has(id),
   );
   const [order, setOrder] = useState<string[]>(initialOrder);
-  const [firstChildId, setFirstChildId] = useState(
-    current && initialOrder.includes(current.firstChildId)
-      ? current.firstChildId
-      : (initialOrder[0] ?? ""),
+  // Only a first turn the adult picks is kept in state. Otherwise an existing rotation's
+  // default is worked out from the latest overview on every render: the form stays mounted
+  // while its details are closed, and a tick on the board can change who is up next.
+  const [chosenFirstChildId, setChosenFirstChildId] = useState<string | null>(
+    null,
   );
+  // A rotation that moves on when ticked carries on from whoever is next, not from the
+  // child it originally started with.
+  const projectedFirstChildId =
+    current?.advanceMode === "whenTicked"
+      ? upNext.find((child) => order.includes(child.childId))?.childId
+      : current?.firstChildId;
+  const firstChildId =
+    [
+      chosenFirstChildId,
+      ...(rotation ? [projectedFirstChildId, order[0]] : []),
+    ].find((id) => id && order.includes(id)) ?? "";
   const [question, setQuestion] = useState(current?.question ?? "");
+  const [advanceMode, setAdvanceMode] = useState<TurnAdvanceMode>(
+    current?.advanceMode === "whenTicked" ? "whenTicked" : "daily",
+  );
   const minimumEffectiveFrom = rotation
     ? addDaysIso(currentDate, 1)
     : currentDate;
@@ -238,15 +261,17 @@ function WhoseTurnForm({
       : undefined;
 
   function toggleChild(id: string) {
-    setOrder((previous) => {
-      if (previous.includes(id)) {
-        const next = previous.filter((item) => item !== id);
-        setFirstChildId((chosen) => (chosen === id ? (next[0] ?? "") : chosen));
-        return next;
-      }
+    if (!order.includes(id)) {
+      setOrder([...order, id]);
+      return;
+    }
 
-      return [...previous, id];
-    });
+    const next = order.filter((item) => item !== id);
+    setOrder(next);
+    if (chosenFirstChildId === id) {
+      // An existing rotation falls back to its projected default; a new one to the next child.
+      setChosenFirstChildId(rotation ? null : (next[0] ?? null));
+    }
   }
 
   function move(id: string, direction: -1 | 1) {
@@ -343,7 +368,7 @@ function WhoseTurnForm({
             id={`${idPrefix}-first`}
             name="firstChildId"
             value={firstChildId}
-            onChange={(event) => setFirstChildId(event.target.value)}
+            onChange={(event) => setChosenFirstChildId(event.target.value)}
             required
             disabled={order.length === 0}
           >
@@ -360,6 +385,37 @@ function WhoseTurnForm({
             })}
           </select>
         </div>
+
+        <fieldset className="assignee-picker">
+          <legend>Moves on</legend>
+          <div className="assignee-picker__options">
+            <label className="assignee-option">
+              <input
+                type="radio"
+                name="advanceMode"
+                value="daily"
+                checked={advanceMode === "daily"}
+                onChange={() => setAdvanceMode("daily")}
+              />
+              <span>Every day</span>
+            </label>
+            <label className="assignee-option">
+              <input
+                type="radio"
+                name="advanceMode"
+                value="whenTicked"
+                checked={advanceMode === "whenTicked"}
+                onChange={() => setAdvanceMode("whenTicked")}
+              />
+              <span>When a turn is ticked off</span>
+            </label>
+          </div>
+          <small>
+            {advanceMode === "whenTicked"
+              ? "For turns that don’t happen every day. A grown-up or the child whose turn it is ticks it off on the board. With two children the turn passes straight to the other child; with three or more, the next child is up from the following day."
+              : "Every calendar day moves on to the next child."}
+          </small>
+        </fieldset>
 
         <div className="form-group">
           <label htmlFor={`${idPrefix}-effective`}>Effective from</label>
@@ -404,7 +460,16 @@ function WhoseTurnForm({
         </button>
       </fetcher.Form>
 
-      {upcomingTurns.length > 0 ? (
+      {upNext.length > 0 ? (
+        <section aria-labelledby={`${idPrefix}-up-next-heading`}>
+          <h3 id={`${idPrefix}-up-next-heading`}>Up next</h3>
+          <ol className="whose-turn-preview">
+            {upNext.map((child) => (
+              <li key={child.childId}>{child.childDisplayName}</li>
+            ))}
+          </ol>
+        </section>
+      ) : upcomingTurns.length > 0 ? (
         <section aria-labelledby={`${idPrefix}-preview-heading`}>
           <h3 id={`${idPrefix}-preview-heading`}>Upcoming turns</h3>
           <ul className="whose-turn-preview">

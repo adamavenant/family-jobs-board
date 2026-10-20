@@ -698,6 +698,17 @@ public sealed class TodayBoardServiceTests
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TurnRotationRevision>>([]);
 
+        public Task<IReadOnlyList<TakenTurn>> GetTakenTurnsAsync(
+            IReadOnlyCollection<Guid> revisionIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<TakenTurn>>([]);
+
+        public Task<TakenTurn?> FindTakenTurnAsync(Guid takenTurnId, CancellationToken cancellationToken) =>
+            Task.FromResult<TakenTurn?>(null);
+
+        public Task<TakenTurn?> GetTakenTurnByRequestAsync(Guid requestId, CancellationToken cancellationToken) =>
+            Task.FromResult<TakenTurn?>(null);
+
         public Task<HouseholdMember?> GetMemberAsync(Guid memberId, CancellationToken cancellationToken) =>
             Task.FromResult<HouseholdMember?>(null);
 
@@ -711,9 +722,15 @@ public sealed class TodayBoardServiceTests
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<HouseholdMember>>([]);
 
+        public Task<ITurnRotationLock> LockRotationAsync(Guid rotationId, CancellationToken cancellationToken) =>
+            Task.FromResult<ITurnRotationLock>(new FakeTurnRotationLock(rotationId));
+
         public Task AddRevisionAsync(
             TurnRotationRevision revision,
             CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task AddTakenTurnAsync(TakenTurn takenTurn, CancellationToken cancellationToken) =>
             Task.CompletedTask;
 
         public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;

@@ -121,10 +121,22 @@ public sealed class TodayBoardService
             householdVisibleChildIds,
             cancellationToken);
 
-        var turns = await _turnRotationService.GetTurnsAsync(date, cancellationToken);
+        var turns = await _turnRotationService.GetTurnsAsync(
+            date,
+            new TurnRotationViewer(viewer.Id, viewer.IsAdult),
+            cancellationToken);
         var whoseTurns = turns
             .Select(turn => new TodayWhoseTurn(
-                turn.RotationId, turn.Question, turn.ChildId, turn.ChildDisplayName))
+                turn.RotationId,
+                turn.Question,
+                turn.ChildId,
+                turn.ChildDisplayName,
+                turn.RevisionId,
+                turn.TurnNumber,
+                turn.AdvanceMode,
+                turn.TurnTaken,
+                turn.CanTakeTurn,
+                turn.UndoableTurn))
             .ToArray();
 
         return new TodayBoard(
