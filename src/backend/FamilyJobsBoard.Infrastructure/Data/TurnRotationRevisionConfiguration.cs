@@ -18,6 +18,10 @@ internal sealed class TurnRotationRevisionConfiguration : IEntityTypeConfigurati
             .HasColumnName("question")
             .HasMaxLength(TurnRotationRevision.MaximumQuestionLength);
         builder.Property(revision => revision.FirstChildId).HasColumnName("first_child_id");
+        builder.Property(revision => revision.AdvanceMode)
+            .HasColumnName("advance_mode")
+            .HasConversion<string>()
+            .HasMaxLength(16);
         builder.Property(revision => revision.CreatedByMemberId).HasColumnName("created_by_member_id");
         builder.Property(revision => revision.CreatedAtUtc).HasColumnName("created_at_utc");
 
