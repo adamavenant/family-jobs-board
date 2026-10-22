@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Link, useLoaderData } from "react-router";
 
 import type { TodayJob } from "../../api/today";
@@ -6,6 +7,8 @@ import type {
   CalendarDay,
   CalendarView,
 } from "../../api/calendar";
+import { ApprovalControls, focusIsLost } from "../approvals/ApprovalControls";
+import { ApprovalsReview, ApprovalsTrigger } from "../approvals/ApprovalsPanel";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { IdentityControls } from "../today/TodayPage";
 import {
@@ -45,111 +48,118 @@ export function CalendarPage() {
   const children = board.members.filter((member) => !member.isAdult);
 
   return (
-    <main>
-      <header className="hero">
-        <div className="hero__toolbar">
-          <p className="eyebrow">Family Jobs Board</p>
-          <div className="hero__actions">
-            <IdentityControls viewer={board.viewer} />
-            <ThemeToggle />
+    <ApprovalsReview currentDate={board.currentDate}>
+      <main>
+        <header className="hero">
+          <div className="hero__toolbar">
+            <p className="eyebrow">Family Jobs Board</p>
+            <div className="hero__actions">
+              <IdentityControls viewer={board.viewer} />
+              <ThemeToggle />
+            </div>
           </div>
-        </div>
-        <div className="hero__content">
-          <div>
-            <h1>Calendar</h1>
-            <p className="hero__date">
-              <Link to="/">← Back to today</Link>
-            </p>
+          <div className="hero__content">
+            <div>
+              <h1>Calendar</h1>
+              <p className="hero__date">
+                <Link to="/">← Back to today</Link>
+              </p>
+            </div>
+            <div className="hero__stats">
+              <ApprovalsTrigger count={board.pendingApprovalCount} />
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <section className="board" aria-labelledby="calendar-heading">
-        <nav className="child-filter" aria-label="Filter calendar by child">
-          <span>Show jobs for</span>
-          <div>
-            <Link
-              to={calendarHref(board.view, board.anchorDate, null)}
-              aria-current={board.selectedChildId === null ? "page" : undefined}
-            >
-              All children
-            </Link>
-            {children.map((child) => (
+        <section className="board" aria-labelledby="calendar-heading">
+          <nav className="child-filter" aria-label="Filter calendar by child">
+            <span>Show jobs for</span>
+            <div>
               <Link
-                key={child.id}
-                to={calendarHref(board.view, board.anchorDate, child.id)}
+                to={calendarHref(board.view, board.anchorDate, null)}
                 aria-current={
-                  board.selectedChildId === child.id ? "page" : undefined
+                  board.selectedChildId === null ? "page" : undefined
                 }
               >
-                {child.displayName}
+                All children
+              </Link>
+              {children.map((child) => (
+                <Link
+                  key={child.id}
+                  to={calendarHref(board.view, board.anchorDate, child.id)}
+                  aria-current={
+                    board.selectedChildId === child.id ? "page" : undefined
+                  }
+                >
+                  {child.displayName}
+                </Link>
+              ))}
+            </div>
+          </nav>
+
+          <nav className="view-switcher" aria-label="Choose a calendar view">
+            {(Object.keys(viewLabels) as CalendarView[]).map((view) => (
+              <Link
+                key={view}
+                to={calendarHref(view, board.anchorDate, board.selectedChildId)}
+                aria-current={board.view === view ? "page" : undefined}
+              >
+                {viewLabels[view]}
               </Link>
             ))}
-          </div>
-        </nav>
+          </nav>
 
-        <nav className="view-switcher" aria-label="Choose a calendar view">
-          {(Object.keys(viewLabels) as CalendarView[]).map((view) => (
+          <nav className="date-navigation" aria-label="Calendar navigation">
             <Link
-              key={view}
-              to={calendarHref(view, board.anchorDate, board.selectedChildId)}
-              aria-current={board.view === view ? "page" : undefined}
+              to={calendarHref(
+                board.view,
+                stepAnchor(board.view, board.anchorDate, -1),
+                board.selectedChildId,
+              )}
             >
-              {viewLabels[view]}
+              ← Previous {viewLabels[board.view].toLowerCase()}
             </Link>
-          ))}
-        </nav>
+            <Link
+              to={calendarHref(
+                board.view,
+                board.currentDate,
+                board.selectedChildId,
+              )}
+            >
+              Today
+            </Link>
+            <Link
+              to={calendarHref(
+                board.view,
+                stepAnchor(board.view, board.anchorDate, 1),
+                board.selectedChildId,
+              )}
+            >
+              Next {viewLabels[board.view].toLowerCase()} →
+            </Link>
+          </nav>
 
-        <nav className="date-navigation" aria-label="Calendar navigation">
-          <Link
-            to={calendarHref(
-              board.view,
-              stepAnchor(board.view, board.anchorDate, -1),
-              board.selectedChildId,
-            )}
-          >
-            ← Previous {viewLabels[board.view].toLowerCase()}
-          </Link>
-          <Link
-            to={calendarHref(
-              board.view,
-              board.currentDate,
-              board.selectedChildId,
-            )}
-          >
-            Today
-          </Link>
-          <Link
-            to={calendarHref(
-              board.view,
-              stepAnchor(board.view, board.anchorDate, 1),
-              board.selectedChildId,
-            )}
-          >
-            Next {viewLabels[board.view].toLowerCase()} →
-          </Link>
-        </nav>
-
-        <div className="board__heading">
-          <div>
-            <p className="eyebrow">{viewLabels[board.view]} view</p>
-            <h2 id="calendar-heading">{rangeHeading(board)}</h2>
+          <div className="board__heading">
+            <div>
+              <p className="eyebrow">{viewLabels[board.view]} view</p>
+              <h2 id="calendar-heading">{rangeHeading(board)}</h2>
+            </div>
+            <p>
+              Approve or reject finished jobs right here. Open a job’s date to
+              complete or change it from that day’s board.
+            </p>
           </div>
-          <p>
-            Browsing jobs. Open a job’s date to complete, approve, or reject it
-            from today’s board.
-          </p>
-        </div>
 
-        {board.view === "day" ? (
-          <DayView day={board.days[0]!} currentDate={board.currentDate} />
-        ) : board.view === "week" ? (
-          <WeekView board={board} />
-        ) : (
-          <MonthView board={board} />
-        )}
-      </section>
-    </main>
+          {board.view === "day" ? (
+            <DayView day={board.days[0]!} currentDate={board.currentDate} />
+          ) : board.view === "week" ? (
+            <WeekView board={board} />
+          ) : (
+            <MonthView board={board} />
+          )}
+        </section>
+      </main>
+    </ApprovalsReview>
   );
 }
 
@@ -276,10 +286,30 @@ function CalendarJobRow({
   detailed?: boolean;
 }) {
   const isOverdue = job.status === "open" && job.scheduledDate < currentDate;
+  const isPending = job.status === "pendingApproval";
+  const linkRef = useRef<HTMLAnchorElement>(null);
+  const wasPending = useRef(isPending);
+
+  useEffect(() => {
+    // Deciding a job inline removes the focused control; keep keyboard users on this row.
+    if (wasPending.current && !isPending && focusIsLost()) {
+      linkRef.current?.focus();
+    }
+    wasPending.current = isPending;
+  }, [isPending]);
 
   return (
-    <li className="calendar-job-row">
-      <Link to={boardHref(job.scheduledDate, currentDate, job.childId)}>
+    <li
+      className={
+        job.status === "pendingApproval"
+          ? "calendar-job-row calendar-job-row--pending"
+          : "calendar-job-row"
+      }
+    >
+      <Link
+        ref={linkRef}
+        to={boardHref(job.scheduledDate, currentDate, job.childId)}
+      >
         <span className={jobStatusClassName(job.status)}>
           {jobStatusLabel(job.status)}
         </span>
@@ -296,6 +326,7 @@ function CalendarJobRow({
             : ""}
         </span>
       </Link>
+      {job.status === "pendingApproval" ? <ApprovalControls job={job} /> : null}
     </li>
   );
 }

@@ -490,6 +490,23 @@ public sealed class TodayBoardServiceTests
     }
 
     [Fact]
+    public async Task Pending_count_includes_jobs_awaiting_review_from_earlier_days()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild, SecondChild]);
+        var yesterdays = new Job(Guid.NewGuid(), FirstChild.Id, "Yesterday", "", 1, Today.AddDays(-1));
+        yesterdays.MarkComplete(new DateTimeOffset(2026, 9, 6, 17, 0, 0, TimeSpan.Zero));
+        var lastWeeks = new Job(Guid.NewGuid(), SecondChild.Id, "Last week", "", 2, Today.AddDays(-7));
+        lastWeeks.MarkComplete(new DateTimeOffset(2026, 8, 31, 17, 0, 0, TimeSpan.Zero));
+        repository.Jobs.AddRange([yesterdays, lastWeeks, new Job(Guid.NewGuid(), FirstChild.Id, "Open", "", 1, Today)]);
+        var service = CreateService(repository);
+
+        var board = await service.GetAsync(Adult.Id, Today, CancellationToken.None);
+
+        Assert.Equal("Open", Assert.Single(board.Jobs).Name);
+        Assert.Equal(2, board.PendingApprovalCount);
+    }
+
+    [Fact]
     public async Task Adult_filter_rejects_a_member_who_is_not_an_active_child()
     {
         var repository = new RecordingRepository([Adult, FirstChild, SecondChild]);
@@ -791,6 +808,12 @@ public sealed class TodayBoardServiceTests
             Task.FromResult(Jobs.SingleOrDefault(job => job.Id == jobId));
         public Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(IReadOnlyCollection<Guid> childIds, DateOnly scheduledDate, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TodayJobRejection>>([]);
+        public Task<int> CountPendingApprovalJobsAsync(IReadOnlyCollection<Guid> childIds, CancellationToken cancellationToken) =>
+            Task.FromResult(Jobs.Count(job => childIds.Contains(job.ChildId) && job.Status == JobStatus.PendingApproval));
+
+        public Task<IReadOnlyList<Job>> GetPendingApprovalJobsAsync(IReadOnlyCollection<Guid> childIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Job>>(Jobs.Where(job => childIds.Contains(job.ChildId) && job.Status == JobStatus.PendingApproval).OrderBy(job => job.ScheduledDate).ToArray());
+
         public Task<IReadOnlyList<Job>> GetJobsInRangeAsync(IReadOnlyCollection<Guid> childIds, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<Job>>(Jobs
                 .Where(job => childIds.Contains(job.ChildId) && job.ScheduledDate >= startDate && job.ScheduledDate <= endDate)
