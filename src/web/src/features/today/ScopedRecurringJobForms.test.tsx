@@ -207,6 +207,76 @@ it("requires another preview after an edited value changes", async () => {
   ).toBeInTheDocument();
 });
 
+it("clears a saved end date and requires another preview", async () => {
+  const submissions: FormData[] = [];
+  const endingJob: TodayJob = {
+    ...job,
+    recurrence: { ...job.recurrence!, endDate: "2026-10-31" },
+  };
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: <ScopedRecurringJobEditForm job={endingJob} />,
+        action: async ({ request }: ActionFunctionArgs) => {
+          submissions.push(await request.formData());
+          return {
+            intent: "previewRecurringJobChange",
+            jobId: job.id,
+            operation: "edit",
+            seriesVersion: 4,
+            previews,
+          };
+        },
+      },
+    ],
+    { initialEntries: ["/"] },
+  );
+  const user = userEvent.setup();
+  render(<RouterProvider router={router} />);
+
+  await user.click(screen.getByText("Edit job"));
+  const endDate = screen.getByLabelText(/End date/);
+  expect(endDate).toHaveValue("2026-10-31");
+  await user.click(screen.getByRole("button", { name: "Review changes" }));
+  expect(
+    await screen.findByRole("group", { name: "Apply to" }),
+  ).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Clear end date" }));
+
+  expect(endDate).toHaveValue("");
+  expect(endDate).toHaveFocus();
+  expect(
+    screen.queryByRole("button", { name: "Clear end date" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("group", { name: "Apply to" }),
+  ).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Review changes" }));
+  await screen.findByRole("group", { name: "Apply to" });
+  expect(submissions).toHaveLength(2);
+  expect(submissions[0]?.get("endDate")).toBe("2026-10-31");
+  expect(submissions[1]?.get("endDate")).toBe("");
+});
+
+it("offers no clear button when the schedule has no end date", async () => {
+  const router = createMemoryRouter(
+    [{ path: "/", element: <ScopedRecurringJobEditForm job={job} /> }],
+    { initialEntries: ["/"] },
+  );
+  const user = userEvent.setup();
+  render(<RouterProvider router={router} />);
+
+  await user.click(screen.getByText("Edit job"));
+
+  expect(screen.getByLabelText(/End date/)).toHaveValue("");
+  expect(
+    screen.queryByRole("button", { name: "Clear end date" }),
+  ).not.toBeInTheDocument();
+});
+
 it("disables only scopes that cannot apply the proposed change", async () => {
   const router = createMemoryRouter(
     [
