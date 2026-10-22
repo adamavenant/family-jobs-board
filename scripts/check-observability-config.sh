@@ -23,6 +23,7 @@ export GRAFANA_ADMIN_PASSWORD_FILE="$validation_dir/grafana-admin-password"
 export PROMETHEUS_DATA_DIR="$validation_dir/prometheus"
 export LOKI_DATA_DIR="$validation_dir/loki"
 export DOCKER_GID=0
+export APP_PROBE_ADDRESS=192.0.2.10
 
 docker compose \
   -f observability/compose.yaml \
@@ -180,11 +181,20 @@ assert_jq "$validation_dir/ingress.json" \
 assert_jq "$validation_dir/ingress.json" \
   '([.services | to_entries[] | select(.key != "grafana") | select(.value.networks["monitor-ingress"] != null)] | length) == 0' \
   "an observability backend other than Grafana joins the monitor ingress network"
+assert_jq "$validation_dir/ingress.json" \
+  '.services.blackbox.extra_hosts == ["dashboard.home.arpa=192.0.2.10"]' \
+  "production Blackbox does not use the explicit LAN application probe address"
 
 for service_name in alloy blackbox container-exporter grafana loki node-exporter prometheus query-gateway storage-init storage-preflight; do
   assert_jq "$validation_dir/snap-docker-compat.json" \
-    ".services[\"$service_name\"].read_only == true and (.services[\"$service_name\"].cap_drop | index(\"ALL\") != null) and ((.services[\"$service_name\"].security_opt // []) | length) == 0" \
-    "$service_name does not retain the non-NNP hardening in the Docker Snap compatibility model"
+    ".services[\"$service_name\"].read_only == true" \
+    "$service_name is not read-only in the Docker Snap compatibility model"
+  assert_jq "$validation_dir/snap-docker-compat.json" \
+    ".services[\"$service_name\"].cap_drop | index(\"ALL\") != null" \
+    "$service_name does not drop all capabilities in the Docker Snap compatibility model"
+  assert_jq "$validation_dir/snap-docker-compat.json" \
+    "((.services[\"$service_name\"].security_opt // []) | length) == 0" \
+    "$service_name retains a security option that the Docker Snap compatibility model must reset"
 done
 assert_jq "$validation_dir/snap-docker-compat.json" \
   '[.services[] | (.ports // []) | length] | all(. == 0)' \

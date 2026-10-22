@@ -1,4 +1,8 @@
 services:
+  blackbox:
+    extra_hosts:
+      - "${APP_PROBE_HOSTNAME:-dashboard.home.arpa}:${APP_PROBE_ADDRESS:?APP_PROBE_ADDRESS must be set to the LAN address used for application probes}"
+
   grafana:
     networks:
       query:

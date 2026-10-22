@@ -4,9 +4,9 @@ This runbook operates the separate Grafana/Prometheus/Loki/Alloy/Blackbox/query
 gateway Compose project. It does not deploy the Family Jobs Board application,
 change DNS or reverse-proxy configuration, or expose Grafana to the LAN.
 
-For the reviewed Serendipity LAN integration, including its private ingress
-network, DNS/proxy changes, filesystem provisioning, and rollback, see
-[`serendipity-observability.md`](serendipity-observability.md).
+The host-specific storage mechanism, DNS/proxy changes, deployment evidence,
+and rollback record belong in the private deployment repository. This public
+runbook defines only the portable observability boundary.
 
 ## Prepare configuration
 
@@ -83,6 +83,30 @@ change:
 ```sh
 ./scripts/check-observability-config.sh
 ```
+
+### Docker Snap compatibility exception
+
+The baseline requires `no-new-privileges:true` on every service. A confined
+Docker Snap installation can reject the container's first exec before its
+entry point runs. Prove that exact host limitation before using the narrowly
+scoped compatibility overlay:
+
+```sh
+docker run --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  busybox:1.37.0-uclibc /bin/sh -c true
+```
+
+Use `observability/compose.snap-docker-compat.yaml` only when that command fails
+with exit 255 and `exec /bin/sh: operation not permitted`, while the same probe
+without the single `--security-opt` argument succeeds. The overlay resets only
+`security_opt`; read-only filesystems, dropped capabilities, unprivileged users,
+resource bounds, and network isolation remain mandatory and are checked in the
+rendered model. Record the probe and exception in the private deployment
+repository. Because removing `no-new-privileges` increases the residual risk,
+especially for the Docker-socket-holding container exporter, migrate the host
+to the supported Docker Engine packages rather than treating this overlay as a
+permanent baseline. Never use it on a host where the baseline probe succeeds.
 
 Pull the directly used images and rebuild the four health-check wrapper images
 plus the privacy-bounded container exporter from their pinned bases:
@@ -202,9 +226,13 @@ residual risk. Never attach the Docker socket to Grafana, Prometheus, Loki,
 Blackbox, or Alloy.
 
 Blackbox alone has an egress-capable probe network so it can resolve and reach
-`dashboard.home.arpa`; it has no host port. If all three application checks go
-down together, verify that Docker's configured DNS can resolve the LAN-only
-name before treating the result as an application failure.
+`dashboard.home.arpa`; it has no host port. Production ingress adds an explicit
+hosts entry from `APP_PROBE_HOSTNAME` to `APP_PROBE_ADDRESS`, which must be the
+LAN address served by Caddy. This avoids relying on Docker's embedded resolver
+to forward the private `home.arpa` zone while still exercising the normal host
+and proxy route. If all three application checks go down together, verify that
+the configured address is current before treating the result as an application
+failure.
 
 ## Stop, restart, and remove non-destructively
 

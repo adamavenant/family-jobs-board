@@ -22,7 +22,7 @@ values:
 ```sh
 sudo sh -c 'grep -q "^AUTHENTICATION_PIN_PEPPER=" /etc/family-jobs-board/family-jobs-board.env || printf "\nAUTHENTICATION_PIN_PEPPER=\n" >> /etc/family-jobs-board/family-jobs-board.env'
 sudo sh -c 'grep -q "^AUTHENTICATION_JWT_SIGNING_KEY=" /etc/family-jobs-board/family-jobs-board.env || printf "AUTHENTICATION_JWT_SIGNING_KEY=\n" >> /etc/family-jobs-board/family-jobs-board.env'
-sudo sh -c 'grep -q "^APPLICATION_ORIGIN=" /etc/family-jobs-board/family-jobs-board.env || printf "APPLICATION_ORIGIN=http://dashboard.home.arpa\n" >> /etc/family-jobs-board/family-jobs-board.env'
+sudo sh -c 'grep -q "^APPLICATION_ORIGIN=" /etc/family-jobs-board/family-jobs-board.env || printf "APPLICATION_ORIGIN=https://dashboard.home.arpa\n" >> /etc/family-jobs-board/family-jobs-board.env'
 ```
 
 Keep the generated authentication secrets stable across deployments. Losing the
@@ -56,7 +56,7 @@ docker compose \
   up --detach --wait --no-build
 ```
 
-Open `http://dashboard.home.arpa/` from another device on the LAN, or use the hostname configured in `APP_HOSTNAME`. Do not configure router port forwarding for this service.
+Open `https://dashboard.home.arpa/` from another device on the LAN, or use the hostname configured in `APP_HOSTNAME`. Trust Caddy's local CA on each client before signing in, and do not configure router port forwarding for this service.
 
 Check service state and the web health endpoint:
 

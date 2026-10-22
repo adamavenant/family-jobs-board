@@ -2,6 +2,9 @@ http://{$APP_HOSTNAME:dashboard.home.arpa} {
 	handle /health {
 		reverse_proxy web:3000
 	}
+	handle /api/health/* {
+		reverse_proxy web:3000
+	}
 
 	handle {
 		redir https://{host}{uri} permanent

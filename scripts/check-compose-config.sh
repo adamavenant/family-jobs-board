@@ -40,7 +40,7 @@ esac
 
 # These fresh values exist only for this Compose model check. They are never
 # printed, persisted, or used by a running application.
-auth_environment="AUTHENTICATION_PIN_PEPPER=$validation_pin_pepper AUTHENTICATION_JWT_SIGNING_KEY=$validation_jwt_signing_key APPLICATION_ORIGIN=http://dashboard.home.arpa"
+auth_environment="AUTHENTICATION_PIN_PEPPER=$validation_pin_pepper AUTHENTICATION_JWT_SIGNING_KEY=$validation_jwt_signing_key APPLICATION_ORIGIN=https://dashboard.home.arpa"
 
 if env $auth_environment DATABASE_PASSWORD= IMAGE_TAG=deployment-image-tag docker compose -f compose.yaml -f compose.production.yaml config >/dev/null 2>&1; then
   fail "production configuration accepted an empty database password"
@@ -76,7 +76,7 @@ printf '%s\n' "$production_proxy" | grep -q 'published: "80"' || fail "productio
 printf '%s\n' "$production_proxy" | grep -q 'published: "443"' || fail "production proxy does not publish HTTPS"
 printf '%s\n' "$production_proxy" | grep -q 'target: /etc/caddy/Caddyfile' || fail "production proxy does not mount its Caddyfile"
 printf '%s\n' "$production_proxy" | grep -q 'source: caddy-data' || fail "production proxy does not persist its internal CA data"
-printf '%s\n' "$production_api" | grep -q 'Authentication__AllowedOrigin: http://dashboard.home.arpa' || fail "production API origin is not explicit"
+printf '%s\n' "$production_api" | grep -q 'Authentication__AllowedOrigin: https://dashboard.home.arpa' || fail "production API HTTPS origin is not explicit"
 
 telemetry_config=$(docker compose -f compose.yaml -f compose.telemetry.yaml config)
 printf '%s\n' "$telemetry_config" | grep -q 'name: family-jobs-board-telemetry' \
@@ -115,5 +115,7 @@ grep -Fq '{$MONITOR_HOSTNAME:monitor.home.arpa}' deploy/Caddyfile \
   || fail "Caddy does not route the monitor hostname"
 grep -Fq 'reverse_proxy observability-grafana:3000' deploy/Caddyfile \
   || fail "Caddy does not route monitor traffic to the isolated Grafana alias"
+grep -Fq 'handle /api/health/*' deploy/Caddyfile \
+  || fail "Caddy does not preserve HTTP access to the API health probes"
 
 echo "Compose configuration checks passed."

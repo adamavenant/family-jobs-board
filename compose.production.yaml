@@ -56,7 +56,7 @@ services:
       - -c
       - |
         echo "Family Jobs Board is ready"
-        echo "Web: http://${APP_HOSTNAME:-dashboard.home.arpa}"
+        echo "Web: https://${APP_HOSTNAME:-dashboard.home.arpa}"
         echo "The API and database are private to the Compose network"
         exec tail -f /dev/null
 

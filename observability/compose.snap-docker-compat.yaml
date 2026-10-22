@@ -2,27 +2,24 @@
 # before a container's first exec. Use this overlay only on a host where the
 # documented minimal probe reproduces that Docker-Snap limitation. All other
 # service hardening remains inherited from compose.yaml.
-x-snap-docker-compat: &snap-docker-compat
-  security_opt: !reset []
-
 services:
   storage-preflight:
-    <<: *snap-docker-compat
+    security_opt: !reset []
   storage-init:
-    <<: *snap-docker-compat
+    security_opt: !reset []
   loki:
-    <<: *snap-docker-compat
+    security_opt: !reset []
   alloy:
-    <<: *snap-docker-compat
+    security_opt: !reset []
   blackbox:
-    <<: *snap-docker-compat
+    security_opt: !reset []
   node-exporter:
-    <<: *snap-docker-compat
+    security_opt: !reset []
   container-exporter:
-    <<: *snap-docker-compat
+    security_opt: !reset []
   prometheus:
-    <<: *snap-docker-compat
+    security_opt: !reset []
   query-gateway:
-    <<: *snap-docker-compat
+    security_opt: !reset []
   grafana:
-    <<: *snap-docker-compat
+    security_opt: !reset []
