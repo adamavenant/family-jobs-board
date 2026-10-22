@@ -117,5 +117,7 @@ grep -Fq 'reverse_proxy observability-grafana:3000' deploy/Caddyfile \
   || fail "Caddy does not route monitor traffic to the isolated Grafana alias"
 grep -Fq 'handle /api/health/*' deploy/Caddyfile \
   || fail "Caddy does not preserve HTTP access to the API health probes"
+grep -Fq 'reverse_proxy api:8080' deploy/Caddyfile \
+  || fail "Caddy does not route the API health probes directly to the API"
 
 echo "Compose configuration checks passed."

@@ -3,7 +3,8 @@ http://{$APP_HOSTNAME:dashboard.home.arpa} {
 		reverse_proxy web:3000
 	}
 	handle /api/health/* {
-		reverse_proxy web:3000
+		uri strip_prefix /api
+		reverse_proxy api:8080
 	}
 
 	handle {
