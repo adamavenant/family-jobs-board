@@ -69,6 +69,7 @@ import {
 import {
   whoseTurnAction,
   whoseTurnLoader,
+  whoseTurnTickAction,
 } from "../features/whoseTurn/whoseTurnRoute";
 import { calendarLoader } from "../features/calendar/calendarRoute";
 import { CalendarPage } from "../features/calendar/CalendarPage";
@@ -1249,6 +1250,10 @@ export const routes: RouteObject[] = [
     path: "/whose-turn",
     loader: whoseTurnLoader,
     action: whoseTurnAction,
+  },
+  {
+    path: "/whose-turn/turns",
+    action: whoseTurnTickAction,
   },
   {
     path: "/point-adjustments",

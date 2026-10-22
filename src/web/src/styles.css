@@ -618,6 +618,15 @@ a.hero__balance:focus-visible {
 .family-member-edit button {
   grid-column: 1 / -1;
 }
+.family-member-edit .assignee-option {
+  display: flex;
+  font-size: inherit;
+}
+.family-member-edit .assignee-option input {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+}
 .family-member-list__self,
 .family-member-deactivate,
 .family-member-pin-reset,
@@ -1210,6 +1219,14 @@ a.hero__balance:focus-visible {
   border-radius: 16px;
   font-weight: 600;
 }
+.whose-turn-card__answer {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
 .whose-turn-card__question {
   font-size: 1.05rem;
 }
@@ -1229,6 +1246,55 @@ a.hero__balance:focus-visible {
   background: var(--accent);
   color: var(--accent-contrast, #fff);
   font-size: 1rem;
+}
+.whose-turn-card__taken {
+  color: var(--success-text);
+  font-size: 0.95rem;
+}
+.whose-turn-card__turn {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-weight: 500;
+}
+.whose-turn-card__tick {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.whose-turn-card__tick input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.whose-turn-card__undo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0;
+}
+.whose-turn-card__undo button {
+  min-height: 44px;
+  padding: 8px 14px;
+  color: var(--card-text);
+  background: transparent;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.whose-turn-card__undo button:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+.whose-turn-card__turn .error-message {
+  margin: 0;
 }
 .whose-turn-card--unset {
   background: transparent;

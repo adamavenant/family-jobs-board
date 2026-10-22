@@ -2,11 +2,12 @@
 
 ## Status
 
-Accepted foundation contract. Issue #127 delivers the independently deployable
-storage and visualisation stack, issue #128 adds privacy-safe application
-telemetry, and issue #129 adds bounded host/service/container health.
-Final product dashboards, reverse-proxy/DNS integration, and live Serendipity
-deployment are separate increments.
+Accepted implementation contract. Issue #127 delivers the independently
+deployable storage and visualisation stack, issue #128 adds privacy-safe
+application telemetry, issue #129 adds bounded host/service/container health,
+and issue #130 provisions the operator-facing application and server
+dashboards. Reverse-proxy/DNS integration and live Serendipity deployment are
+separate increments.
 
 ## Outcome and user value
 
@@ -88,14 +89,19 @@ start/age, image tag, and immutable Docker image content ID.
 
 The container-state path is deliberately narrower than a general Docker
 exporter. One unprivileged sanitizer is the only service with a read-only
-socket bind. Its Docker client permits only container-list and container-inspect
-reads, applies exact Compose labels plus the fixed `api`, `db`, `proxy`, and
-`web` allowlist, rechecks inspected labels, and exposes only sanitized metrics
-and fail-closed health over the private backend network. No raw Docker API,
-unrelated container inventory, names, IDs, environment, commands, mounts,
-arbitrary labels, logs, host processes, host connections, or host filesystem
-contents are exposed. Collector success and last-success timestamps make stale
-container data visible. The socket remains root-equivalent despite its
+socket bind. Its Docker client permits only container-list, container-inspect,
+and volume disk-usage reads, applies exact Compose labels plus the fixed `api`,
+`db`, `proxy`, and `web` allowlist, rechecks inspected labels, and retains only
+the exact observability Prometheus/Loki volume byte totals from disk usage. It
+refreshes the host-wide Docker disk-usage call at most every five minutes,
+serves cached values between refreshes, and exports separate storage-collection
+success/freshness so a failed refresh never looks current. It
+exposes only sanitized metrics and fail-closed health over the private backend
+network. No raw Docker API, unrelated container or volume inventory, names,
+IDs, environment, commands, mounts, arbitrary labels, logs, host processes,
+host connections, or host filesystem contents are exposed. Collector success
+and last-success timestamps make stale data visible. The socket remains
+root-equivalent despite its
 read-only bind, so compromise of the sanitizer could bypass its policy; the
 small surface and container hardening reduce but do not remove that risk.
 
@@ -233,17 +239,60 @@ The version-controlled `Telemetry stack health` dashboard shows:
 - healthy and down scrape-target counts;
 - aggregate and per-service sample freshness so stale green data is visible;
 - private endpoint probe state;
-- Prometheus compacted-block use;
+- Prometheus volume use;
 - privacy-safe Loki ingestion activity; and
-- Loki WAL storage use.
+- Loki volume use.
 
 Prometheus and Loki data sources are provisioned read-only from files and point
 only at the query gateway. Its exact path-and-method allowlist permits the
 required PromQL/LogQL read APIs and denies ingest and administration. Query
 timeouts, concurrency, series/sample, entry, and line limits bound the work an
-anonymous Viewer can request. Final application and Serendipity-capacity tabs
-remain future work: they will use this contract without expanding container or
-host privileges silently.
+anonymous Viewer can request.
+
+## Provisioned operator dashboards
+
+The default **Family Jobs Board overview** has a six-hour initial range, quick
+ranges through the full 30-day retention period, and explicit `NO DATA`,
+`STALE`, `HEALTHY`, `DEGRADED`, and `UNHEALTHY` presentation. Its summary and
+panels keep the following signals separate:
+
+- Error/Critical runtime events and unhandled ASP.NET Core exceptions;
+- warnings, HTTP 4xx responses, and expected authentication rejections;
+- request count/rate, status trends, p50/p95 latency, and reviewed route
+  templates;
+- aggregate application lifecycle, unhandled-failure, and telemetry
+  configuration events; and
+- endpoint readiness, bounded container state, restart/OOM history, process
+  age, and sanitized image tag plus immutable image content ID.
+
+Counter panels synthesize zero only while a fresh process-start gauge proves the
+application telemetry path exists. Missing application telemetry therefore
+renders `NO DATA`, never a reassuring zero. Headline totals use exact current
+process counters and ignore samples timestamped before the current process
+started, avoiding both restart carry-over and Prometheus range-boundary
+extrapolation; the selected-range rate panels show when those events occurred.
+Overall freshness
+is the oldest required endpoint-probe, successful container-collection, or
+application-telemetry sample; a failed required scrape is unhealthy rather
+than fresh merely because Prometheus sampled its `up` value. Explicit outage
+signals take precedence over missing telemetry, while an isolated volume-usage
+refresh failure is degraded and leaves container health visible. A failed
+migration is not directly exported: because API startup is migration-gated,
+the dashboard presents its observable effect as missing/down API readiness
+rather than claiming a migration-specific event.
+
+The separate **Server and service health** dashboard retains Serendipity CPU,
+load, memory, uptime, root byte capacity, root inode pressure, endpoint and
+container health, and deployment identity. The privacy-bounded exporter also
+uses Docker's volume disk-usage endpoint and retains only the exact
+observability Prometheus and Loki volume sizes. Those panels therefore include
+Prometheus WAL/head/compaction files and Loki chunks/WAL/index/Compactor state,
+while production filesystem capacity remains enforced as described above.
+
+Per-container CPU and memory are intentionally absent. The approved MVP uses
+aggregate server capacity; adding cAdvisor or wider Docker statistics access
+would expand the host-data and privilege boundary and requires a separate
+decision.
 
 ## Acceptance scenarios
 
