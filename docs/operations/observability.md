@@ -6,9 +6,10 @@ change DNS or reverse-proxy configuration, or expose Grafana to the LAN.
 
 ## Prepare configuration
 
-Install Docker Engine 20.10 or newer with the Compose plugin. The bounded
-container collector uses Docker Engine API v1.41, the API level introduced by
-20.10. Copy the example outside the checkout and create a strong Grafana
+Install Docker Engine 23.0 or newer with the Compose plugin. The bounded
+container collector uses Docker Engine API v1.42, the first API level whose
+`GET /system/df?type=volume` request limits disk-usage work to volumes. Copy the
+example outside the checkout and create a strong Grafana
 operator password as a separate mode-0600 file:
 
 ```sh
@@ -127,18 +128,44 @@ reviewed Prometheus/Loki query APIs. OTLP ingest and backend administration stay
 reachable only from the collector/backend side, never through the anonymous
 Grafana data-source proxy.
 
+Grafana opens the read-only **Family Jobs Board overview** by default. It shows
+the current application state, telemetry freshness, runtime-error and warning
+counts, expected authentication/4xx outcomes, traffic and latency, noteworthy
+aggregate events, running containers, and deployment image identity. Use the
+dashboard links to keep the same time range while moving to **Server and
+service health** or the lower-level **Telemetry stack health** diagnostics.
+The default range is six hours; the picker includes the full 30-day retention
+window.
+
+`NO DATA` means a required series is absent. `STALE` means a required sample is
+more than two minutes old. Neither is a healthy zero. A migration failure is
+visible indirectly as API readiness/startup failure because the one-shot
+migration service is deliberately outside the bounded runtime-container
+exporter. Headline counters include only samples from the current API process,
+so a restart cannot briefly replay the previous process' final totals. A
+confirmed endpoint or container-collector outage remains `UNHEALTHY` even when
+application or container detail later ages out. Volume-size collection fails
+independently as `DEGRADED` and does not hide current container health.
+
 ## Host, service, and container health
 
 The **Server and service health** dashboard is a separate provisioned Grafana
 dashboard. It intentionally contains only:
 
-- Serendipity CPU, load, memory, uptime, and root-filesystem capacity from Node
-  Exporter;
+- Serendipity CPU, load, memory, uptime, root-filesystem byte capacity, and root
+  inode pressure from Node Exporter;
 - HTTP checks named **Service health** for the public web endpoint and API
   liveness/readiness endpoints at `dashboard.home.arpa`; and
 - running/state, Docker health, restart count, OOM-killed flag, start/age, and
   bounded image tag and immutable Docker image content ID for the `api`, `db`,
   `proxy`, and `web` Compose services.
+
+It also shows Docker-reported bytes used by the exact Prometheus and Loki data
+volumes. This includes every file in each volume, while the capacity checks
+below remain authoritative for filesystem size and non-volume overhead.
+Per-container CPU and memory remain deliberately excluded: the approved scope
+is aggregate server capacity, and collecting per-container resources would
+require a broader Docker/cAdvisor boundary.
 
 Node Exporter runs without host PID/network namespaces, without privilege, and
 with every default collector disabled. Its explicit collector allowlist does
@@ -149,12 +176,17 @@ host access: the root mount exists only so the filesystem collector can call
 
 The container exporter is the only service that receives the read-only Docker
 socket bind. Its Docker client has a fixed `GET` allowlist for container list
-and inspect, sends exact Compose project/service label filters, rechecks
-returned labels, and emits only the fixed service name plus sanitized image
-tag and content ID. Its network surface exposes only `/metrics` and a
-fail-closed `/health`; raw Docker endpoints are not proxied. Container names,
-IDs, arbitrary labels, environment, mounts, commands, and logs never become
-metrics.
+and inspect plus volume disk usage, sends exact Compose project/service label
+filters, rechecks returned labels, and emits only the fixed service name plus
+sanitized image tag and content ID. From the disk-usage response it retains
+only byte totals for the exact observability Prometheus and Loki volume names;
+unrelated volume names and sizes are discarded. Docker's host-wide disk-usage
+call is cached for five minutes rather than repeated by each health check and
+scrape, and separate success/last-success metrics make a failed refresh stale.
+Its network surface exposes
+only `/metrics` and a fail-closed `/health`; raw Docker endpoints are not
+proxied. Container names, IDs, arbitrary labels, environment, mounts, commands,
+logs, and unrelated volume inventory never become metrics.
 
 The Docker socket remains a root-equivalent interface despite its read-only
 bind flag; the flag protects the socket file, not the HTTP methods sent over
@@ -212,8 +244,9 @@ docker run --rm --network none --read-only --cap-drop ALL \
 ```
 
 The `1M-blocks` column must be no greater than 2048 for Prometheus and 4096
-for Loki. Grafana's health dashboard shows Prometheus block and Loki WAL use,
-but those panels do not replace checking the host filesystem and its alerts.
+for Loki. Grafana's volume-use panels do not replace checking the host
+filesystem and its alerts because filesystem metadata and unrelated overhead
+sit outside Docker's per-volume byte totals.
 
 ## Upgrade
 

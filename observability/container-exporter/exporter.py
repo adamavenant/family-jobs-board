@@ -23,7 +23,9 @@ VALID_PROJECT = re.compile(r"^[a-zA-Z0-9_.-]{1,63}$")
 VALID_CONTAINER_ID = re.compile(r"^[a-f0-9]{64}$")
 VALID_IMAGE_TAG = re.compile(r"^[a-zA-Z0-9_.-]{1,128}$")
 VALID_IMAGE_ID = re.compile(r"^sha256:[a-f0-9]{64}$")
-DOCKER_API_VERSION = "v1.41"
+DOCKER_API_VERSION = "v1.42"
+STORAGE_CACHE_TTL_SECONDS = 300.0
+STORAGE_CACHE_MAX_AGE_SECONDS = 600.0
 
 
 def _metric_help(name: str, description: str, metric_type: str = "gauge") -> list[str]:
@@ -71,11 +73,20 @@ class UnixSocketHTTPConnection(http.client.HTTPConnection):
 
 
 class DockerApi:
-    def __init__(self, base_url: str, project: str, timeout_seconds: float = 3.0):
-        if not VALID_PROJECT.fullmatch(project):
-            raise ValueError("FJB_COMPOSE_PROJECT_NAME has an invalid value")
+    def __init__(
+        self,
+        base_url: str,
+        project: str,
+        observability_prefix: str = "family-jobs-board-observability",
+        timeout_seconds: float = 3.0,
+    ):
+        if not VALID_PROJECT.fullmatch(project) or not VALID_PROJECT.fullmatch(
+            observability_prefix
+        ):
+            raise ValueError("Compose project/resource prefix has an invalid value")
         self._base_url = base_url.rstrip("/")
         self._project = project
+        self._observability_prefix = observability_prefix
         self._timeout_seconds = timeout_seconds
 
     def _get_json(self, path: str) -> Any:
@@ -90,7 +101,11 @@ class DockerApi:
         is_inspect = re.fullmatch(
             r"/containers/[a-f0-9]{64}/json", parsed_path.path
         ) and not parsed_path.query
-        if not is_list and not is_inspect:
+        is_volume_df = (
+            parsed_path.path == "/system/df"
+            and query_values == {"type": ["volume"]}
+        )
+        if not is_list and not is_inspect and not is_volume_df:
             raise ValueError("Docker API path is outside the fixed read allowlist")
 
         request_path = f"/{DOCKER_API_VERSION}{path}"
@@ -152,6 +167,30 @@ class DockerApi:
             raise ValueError("Docker inspect labels did not match the requested service")
         return inspected
 
+    def telemetry_storage_usage(self) -> dict[str, int]:
+        response = self._get_json("/system/df?type=volume")
+        if not isinstance(response, dict):
+            raise ValueError("Docker disk-usage response is not an object")
+        expected = {
+            f"{self._observability_prefix}-prometheus-data": "prometheus",
+            f"{self._observability_prefix}-loki-data": "loki",
+        }
+        usage: dict[str, int] = {}
+        volumes = response.get("Volumes") or []
+        if not isinstance(volumes, list):
+            raise ValueError("Docker volume disk usage is not a list")
+        for volume in volumes:
+            if not isinstance(volume, dict) or volume.get("Name") not in expected:
+                continue
+            size = (volume.get("UsageData") or {}).get("Size")
+            if isinstance(size, int) and size >= 0:
+                usage[expected[volume["Name"]]] = size
+        if set(usage) != {"prometheus", "loki"}:
+            raise ValueError(
+                "Docker disk usage omitted an expected telemetry volume size"
+            )
+        return usage
+
 
 class Collector:
     def __init__(self, docker: DockerApi, clock=time.time):
@@ -159,8 +198,12 @@ class Collector:
         self._clock = clock
         self._lock = threading.Lock()
         self._last_success: float | None = None
+        self._storage_usage: dict[str, int] | None = None
+        self._storage_last_attempt: float | None = None
+        self._storage_last_success: float | None = None
+        self._storage_collection_success = False
 
-    def collect_with_status(self) -> tuple[str, bool]:
+    def collect_with_status(self, *, refresh_storage: bool = True) -> tuple[str, bool]:
         with self._lock:
             now = self._clock()
             try:
@@ -170,11 +213,44 @@ class Collector:
                 }
             except (OSError, ValueError, json.JSONDecodeError, urllib.error.URLError):
                 return self._render_failure(), False
+            storage_usage = self._cached_storage_usage(now, refresh_storage)
             self._last_success = now
-            return self._render_success(inspections, now), True
+            return self._render_success(inspections, storage_usage, now), True
 
     def collect(self) -> str:
         return self.collect_with_status()[0]
+
+    def _cached_storage_usage(
+        self, now: float, refresh_storage: bool
+    ) -> dict[str, int]:
+        cache_age = (
+            None
+            if self._storage_last_success is None
+            else now - self._storage_last_success
+        )
+        attempt_age = (
+            None
+            if self._storage_last_attempt is None
+            else now - self._storage_last_attempt
+        )
+        should_refresh = refresh_storage and (
+            attempt_age is None or attempt_age >= STORAGE_CACHE_TTL_SECONDS
+        )
+        if should_refresh:
+            self._storage_last_attempt = now
+            try:
+                self._storage_usage = self._docker.telemetry_storage_usage()
+                self._storage_last_success = now
+                self._storage_collection_success = True
+                cache_age = 0.0
+            except (OSError, ValueError, json.JSONDecodeError, urllib.error.URLError):
+                self._storage_collection_success = False
+        if self._storage_usage is None or cache_age is None:
+            return {}
+        if cache_age > STORAGE_CACHE_MAX_AGE_SECONDS:
+            self._storage_collection_success = False
+            return {}
+        return self._storage_usage
 
     def _collector_status_lines(
         self, succeeded: bool, last_success: float | None
@@ -197,6 +273,27 @@ class Collector:
                 "family_jobs_board_container_collector_last_success_timestamp_seconds "
                 f"{last_success:.3f}"
             )
+        lines.extend(
+            _metric_help(
+                "family_jobs_board_telemetry_storage_collector_success",
+                "Whether the most recent allowlisted Docker volume-usage collection succeeded.",
+            )
+        )
+        lines.append(
+            "family_jobs_board_telemetry_storage_collector_success "
+            f"{int(self._storage_collection_success)}"
+        )
+        lines.extend(
+            _metric_help(
+                "family_jobs_board_telemetry_storage_collector_last_success_timestamp_seconds",
+                "Unix timestamp of the most recent successful allowlisted Docker volume-usage collection.",
+            )
+        )
+        if self._storage_last_success is not None:
+            lines.append(
+                "family_jobs_board_telemetry_storage_collector_last_success_timestamp_seconds "
+                f"{self._storage_last_success:.3f}"
+            )
         return lines
 
     def _render_failure(self) -> str:
@@ -204,7 +301,10 @@ class Collector:
         return "\n".join(lines) + "\n"
 
     def _render_success(
-        self, inspections: dict[str, dict[str, Any] | None], now: float
+        self,
+        inspections: dict[str, dict[str, Any] | None],
+        storage_usage: dict[str, int],
+        now: float,
     ) -> str:
         definitions = (
             ("family_jobs_board_container_expected", "Whether this fixed service is expected."),
@@ -218,6 +318,7 @@ class Collector:
             ("family_jobs_board_container_state", "Current Docker state for the container."),
             ("family_jobs_board_container_health", "Current Docker health-check status for the container."),
             ("family_jobs_board_container_info", "Bounded deployment tag and immutable image content ID for the container."),
+            ("family_jobs_board_telemetry_storage_used_bytes", "Docker-reported bytes used by each allowlisted telemetry volume."),
         )
         lines: list[str] = []
         for name, description in definitions:
@@ -291,6 +392,13 @@ class Collector:
                     f"{max(0.0, now - started_at):.3f}"
                 )
 
+        for store in ("prometheus", "loki"):
+            if store in storage_usage:
+                lines.append(
+                    "family_jobs_board_telemetry_storage_used_bytes"
+                    f'{{store="{store}"}} {storage_usage[store]}'
+                )
+
         lines.extend(self._collector_status_lines(True, now))
         return "\n".join(lines) + "\n"
 
@@ -300,7 +408,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/health":
-            _metrics, succeeded = self.collector.collect_with_status()
+            _metrics, succeeded = self.collector.collect_with_status(
+                refresh_storage=False
+            )
             status = 200 if succeeded else 503
             body = b"healthy\n" if succeeded else b"unhealthy\n"
             self._respond(status, "text/plain; charset=utf-8", body)
@@ -327,9 +437,12 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     project = os.environ.get("FJB_COMPOSE_PROJECT_NAME", "family-jobs-board")
+    observability_prefix = os.environ.get(
+        "OBSERVABILITY_RESOURCE_PREFIX", "family-jobs-board-observability"
+    )
     docker_url = os.environ.get("DOCKER_API_URL", "unix:///var/run/docker.sock")
     port = int(os.environ.get("PORT", "9400"))
-    Handler.collector = Collector(DockerApi(docker_url, project))
+    Handler.collector = Collector(DockerApi(docker_url, project, observability_prefix))
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
 
 
