@@ -293,6 +293,18 @@ a.hero__balance:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 4px;
 }
+button.hero__balance {
+  padding: 0;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+button.hero__balance:hover,
+button.hero__balance:focus-visible,
+button.hero__balance[aria-expanded="true"] {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+}
 .hero__count strong,
 .hero__balance strong {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -1023,6 +1035,14 @@ a.hero__balance:focus-visible {
 }
 .calendar-job-row__meta {
   color: var(--muted);
+  font-size: 0.85rem;
+}
+.calendar-job-row--pending {
+  display: grid;
+  gap: 8px;
+}
+.calendar-week__day .approval-controls {
+  grid-template-columns: 1fr;
   font-size: 0.85rem;
 }
 .calendar-week {
@@ -2086,4 +2106,192 @@ a.hero__balance:focus-visible {
       transform: translateY(12px);
     }
   }
+}
+
+.approval-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+.approval-controls form {
+  display: grid;
+  gap: 8px;
+}
+.approval-controls button,
+.approval-controls__reject > summary {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.approval-controls button {
+  color: var(--button-text);
+  background: var(--button);
+  border: 0;
+}
+.approval-controls button:hover {
+  background: var(--button-hover);
+}
+.approval-controls button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+.approval-controls__reject > summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--error-text);
+  background: var(--error-bg);
+  border: 1px solid var(--error-text);
+  list-style: none;
+}
+.approval-controls__reject > summary::-webkit-details-marker {
+  display: none;
+}
+.approval-controls__reject[open] {
+  grid-column: 1 / -1;
+}
+.approval-controls__reject form {
+  margin-top: 8px;
+}
+.approval-controls label {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.approval-controls label span {
+  font-weight: 500;
+}
+.approval-controls textarea {
+  width: 100%;
+  padding: 10px 11px;
+  resize: vertical;
+  color: var(--text);
+  background: var(--input);
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+}
+.approval-controls .button--secondary {
+  color: var(--error-text);
+  background: var(--error-bg);
+  border: 1px solid var(--error-text);
+}
+.approval-controls .button--secondary:hover {
+  color: var(--error-bg);
+  background: var(--error-text);
+}
+.approval-controls .error-message {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.approvals-panel {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 900;
+  width: min(420px, 100%);
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 20px max(20px, env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom)) 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--text);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -16px 0 40px var(--shadow);
+}
+/* On wide screens the page makes room for the panel instead of sliding under it. */
+@media (min-width: 1024px) {
+  body:has(.approvals-panel) {
+    padding-right: min(420px, 100%);
+  }
+}
+.approvals-panel__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.approvals-panel__header .eyebrow {
+  margin: 0 0 4px;
+}
+.approvals-panel h2 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+.approvals-panel__close {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+.approvals-panel__status {
+  margin: 0;
+  color: var(--muted);
+}
+.approvals-panel__error {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+.approvals-panel__error .error-message {
+  margin: 0;
+}
+.approvals-panel__error button {
+  min-height: 44px;
+  padding: 10px 16px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.approvals-panel__day {
+  display: grid;
+  gap: 10px;
+}
+.approvals-panel__date {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.approvals-panel__date--earlier {
+  color: var(--pending-text);
+}
+.approvals-panel__day ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.approvals-panel__job {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  color: var(--pending-text);
+  background: var(--pending-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+}
+.approvals-panel__job-summary {
+  display: grid;
+  gap: 2px;
+}
+.approvals-panel__job-summary strong {
+  color: var(--text);
+}
+.approvals-panel__job-summary span {
+  font-size: 0.85rem;
 }

@@ -115,6 +115,12 @@ public sealed class TodayBoardService
             ? null
             : await _repository.GetPointsBalanceAsync(viewer.Id, cancellationToken);
 
+        // Awaiting-review work stays counted after its scheduled day passes, so a job a child
+        // submitted yesterday is never silently dropped from the household's review count.
+        var pendingApprovalCount = await _repository.CountPendingApprovalJobsAsync(
+            householdVisibleChildIds,
+            cancellationToken);
+
         var turns = await _turnRotationService.GetTurnsAsync(
             date,
             new TurnRotationViewer(viewer.Id, viewer.IsAdult),
@@ -147,7 +153,7 @@ public sealed class TodayBoardService
                     ? seriesById.GetValueOrDefault(seriesId)
                     : null)).ToArray(),
             pointsBalance,
-            householdVisibleJobs.Count(job => job.Status == JobStatus.PendingApproval),
+            pendingApprovalCount,
             whoseTurns);
     }
 

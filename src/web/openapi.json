@@ -2033,6 +2033,33 @@
         ]
       }
     },
+    "/api/approvals/pending": {
+      "get": {
+        "tags": [
+          "Approvals"
+        ],
+        "summary": "List every job awaiting an adult's review.",
+        "description": "Adult-only. Returns pending-approval jobs for every active child across all scheduled dates, oldest scheduled date first and in agenda order within a date. Decisions use the existing approve and reject operations.",
+        "operationId": "GetPendingApprovals",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingApprovalsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
     "/api/turn-rotations": {
       "get": {
         "tags": [
@@ -2613,6 +2640,7 @@
           "rangeStart",
           "rangeEnd",
           "selectedChildId",
+          "pendingApprovalCount",
           "days"
         ],
         "type": "object",
@@ -2651,6 +2679,14 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "pendingApprovalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           },
           "days": {
             "type": "array",
@@ -3409,6 +3445,20 @@
           },
           "isAdult": {
             "type": "boolean"
+          }
+        }
+      },
+      "PendingApprovalsResponse": {
+        "required": [
+          "jobs"
+        ],
+        "type": "object",
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobResponse"
+            }
           }
         }
       },
@@ -4933,6 +4983,9 @@
     },
     {
       "name": "Calendar"
+    },
+    {
+      "name": "Approvals"
     },
     {
       "name": "Whose turn"

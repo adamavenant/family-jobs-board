@@ -22,6 +22,7 @@ export interface CalendarBoard {
   rangeStart: string;
   rangeEnd: string;
   selectedChildId: string | null;
+  pendingApprovalCount: number;
   days: CalendarDay[];
 }
 
@@ -65,6 +66,7 @@ export async function getCalendar(
     rangeStart: data.rangeStart,
     rangeEnd: data.rangeEnd,
     selectedChildId: data.selectedChildId,
+    pendingApprovalCount: Number(data.pendingApprovalCount),
     days: data.days.map((day) => ({
       date: day.date,
       isInFocusedPeriod: day.isInFocusedPeriod,
