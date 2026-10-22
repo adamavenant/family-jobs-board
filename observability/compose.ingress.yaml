@@ -1,0 +1,12 @@
+services:
+  grafana:
+    networks:
+      query:
+      monitor-ingress:
+        aliases:
+          - observability-grafana
+
+networks:
+  monitor-ingress:
+    name: ${MONITOR_INGRESS_NETWORK_NAME:-family-jobs-board-monitor-ingress}
+    external: true

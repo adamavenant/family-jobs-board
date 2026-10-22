@@ -33,6 +33,18 @@ docker compose \
   -f observability/compose.storage-bounds.yaml \
   config --format json > "$validation_dir/storage.json"
 
+docker compose \
+  -f observability/compose.yaml \
+  -f observability/compose.ingress.yaml \
+  config --format json > "$validation_dir/ingress.json"
+
+docker compose \
+  -f observability/compose.yaml \
+  -f observability/compose.storage-bounds.yaml \
+  -f observability/compose.ingress.yaml \
+  -f observability/compose.snap-docker-compat.yaml \
+  config --format json > "$validation_dir/snap-docker-compat.json"
+
 GRAFANA_TEST_PORT=33000 docker compose \
   -f observability/compose.yaml \
   -f observability/compose.test-ingress.yaml \
@@ -158,6 +170,28 @@ assert_jq "$validation_dir/storage.json" \
 assert_jq "$validation_dir/storage.json" \
   '.volumes["prometheus-data"].driver_opts.device != null and .volumes["loki-data"].driver_opts.device != null' \
   "production telemetry volumes are not explicit bind-backed filesystems"
+
+assert_jq "$validation_dir/ingress.json" \
+  '[.services[] | (.ports // []) | length] | all(. == 0)' \
+  "production observability ingress publishes a host port"
+assert_jq "$validation_dir/ingress.json" \
+  '(.services.grafana.networks | keys | sort) == ["monitor-ingress", "query"] and .services.grafana.networks["monitor-ingress"].aliases == ["observability-grafana"] and .networks["monitor-ingress"].external == true' \
+  "production Grafana ingress is not limited to the dedicated external network"
+assert_jq "$validation_dir/ingress.json" \
+  '([.services | to_entries[] | select(.key != "grafana") | select(.value.networks["monitor-ingress"] != null)] | length) == 0' \
+  "an observability backend other than Grafana joins the monitor ingress network"
+
+for service_name in alloy blackbox container-exporter grafana loki node-exporter prometheus query-gateway storage-init storage-preflight; do
+  assert_jq "$validation_dir/snap-docker-compat.json" \
+    ".services[\"$service_name\"].read_only == true and (.services[\"$service_name\"].cap_drop | index(\"ALL\") != null) and ((.services[\"$service_name\"].security_opt // []) | length) == 0" \
+    "$service_name does not retain the non-NNP hardening in the Docker Snap compatibility model"
+done
+assert_jq "$validation_dir/snap-docker-compat.json" \
+  '[.services[] | (.ports // []) | length] | all(. == 0)' \
+  "Docker Snap compatibility configuration publishes a host port"
+assert_jq "$validation_dir/snap-docker-compat.json" \
+  '(.services.grafana.networks | keys | sort) == ["monitor-ingress", "query"] and .services.grafana.networks["monitor-ingress"].aliases == ["observability-grafana"]' \
+  "Docker Snap compatibility configuration changes the production ingress boundary"
 
 assert_jq "$validation_dir/test-ingress.json" \
   '[.services | to_entries[] | select(((.value.ports // []) | length) > 0) | .key] == ["grafana"]' \

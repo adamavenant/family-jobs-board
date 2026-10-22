@@ -1,0 +1,12 @@
+services:
+  proxy:
+    environment:
+      MONITOR_HOSTNAME: ${MONITOR_HOSTNAME:-monitor.home.arpa}
+    networks:
+      default:
+      monitor-ingress:
+
+networks:
+  monitor-ingress:
+    name: ${MONITOR_INGRESS_NETWORK_NAME:-family-jobs-board-monitor-ingress}
+    external: true

@@ -1,0 +1,28 @@
+# Canonical's confined Docker Snap rejects the no-new-privileges transition
+# before a container's first exec. Use this overlay only on a host where the
+# documented minimal probe reproduces that Docker-Snap limitation. All other
+# service hardening remains inherited from compose.yaml.
+x-snap-docker-compat: &snap-docker-compat
+  security_opt: !reset []
+
+services:
+  storage-preflight:
+    <<: *snap-docker-compat
+  storage-init:
+    <<: *snap-docker-compat
+  loki:
+    <<: *snap-docker-compat
+  alloy:
+    <<: *snap-docker-compat
+  blackbox:
+    <<: *snap-docker-compat
+  node-exporter:
+    <<: *snap-docker-compat
+  container-exporter:
+    <<: *snap-docker-compat
+  prometheus:
+    <<: *snap-docker-compat
+  query-gateway:
+    <<: *snap-docker-compat
+  grafana:
+    <<: *snap-docker-compat

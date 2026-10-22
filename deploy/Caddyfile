@@ -1,5 +1,25 @@
 http://{$APP_HOSTNAME:dashboard.home.arpa} {
+	handle /health {
+		reverse_proxy web:3000
+	}
+
+	handle {
+		redir https://{host}{uri} permanent
+	}
+}
+
+{$APP_HOSTNAME:dashboard.home.arpa} {
+	tls internal
 	reverse_proxy web:3000
+}
+
+http://{$MONITOR_HOSTNAME:monitor.home.arpa} {
+	redir https://{host}{uri} permanent
+}
+
+{$MONITOR_HOSTNAME:monitor.home.arpa} {
+	tls internal
+	reverse_proxy observability-grafana:3000
 }
 
 :80 {

@@ -73,7 +73,9 @@ printf '%s\n' "$production_web" | grep -q '^    ports:' && fail "production web 
 printf '%s\n' "$production_proxy" | grep -q 'image: caddy:2.11.4-alpine' || fail "production proxy does not use the expected Caddy image"
 printf '%s\n' "$production_proxy" | grep -q 'APP_HOSTNAME: dashboard.home.arpa' || fail "production proxy does not default to dashboard.home.arpa"
 printf '%s\n' "$production_proxy" | grep -q 'published: "80"' || fail "production proxy does not publish the website on port 80"
+printf '%s\n' "$production_proxy" | grep -q 'published: "443"' || fail "production proxy does not publish HTTPS"
 printf '%s\n' "$production_proxy" | grep -q 'target: /etc/caddy/Caddyfile' || fail "production proxy does not mount its Caddyfile"
+printf '%s\n' "$production_proxy" | grep -q 'source: caddy-data' || fail "production proxy does not persist its internal CA data"
 printf '%s\n' "$production_api" | grep -q 'Authentication__AllowedOrigin: http://dashboard.home.arpa' || fail "production API origin is not explicit"
 
 telemetry_config=$(docker compose -f compose.yaml -f compose.telemetry.yaml config)
@@ -83,5 +85,35 @@ custom_telemetry_config=$(TELEMETRY_NETWORK_NAME=custom-telemetry-network \
   docker compose -f compose.yaml -f compose.telemetry.yaml config)
 printf '%s\n' "$custom_telemetry_config" | grep -q 'name: custom-telemetry-network' \
   || fail "telemetry adapter ignores TELEMETRY_NETWORK_NAME"
+
+monitor_config=$(env $auth_environment DATABASE_PASSWORD=deployment-config-check IMAGE_TAG=deployment-image-tag \
+  docker compose \
+    -f compose.yaml \
+    -f compose.production.yaml \
+    -f compose.monitor.yaml \
+    config)
+monitor_proxy=$(printf '%s\n' "$monitor_config" | service_block proxy)
+printf '%s\n' "$monitor_proxy" | grep -q 'MONITOR_HOSTNAME: monitor.home.arpa' \
+  || fail "monitor ingress does not default to monitor.home.arpa"
+printf '%s\n' "$monitor_config" | grep -q 'name: family-jobs-board-monitor-ingress' \
+  || fail "monitor ingress does not use the dedicated external network"
+if printf '%s\n' "$monitor_proxy" | grep -q 'published: "3000"'; then
+  fail "monitor ingress publishes Grafana directly"
+fi
+
+custom_monitor_config=$(env $auth_environment DATABASE_PASSWORD=deployment-config-check IMAGE_TAG=deployment-image-tag \
+  MONITOR_INGRESS_NETWORK_NAME=custom-monitor-network \
+  docker compose \
+    -f compose.yaml \
+    -f compose.production.yaml \
+    -f compose.monitor.yaml \
+    config)
+printf '%s\n' "$custom_monitor_config" | grep -q 'name: custom-monitor-network' \
+  || fail "monitor ingress ignores MONITOR_INGRESS_NETWORK_NAME"
+
+grep -Fq '{$MONITOR_HOSTNAME:monitor.home.arpa}' deploy/Caddyfile \
+  || fail "Caddy does not route the monitor hostname"
+grep -Fq 'reverse_proxy observability-grafana:3000' deploy/Caddyfile \
+  || fail "Caddy does not route monitor traffic to the isolated Grafana alias"
 
 echo "Compose configuration checks passed."

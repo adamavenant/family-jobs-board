@@ -4,6 +4,10 @@ This runbook operates the separate Grafana/Prometheus/Loki/Alloy/Blackbox/query
 gateway Compose project. It does not deploy the Family Jobs Board application,
 change DNS or reverse-proxy configuration, or expose Grafana to the LAN.
 
+For the reviewed Serendipity LAN integration, including its private ingress
+network, DNS/proxy changes, filesystem provisioning, and rollback, see
+[`serendipity-observability.md`](serendipity-observability.md).
+
 ## Prepare configuration
 
 Install Docker Engine 23.0 or newer with the Compose plugin. The bounded
