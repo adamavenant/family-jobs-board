@@ -712,7 +712,12 @@ for (const viewport of [
       page.getByRole("heading", { name: "Feed the dog" }),
     ).not.toBeVisible();
     await expect(page.getByLabel("1 jobs on this day")).toBeVisible();
-    await expect(page.getByLabel("2 jobs awaiting review")).toBeVisible();
+    // On a phone the filter link sits below the fold, so the pinned day bar repeats the badge.
+    await expect(
+      page
+        .locator(".hero")
+        .getByRole("button", { name: "2 jobs awaiting review" }),
+    ).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`childId=${harrieId}`));
     expect(
       await page.evaluate(
@@ -725,7 +730,7 @@ for (const viewport of [
     await expect(page).toHaveURL(
       new RegExp(`date=2026-09-08&childId=${harrieId}`),
     );
-    await page.getByRole("link", { name: "Today" }).click();
+    await page.getByRole("link", { name: "Today", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`childId=${harrieId}`));
   });
 }
