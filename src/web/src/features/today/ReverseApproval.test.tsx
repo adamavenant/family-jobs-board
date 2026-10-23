@@ -113,7 +113,12 @@ describe("Reversing an approval", () => {
     expect(
       await screen.findByRole("button", { name: "Approve +5 points" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Feed the dog" })).toHaveFocus();
+    // Focus moves once the queued reversal's result settles, a moment after the card changes.
+    await vi.waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Feed the dog" }),
+      ).toHaveFocus(),
+    );
     expect(
       screen.queryByText("Approved — 5 points awarded"),
     ).not.toBeInTheDocument();
@@ -174,9 +179,12 @@ describe("Reversing an approval", () => {
     expect(
       await within(card).findByText("Approved — 5 points awarded"),
     ).toBeInTheDocument();
-    expect(
-      within(card).getByRole("button", { name: "Reverse approval" }),
-    ).toBeEnabled();
+    // Controls stay locked until the queued action's own result settles.
+    await vi.waitFor(() =>
+      expect(
+        within(card).getByRole("button", { name: "Reverse approval" }),
+      ).toBeEnabled(),
+    );
   });
 
   it("shows the job as it is now when another grown-up already reversed it", async () => {
@@ -213,9 +221,11 @@ describe("Reversing an approval", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
-    expect(
-      await within(card).findByRole("button", { name: "Approve +5 points" }),
-    ).toBeEnabled();
+    const approve = await within(card).findByRole("button", {
+      name: "Approve +5 points",
+    });
+    // Controls stay locked until the queued action's own result settles.
+    await vi.waitFor(() => expect(approve).toBeEnabled());
     expect(card).not.toHaveTextContent("Approved — 5 points awarded");
   });
 

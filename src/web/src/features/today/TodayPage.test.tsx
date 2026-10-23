@@ -1448,9 +1448,11 @@ describe("Today page", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Not saved: Sent “Clear the table” back to Fredster. This job is no longer pending approval.",
     );
-    expect(
-      await screen.findByRole("button", { name: "Approve +5 points" }),
-    ).toBeEnabled();
+    const approve = await screen.findByRole("button", {
+      name: "Approve +5 points",
+    });
+    // Controls stay locked until the queued action's own result settles.
+    await waitFor(() => expect(approve).toBeEnabled());
   });
 
   it("persists an explicit dark theme selection", async () => {
