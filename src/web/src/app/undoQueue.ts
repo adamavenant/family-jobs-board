@@ -65,7 +65,10 @@ interface Entry {
 }
 
 export interface QueueConnection {
-  /** Reloads the page's data from the server, for example the router's. */
+  /**
+   * Reloads the page's data from the server, for example the router's, and
+   * resolves once the page shows it.
+   */
   revalidate: () => Promise<unknown> | void;
   /** Called with how long an action will wait, so the session can outlast it. */
   keepAlive?: (waitMs: number) => void;

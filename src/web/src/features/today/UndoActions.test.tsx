@@ -205,6 +205,38 @@ describe("undoable actions", () => {
     expect(api.sent).toHaveLength(1);
   });
 
+  it("goes straight from a queued approval to the saved one", async () => {
+    fakeApi();
+    const user = renderApp();
+    await approve(user);
+
+    // Showing the job undone, even for one render, is a flicker, so record every change.
+    const shown = new Set<string>();
+    const observer = new MutationObserver(() => {
+      for (const count of screen.queryAllByLabelText(/jobs awaiting review/)) {
+        shown.add(count.getAttribute("aria-label") ?? "");
+      }
+      if (screen.queryByRole("button", { name: "Approve +5 points" })) {
+        shown.add("Approve +5 points");
+      }
+    });
+    observer.observe(document.body, {
+      attributes: true,
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
+
+    await saveQueuedAction(user);
+    // Reversing is offered only once the approval is saved and no longer queued.
+    expect(
+      await screen.findByRole("button", { name: "Reverse approval" }),
+    ).toBeInTheDocument();
+    observer.disconnect();
+
+    expect([...shown]).toEqual(["0 jobs awaiting review"]);
+  });
+
   it("puts the job back and sends nothing when Undo is pressed", async () => {
     const api = fakeApi();
     const user = renderApp();

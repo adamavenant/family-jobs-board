@@ -1,4 +1,10 @@
-import { useEffect } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { Outlet, useLoaderData, useRevalidator } from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { RouteObject } from "react-router";
@@ -1410,10 +1416,20 @@ export const routes: RouteObject[] = [
  */
 function AppShell() {
   const { revalidate } = useRevalidator();
+  const afterPendingTransitions = useAfterPendingTransitions();
 
   useEffect(
-    () => undoQueue.connect({ revalidate, keepAlive: keepSessionActiveFor }),
-    [revalidate],
+    () =>
+      undoQueue.connect({
+        // The router renders reloaded data a moment after revalidate() resolves. Until it
+        // has, removing a saved action would show it undone.
+        revalidate: async () => {
+          await revalidate();
+          await afterPendingTransitions();
+        },
+        keepAlive: keepSessionActiveFor,
+      }),
+    [revalidate, afterPendingTransitions],
   );
 
   useEffect(() => {
@@ -1439,6 +1455,37 @@ function AppShell() {
       <Outlet />
       <UndoToasts />
     </>
+  );
+}
+
+/**
+ * Waits until React has rendered every transition started so far, such as the router's
+ * state updates. React renders pending transitions together, so a transition started
+ * now can't render before them.
+ */
+function useAfterPendingTransitions(): () => Promise<void> {
+  const waiting = useRef(new Map<number, () => void>());
+  const lastStarted = useRef(0);
+  const [rendered, setRendered] = useState(0);
+
+  useEffect(() => {
+    for (const [started, resolve] of waiting.current) {
+      if (started <= rendered) {
+        waiting.current.delete(started);
+        resolve();
+      }
+    }
+  }, [rendered]);
+
+  return useCallback(
+    () =>
+      new Promise<void>((resolve) => {
+        lastStarted.current += 1;
+        const started = lastStarted.current;
+        waiting.current.set(started, resolve);
+        startTransition(() => setRendered(started));
+      }),
+    [],
   );
 }
 
