@@ -241,6 +241,67 @@ describe("Whose Turn Is It?", () => {
     ]);
   });
 
+  it.each([false, true])(
+    "reconciles ending a same-name rotation (missing: %s)",
+    async (missingOnEnd) => {
+      fakeApi(
+        addie,
+        {
+          whoseTurns: [
+            turn(pinkId, "Who is Pink today?", fredster),
+            turn(mumId, "Who is Pink today?", harrie),
+          ],
+        },
+        [
+          rotation(pinkId, "Who is Pink today?", [fredster], fredster),
+          rotation(mumId, "Who is Pink today?", [harrie], harrie),
+        ],
+        undefined,
+        undefined,
+        missingOnEnd,
+      );
+      const user = userEvent.setup();
+      const view = renderApp(addie);
+      await screen.findByRole("heading", { name: "Good day, Addie!" });
+      await user.click(screen.getByText("Manage rotations"));
+      const list = await screen.findByRole("list", { name: "Rotations" });
+      await user.click(
+        within(list).getAllByRole("button", {
+          name: "End Who is Pink today?",
+        })[0]!,
+      );
+      await user.click(screen.getByRole("button", { name: "Yes, end it" }));
+      if (missingOnEnd) {
+        expect(await screen.findByRole("alert")).toHaveTextContent(
+          "That rotation is no longer available",
+        );
+        expect(
+          within(list).queryByText("Today: Fredster"),
+        ).not.toBeInTheDocument();
+        expect(document.querySelectorAll(".whose-turn-card")).toHaveLength(1);
+      } else {
+        await screen.findByText(
+          "Ends tomorrow. Today’s answer stays as it is.",
+        );
+        expect(within(list).getByText("Today: Fredster")).toBeInTheDocument();
+      }
+      expect(
+        within(list).getAllByRole("button", { name: "End Who is Pink today?" }),
+      ).toHaveLength(1);
+      expect(within(list).getByText("Today: Harrie")).toBeInTheDocument();
+      view.unmount();
+      renderApp(addie);
+      await screen.findByRole("heading", { name: "Good day, Addie!" });
+      await user.click(screen.getByText("Manage rotations"));
+      const reloaded = await screen.findByRole("list", { name: "Rotations" });
+      expect(
+        within(reloaded).getAllByRole("button", {
+          name: "End Who is Pink today?",
+        }),
+      ).toHaveLength(1);
+    },
+  );
+
   it("disables submit until at least one participant is selected", async () => {
     fakeApi(addie, { whoseTurns: [] });
     const user = userEvent.setup();
@@ -669,6 +730,12 @@ function rotation(
         childId: first.id,
         childDisplayName: first.displayName,
       },
+      {
+        date: "2026-09-22",
+        question,
+        childId: first.id,
+        childDisplayName: first.displayName,
+      },
     ],
     upNext: [] as { childId: string; childDisplayName: string }[],
   };
@@ -691,6 +758,7 @@ function fakeApi(
   initialRotations: ReturnType<typeof rotation>[] = [],
   boardAfterTick?: AfterTick | AfterTick[],
   tickProblem?: { status: number; detail: string },
+  missingOnEnd = false,
 ) {
   const afterTicks = Array.isArray(boardAfterTick)
     ? [...boardAfterTick]
@@ -754,7 +822,25 @@ function fakeApi(
       state.requests.push({ method, path, body });
       const id = path.split("/")[3] ?? "";
       if (method === "DELETE") {
-        state.rotations = state.rotations.filter((r) => r.rotationId !== id);
+        if (missingOnEnd) {
+          board.whoseTurns = board.whoseTurns.filter(
+            (entry) =>
+              typeof entry !== "object" ||
+              entry === null ||
+              !("rotationId" in entry) ||
+              entry.rotationId !== id,
+          );
+          state.rotations = state.rotations.filter((r) => r.rotationId !== id);
+          return jsonResponse(
+            { detail: `Whose-turn rotation ${id} was not found.` },
+            { status: 404 },
+          );
+        }
+        state.rotations = state.rotations.map((r) =>
+          r.rotationId === id
+            ? { ...r, upcomingTurns: r.upcomingTurns.slice(0, 1) }
+            : r,
+        );
         return jsonResponse(overview());
       }
       const created = rotation(
