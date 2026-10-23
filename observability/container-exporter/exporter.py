@@ -262,7 +262,8 @@ class Collector:
         lines.extend(
             _metric_help(
                 "family_jobs_board_telemetry_storage_collector_success",
-                "Whether the most recent allowlisted Docker volume-usage collection succeeded.",
+                "Whether the most recent allowlisted telemetry-filesystem "
+                "usage collection succeeded.",
             )
         )
         lines.append(
@@ -272,7 +273,8 @@ class Collector:
         lines.extend(
             _metric_help(
                 "family_jobs_board_telemetry_storage_collector_last_success_timestamp_seconds",
-                "Unix timestamp of the most recent successful allowlisted Docker volume-usage collection.",
+                "Unix timestamp of the most recent successful allowlisted "
+                "telemetry-filesystem usage collection.",
             )
         )
         if self._storage_last_success is not None:
@@ -304,7 +306,11 @@ class Collector:
             ("family_jobs_board_container_state", "Current Docker state for the container."),
             ("family_jobs_board_container_health", "Current Docker health-check status for the container."),
             ("family_jobs_board_container_info", "Bounded deployment tag and immutable image content ID for the container."),
-            ("family_jobs_board_telemetry_storage_used_bytes", "Docker-reported bytes used by each allowlisted telemetry volume."),
+            (
+                "family_jobs_board_telemetry_storage_used_bytes",
+                "Filesystem blocks used by each dedicated allowlisted "
+                "telemetry filesystem, including metadata.",
+            ),
         )
         lines: list[str] = []
         for name, description in definitions:

@@ -136,6 +136,9 @@ grep -Fq 'location /api/health/' src/web/nginx.conf \
 forwarded_https_count=$(grep -Fc 'proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;' src/web/nginx.conf || true)
 [ "$forwarded_https_count" = "2" ] \
   || fail "web proxy does not preserve the trusted HTTPS forwarding scheme"
+grep -Fq "sudo sed -i 's|^APPLICATION_ORIGIN=.*|APPLICATION_ORIGIN=https://dashboard.home.arpa|'" \
+  docs/operations/lan-deployment.md \
+  || fail "LAN upgrade does not replace a legacy origin and port with the exact HTTPS origin"
 
 docker run --rm --network none \
   -v "$repository_root/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \

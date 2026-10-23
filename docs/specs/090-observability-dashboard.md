@@ -283,9 +283,10 @@ rather than claiming a migration-specific event.
 
 The separate **Server and service health** dashboard retains Serendipity CPU,
 load, memory, uptime, root byte capacity, root inode pressure, endpoint and
-container health, and deployment identity. The privacy-bounded exporter also
-uses Docker's volume disk-usage endpoint and retains only the exact
-observability Prometheus and Loki volume sizes. Those panels therefore include
+container health, and deployment identity. The privacy-bounded exporter calls
+`statvfs` only on the two fixed, read-only telemetry mount roots and reports
+used filesystem blocks. Those panels therefore include filesystem metadata and
+all files on the dedicated Prometheus and Loki filesystems, including
 Prometheus WAL/head/compaction files and Loki chunks/WAL/index/Compactor state,
 while production filesystem capacity remains enforced as described above.
 

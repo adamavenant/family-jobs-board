@@ -215,7 +215,26 @@ assert_jq "$validation_dir/snap-docker-compat.json" \
   '(.services.grafana.networks | keys | sort) == ["monitor-ingress", "query"] and .services.grafana.networks["monitor-ingress"].aliases == ["observability-grafana"]' \
   "Docker Snap compatibility configuration changes the production ingress boundary"
 assert_jq "$validation_dir/snap-docker-compat.json" \
-  '.services.blackbox.user == "65534:65534" and (.services.blackbox.networks | keys | sort) == ["backend", "probes"] and .services.grafana.user == "0:0"' \
+  '.services.alloy.user == "473:473"
+   and .services.blackbox.user == "65534:65534"
+   and .services["container-exporter"].user == "65534:0"
+   and .services.grafana.user == "0:0"
+   and .services.loki.user == null
+   and .services["node-exporter"].user == "65534:65534"
+   and .services.prometheus.user == null
+   and .services["query-gateway"].user == "101:101"
+   and .services["storage-init"].user == "0:0"
+   and .services["storage-preflight"].user == "0:0"
+   and (.services.alloy.networks | keys | sort) == ["backend", "telemetry"]
+   and (.services.blackbox.networks | keys | sort) == ["backend", "probes"]
+   and (.services["container-exporter"].networks | keys) == ["backend"]
+   and (.services.grafana.networks | keys | sort) == ["monitor-ingress", "query"]
+   and (.services.loki.networks | keys) == ["backend"]
+   and (.services["node-exporter"].networks | keys) == ["backend"]
+   and (.services.prometheus.networks | keys) == ["backend"]
+   and (.services["query-gateway"].networks | keys | sort) == ["backend", "query"]
+   and ((.services["storage-init"].networks // {}) | length) == 0
+   and ((.services["storage-preflight"].networks // {}) | length) == 0' \
   "Docker Snap compatibility configuration changes an inherited service identity or network boundary"
 
 assert_jq "$validation_dir/test-ingress.json" \

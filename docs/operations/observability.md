@@ -305,9 +305,9 @@ docker run --rm --network none --read-only --cap-drop ALL \
 ```
 
 The `1M-blocks` column must be no greater than 2048 for Prometheus and 4096
-for Loki. Grafana's volume-use panels do not replace checking the host
-filesystem and its alerts because filesystem metadata and unrelated overhead
-sit outside Docker's per-volume byte totals.
+for Loki. Grafana's storage panels use the same filesystem-block accounting,
+including metadata and every file on each dedicated telemetry filesystem. They
+do not replace checking the host filesystem and its alerts.
 
 ## Upgrade
 

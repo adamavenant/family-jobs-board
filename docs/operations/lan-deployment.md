@@ -23,7 +23,7 @@ values:
 sudo sh -c 'grep -q "^AUTHENTICATION_PIN_PEPPER=" /etc/family-jobs-board/family-jobs-board.env || printf "\nAUTHENTICATION_PIN_PEPPER=\n" >> /etc/family-jobs-board/family-jobs-board.env'
 sudo sh -c 'grep -q "^AUTHENTICATION_JWT_SIGNING_KEY=" /etc/family-jobs-board/family-jobs-board.env || printf "AUTHENTICATION_JWT_SIGNING_KEY=\n" >> /etc/family-jobs-board/family-jobs-board.env'
 sudo sh -c 'grep -q "^APPLICATION_ORIGIN=" /etc/family-jobs-board/family-jobs-board.env || printf "APPLICATION_ORIGIN=https://dashboard.home.arpa\n" >> /etc/family-jobs-board/family-jobs-board.env'
-sudo sed -i 's|^APPLICATION_ORIGIN=http://|APPLICATION_ORIGIN=https://|' /etc/family-jobs-board/family-jobs-board.env
+sudo sed -i 's|^APPLICATION_ORIGIN=.*|APPLICATION_ORIGIN=https://dashboard.home.arpa|' /etc/family-jobs-board/family-jobs-board.env
 ```
 
 Keep the generated authentication secrets stable across deployments. Losing the
@@ -31,6 +31,9 @@ PIN pepper requires every PIN to be set again; changing the JWT key signs out
 active sessions. `APPLICATION_ORIGIN` must exactly match the HTTPS browser
 origin. Production HTTPS is fixed to port 443; `WEB_PORT` changes only the HTTP
 redirect listener.
+If `APP_HOSTNAME` is customized, replace `dashboard.home.arpa` in the migration
+command with that exact hostname. Do not carry an old `WEB_PORT` into the HTTPS
+origin because production HTTPS is always port 443.
 
 The generated hexadecimal password is strong and safe to use inside the PostgreSQL connection string. Set `IMAGE_TAG` to the full commit SHA from a successful `main` build in GitHub Actions. This selects the matching API, migration, and web images published to GHCR. `APP_HOSTNAME` defaults to `dashboard.home.arpa`; create a matching local DNS record that points to the server before deployment. Leave the other values empty to bind Caddy to every LAN interface on HTTP port 80 and HTTPS port 443 and use the `Africa/Johannesburg` household time zone. Set `APP_HOSTNAME`, `WEB_BIND_ADDRESS`, `WEB_PORT`, or `HOUSEHOLD_TIME_ZONE` in the same file to override those defaults. Port 443 is intentionally fixed; free it before deploying rather than assuming `WEB_PORT` changes HTTPS.
 
