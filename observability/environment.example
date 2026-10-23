@@ -15,8 +15,9 @@ MONITOR_INGRESS_NETWORK_NAME=family-jobs-board-monitor-ingress
 # forward the private home.arpa zone.
 APP_PROBE_ADDRESS=192.168.0.100
 
-# Absolute host path to Caddy's exported public root certificate. Blackbox
-# mounts only this certificate read-only; never expose the CA private key.
+# Absolute host path to Caddy's exported public root certificate. This public
+# certificate must be world-readable so uid 65534 Blackbox can read its bind
+# mount. Never expose the CA private key.
 CADDY_ROOT_CERT_FILE=/etc/family-jobs-board-observability/family-jobs-board-root.crt
 
 # Numeric group owner of Docker's Unix socket on Serendipity. Resolve it with:

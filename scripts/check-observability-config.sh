@@ -26,6 +26,7 @@ export DOCKER_GID=0
 export APP_PROBE_ADDRESS=192.0.2.10
 export CADDY_ROOT_CERT_FILE="$validation_dir/caddy-root.crt"
 touch "$CADDY_ROOT_CERT_FILE"
+chmod 0644 "$CADDY_ROOT_CERT_FILE"
 
 docker compose \
   -f observability/compose.yaml \

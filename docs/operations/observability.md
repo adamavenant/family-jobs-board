@@ -64,7 +64,7 @@ probes validate the actual internal-CA certificate; it never exposes the CA
 private key.
 
 ```sh
-sudo install -o root -g docker -m 640 ./family-jobs-board-root.crt \
+sudo install -o root -g root -m 644 ./family-jobs-board-root.crt \
   /etc/family-jobs-board-observability/family-jobs-board-root.crt
 ```
 
