@@ -332,6 +332,11 @@ test("an adult runs several whose-turn rotations side by side", async ({
   await expect(
     page.getByRole("button", { name: "End Who is Pink today?", exact: true }),
   ).toHaveCount(0);
+  // Save the queued End before reloading, so the reloaded page reads it back.
+  await saveQueuedAction(page);
+  await expect(
+    page.getByText("Ends tomorrow. Today’s answer stays as it is."),
+  ).toBeVisible();
   await page.reload();
   await page.getByText("Manage rotations").click();
   await expect(

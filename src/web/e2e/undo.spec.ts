@@ -176,7 +176,11 @@ test("an approval waits out the undo time before it is saved", async ({
     "Approved “Clear the table” for Fredster: +5 points. Undo is available for 10 seconds.",
   );
   await expect(toast.getByText("10s")).toBeVisible();
-  await expect(page.getByLabel("2 jobs awaiting review")).toBeVisible();
+  await expect(
+    page
+      .locator(".hero")
+      .getByRole("button", { name: "2 jobs awaiting review" }),
+  ).toBeVisible();
 
   await page.clock.runFor(9_000);
   expect(api.sent).toEqual([]);
@@ -208,7 +212,11 @@ test("Undo puts the job back without sending anything", async ({ page }) => {
       name: "Approve +5 points",
     }),
   ).toBeEnabled();
-  await expect(page.getByLabel("3 jobs awaiting review")).toBeVisible();
+  await expect(
+    page
+      .locator(".hero")
+      .getByRole("button", { name: "3 jobs awaiting review" }),
+  ).toBeVisible();
   await page.clock.runFor(60_000);
   expect(api.sent).toEqual([]);
 });
@@ -239,7 +247,11 @@ test("a refused save is explained and the job shows the server's state", async (
       name: "Approve +5 points",
     }),
   ).toBeEnabled();
-  await expect(page.getByLabel("3 jobs awaiting review")).toBeVisible();
+  await expect(
+    page
+      .locator(".hero")
+      .getByRole("button", { name: "3 jobs awaiting review" }),
+  ).toBeVisible();
   expect(api.sent).toHaveLength(1);
 });
 
