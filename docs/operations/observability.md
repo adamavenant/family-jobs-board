@@ -1,8 +1,9 @@
 # Observability stack operations
 
 This runbook operates the separate Grafana/Prometheus/Loki/Alloy/Blackbox/query
-gateway Compose project. It does not deploy the Family Jobs Board application,
-change DNS or reverse-proxy configuration, or expose Grafana to the LAN.
+gateway Compose project. The portable base publishes no host ports. The
+production ingress overlay connects Grafana to Caddy's private monitor network
+so the application proxy can expose it at `https://monitor.home.arpa`.
 
 The host-specific storage mechanism, DNS/proxy changes, deployment evidence,
 and rollback record belong in the private deployment repository. This public
@@ -47,6 +48,25 @@ an internal local bridge. Both Compose projects treat the network as external,
 so stopping either project cannot remove it. The application must use its
 optional telemetry override; its base Compose project does not depend on this
 network or collector.
+
+Production ingress also needs its dedicated private bridge:
+
+```sh
+sudo sh -c 'set -eu; set -a; . /etc/family-jobs-board-observability/observability.env; set +a; exec ./scripts/ensure-monitor-network.sh'
+```
+
+The application proxy must be started with `compose.monitor.yaml`; that overlay
+installs the monitor Caddy site and is the only application service allowed on
+this bridge. Export Caddy's public root certificate as described in the LAN
+deployment runbook and install it at `CADDY_ROOT_CERT_FILE`. The observability
+ingress overlay mounts only that public certificate read-only into Blackbox so
+probes validate the actual internal-CA certificate; it never exposes the CA
+private key.
+
+```sh
+sudo install -o root -g docker -m 640 ./family-jobs-board-root.crt \
+  /etc/family-jobs-board-observability/family-jobs-board-root.crt
+```
 
 ## Provision bounded production storage
 
@@ -99,12 +119,15 @@ docker run --rm --network none --read-only --cap-drop ALL \
 Use `observability/compose.snap-docker-compat.yaml` only when that command fails
 with exit 255 and `exec /bin/sh: operation not permitted`, while the same probe
 without the single `--security-opt` argument succeeds. The overlay resets only
-`security_opt`; read-only filesystems, dropped capabilities, unprivileged users,
-resource bounds, and network isolation remain mandatory and are checked in the
-rendered model. Record the probe and exception in the private deployment
+`security_opt`; read-only filesystems, dropped capabilities, storage/query
+bounds, service identities, and network isolation remain inherited and are
+checked across the base and compatibility renders. It must be applied after
+`compose.storage-bounds.yaml` because it also resets the storage preflight
+service defined there. Record the probe and exception in the private deployment
 repository. Because removing `no-new-privileges` increases the residual risk,
-especially for the Docker-socket-holding container exporter, migrate the host
-to the supported Docker Engine packages rather than treating this overlay as a
+especially for the LAN-reachable Grafana service and the Docker-socket-holding
+container exporter, migrate the host to the supported Docker Engine packages
+rather than treating this overlay as a
 permanent baseline. Never use it on a host where the baseline probe succeeds.
 
 Pull the directly used images and rebuild the four health-check wrapper images
@@ -126,11 +149,13 @@ Production startup must include the bounded-storage overlay:
 
 ```sh
 sudo sh -c 'set -eu; set -a; . /etc/family-jobs-board-observability/observability.env; set +a; exec ./scripts/ensure-observability-network.sh'
+sudo sh -c 'set -eu; set -a; . /etc/family-jobs-board-observability/observability.env; set +a; exec ./scripts/ensure-monitor-network.sh'
 
 docker compose \
   --env-file /etc/family-jobs-board-observability/observability.env \
   -f observability/compose.yaml \
   -f observability/compose.storage-bounds.yaml \
+  -f observability/compose.ingress.yaml \
   up --detach --wait
 ```
 
@@ -143,12 +168,15 @@ docker compose \
   --env-file /etc/family-jobs-board-observability/observability.env \
   -f observability/compose.yaml \
   -f observability/compose.storage-bounds.yaml \
+  -f observability/compose.ingress.yaml \
   ps --all
 ```
 
-No service is reachable from the host in this issue. The
-`compose.test-ingress.yaml` file publishes Grafana only on loopback for the
-automated verification harness; never include it in a LAN deployment.
+Only Grafana is reachable from the LAN, through Caddy at
+`https://monitor.home.arpa`; the observability project itself still publishes
+no host ports. The `compose.test-ingress.yaml` file publishes Grafana only on
+loopback for the automated verification harness; never include it in a LAN
+deployment.
 Grafana has no route to the backend network. Its data sources use the internal
 query gateway, whose deny-by-default path-and-method allowlist exposes only
 reviewed Prometheus/Loki query APIs. OTLP ingest and backend administration stay
@@ -224,14 +252,14 @@ sanitized output, and private backend network reduce but do not remove that
 residual risk. Never attach the Docker socket to Grafana, Prometheus, Loki,
 Blackbox, or Alloy.
 
-Blackbox alone has an egress-capable probe network so it can resolve and reach
-`dashboard.home.arpa`; it has no host port. Production ingress adds an explicit
-hosts entry from `APP_PROBE_HOSTNAME` to `APP_PROBE_ADDRESS`, which must be the
-LAN address served by Caddy. This avoids relying on Docker's embedded resolver
-to forward the private `home.arpa` zone while still exercising the normal host
-and proxy route. If all three application checks go down together, verify that
-the configured address is current before treating the result as an application
-failure.
+Blackbox alone has an egress-capable probe network so it can reach
+`dashboard.home.arpa`; it has no host port. Production ingress maps that fixed
+hostname to `APP_PROBE_ADDRESS`, which must be the LAN address served by Caddy.
+It probes HTTPS through Caddy and nginx, validates Caddy's root from the
+read-only exported certificate, and exercises the public web and API health
+routes. If all three application checks go down together, verify that the
+configured address and root-certificate file are current before treating the
+result as an application failure.
 
 ## Stop, restart, and remove non-destructively
 
@@ -242,6 +270,7 @@ docker compose \
   --env-file /etc/family-jobs-board-observability/observability.env \
   -f observability/compose.yaml \
   -f observability/compose.storage-bounds.yaml \
+  -f observability/compose.ingress.yaml \
   stop
 ```
 
@@ -254,6 +283,7 @@ docker compose \
   --env-file /etc/family-jobs-board-observability/observability.env \
   -f observability/compose.yaml \
   -f observability/compose.storage-bounds.yaml \
+  -f observability/compose.ingress.yaml \
   down --remove-orphans
 ```
 

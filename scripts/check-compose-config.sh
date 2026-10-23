@@ -97,9 +97,16 @@ printf '%s\n' "$monitor_proxy" | grep -q 'MONITOR_HOSTNAME: monitor.home.arpa' \
   || fail "monitor ingress does not default to monitor.home.arpa"
 printf '%s\n' "$monitor_config" | grep -q 'name: family-jobs-board-monitor-ingress' \
   || fail "monitor ingress does not use the dedicated external network"
-if printf '%s\n' "$monitor_proxy" | grep -q 'published: "3000"'; then
-  fail "monitor ingress publishes Grafana directly"
-fi
+printf '%s\n' "$monitor_proxy" | grep -q 'monitor-ingress: null' \
+  || fail "production proxy does not join the dedicated monitor ingress network"
+printf '%s\n' "$monitor_proxy" | grep -q 'target: /etc/caddy/sites/monitor.caddy' \
+  || fail "monitor overlay does not install the monitor Caddy site"
+for service_name in api app-links db migrate web; do
+  monitor_service=$(printf '%s\n' "$monitor_config" | service_block "$service_name")
+  if printf '%s\n' "$monitor_service" | grep -q 'monitor-ingress'; then
+    fail "$service_name unexpectedly joins the monitor ingress network"
+  fi
+done
 
 custom_monitor_config=$(env $auth_environment DATABASE_PASSWORD=deployment-config-check IMAGE_TAG=deployment-image-tag \
   MONITOR_INGRESS_NETWORK_NAME=custom-monitor-network \
@@ -111,13 +118,38 @@ custom_monitor_config=$(env $auth_environment DATABASE_PASSWORD=deployment-confi
 printf '%s\n' "$custom_monitor_config" | grep -q 'name: custom-monitor-network' \
   || fail "monitor ingress ignores MONITOR_INGRESS_NETWORK_NAME"
 
-grep -Fq '{$MONITOR_HOSTNAME:monitor.home.arpa}' deploy/Caddyfile \
-  || fail "Caddy does not route the monitor hostname"
-grep -Fq 'reverse_proxy observability-grafana:3000' deploy/Caddyfile \
+if grep -Fq 'MONITOR_HOSTNAME' deploy/Caddyfile; then
+  fail "base Caddy configuration activates the monitor site without its overlay"
+fi
+grep -Fq '{$MONITOR_HOSTNAME:monitor.home.arpa}' deploy/monitor.caddy \
+  || fail "monitor Caddy site does not route the monitor hostname"
+grep -Fq 'reverse_proxy observability-grafana:3000' deploy/monitor.caddy \
   || fail "Caddy does not route monitor traffic to the isolated Grafana alias"
-grep -Fq 'handle /api/health/*' deploy/Caddyfile \
-  || fail "Caddy does not preserve HTTP access to the API health probes"
-grep -Fq 'reverse_proxy api:8080' deploy/Caddyfile \
-  || fail "Caddy does not route the API health probes directly to the API"
+grep -Fq 'redir https://{$APP_HOSTNAME:dashboard.home.arpa}{uri} 302' deploy/Caddyfile \
+  || fail "application HTTP redirect is not rollback-safe"
+grep -Fq 'redir https://{$MONITOR_HOSTNAME:monitor.home.arpa}{uri} 302' deploy/monitor.caddy \
+  || fail "monitor HTTP redirect is not rollback-safe"
+grep -Fq 'import /etc/caddy/sites/*.caddy' deploy/Caddyfile \
+  || fail "base Caddy configuration does not import optional overlay sites"
+grep -Fq 'location /api/health/' src/web/nginx.conf \
+  || fail "web proxy does not expose API health on the public route"
+forwarded_https_count=$(grep -Fc 'proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;' src/web/nginx.conf || true)
+[ "$forwarded_https_count" = "2" ] \
+  || fail "web proxy does not preserve the trusted HTTPS forwarding scheme"
+
+docker run --rm --network none \
+  -v "$repository_root/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+  caddy:2.11.4-alpine \
+  caddy validate --config /etc/caddy/Caddyfile
+docker run --rm --network none \
+  -v "$repository_root/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+  -v "$repository_root/deploy/monitor.caddy:/etc/caddy/sites/monitor.caddy:ro" \
+  caddy:2.11.4-alpine \
+  caddy validate --config /etc/caddy/Caddyfile
+docker run --rm --network none --add-host api:127.0.0.1 \
+  --entrypoint /usr/sbin/nginx \
+  -v "$repository_root/src/web/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+  nginxinc/nginx-unprivileged:1.28-alpine \
+  -t
 
 echo "Compose configuration checks passed."

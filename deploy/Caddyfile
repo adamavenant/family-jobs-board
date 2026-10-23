@@ -1,15 +1,5 @@
 http://{$APP_HOSTNAME:dashboard.home.arpa} {
-	handle /health {
-		reverse_proxy web:3000
-	}
-	handle /api/health/* {
-		uri strip_prefix /api
-		reverse_proxy api:8080
-	}
-
-	handle {
-		redir https://{host}{uri} permanent
-	}
+	redir https://{$APP_HOSTNAME:dashboard.home.arpa}{uri} 302
 }
 
 {$APP_HOSTNAME:dashboard.home.arpa} {
@@ -17,15 +7,8 @@ http://{$APP_HOSTNAME:dashboard.home.arpa} {
 	reverse_proxy web:3000
 }
 
-http://{$MONITOR_HOSTNAME:monitor.home.arpa} {
-	redir https://{host}{uri} permanent
-}
-
-{$MONITOR_HOSTNAME:monitor.home.arpa} {
-	tls internal
-	reverse_proxy observability-grafana:3000
-}
-
 :80 {
 	respond "Not found" 404
 }
+
+import /etc/caddy/sites/*.caddy

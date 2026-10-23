@@ -5,6 +5,8 @@ services:
     networks:
       default:
       monitor-ingress:
+    volumes:
+      - ./deploy/monitor.caddy:/etc/caddy/sites/monitor.caddy:ro
 
 networks:
   monitor-ingress:

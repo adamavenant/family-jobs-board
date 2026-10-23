@@ -10,11 +10,14 @@ TELEMETRY_NETWORK_NAME=family-jobs-board-telemetry
 # with scripts/ensure-monitor-network.sh before applying either ingress overlay.
 MONITOR_INGRESS_NETWORK_NAME=family-jobs-board-monitor-ingress
 
-# LAN address and hostname used by Blackbox to exercise the application through
-# Caddy. The explicit hosts entry avoids relying on Docker's embedded resolver
-# to forward the private home.arpa zone.
-APP_PROBE_HOSTNAME=dashboard.home.arpa
+# LAN address used by Blackbox to exercise dashboard.home.arpa through Caddy.
+# The explicit hosts entry avoids relying on Docker's embedded resolver to
+# forward the private home.arpa zone.
 APP_PROBE_ADDRESS=192.168.0.100
+
+# Absolute host path to Caddy's exported public root certificate. Blackbox
+# mounts only this certificate read-only; never expose the CA private key.
+CADDY_ROOT_CERT_FILE=/etc/family-jobs-board-observability/family-jobs-board-root.crt
 
 # Numeric group owner of Docker's Unix socket on Serendipity. Resolve it with:
 # stat -c '%g' /var/run/docker.sock

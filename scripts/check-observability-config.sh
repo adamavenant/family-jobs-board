@@ -24,6 +24,8 @@ export PROMETHEUS_DATA_DIR="$validation_dir/prometheus"
 export LOKI_DATA_DIR="$validation_dir/loki"
 export DOCKER_GID=0
 export APP_PROBE_ADDRESS=192.0.2.10
+export CADDY_ROOT_CERT_FILE="$validation_dir/caddy-root.crt"
+touch "$CADDY_ROOT_CERT_FILE"
 
 docker compose \
   -f observability/compose.yaml \
@@ -187,6 +189,12 @@ assert_jq "$validation_dir/ingress.json" \
 assert_jq "$validation_dir/ingress.json" \
   '.services.blackbox.extra_hosts == ["dashboard.home.arpa=192.0.2.10"]' \
   "production Blackbox does not use the explicit LAN application probe address"
+assert_jq "$validation_dir/ingress.json" \
+  '(.services.blackbox.volumes[] | select(.target == "/etc/blackbox/caddy-root.crt") | .read_only) == true' \
+  "production Blackbox does not receive only the exported Caddy root certificate read-only"
+assert_jq "$validation_dir/ingress.json" \
+  '.services.grafana.environment.GF_SERVER_ROOT_URL == "https://monitor.home.arpa/" and .services.grafana.environment.GF_SECURITY_COOKIE_SECURE == "true"' \
+  "production Grafana HTTPS origin or secure cookie is missing"
 
 for service_name in alloy blackbox container-exporter grafana loki node-exporter prometheus query-gateway storage-init storage-preflight; do
   assert_jq "$validation_dir/snap-docker-compat.json" \
@@ -205,6 +213,9 @@ assert_jq "$validation_dir/snap-docker-compat.json" \
 assert_jq "$validation_dir/snap-docker-compat.json" \
   '(.services.grafana.networks | keys | sort) == ["monitor-ingress", "query"] and .services.grafana.networks["monitor-ingress"].aliases == ["observability-grafana"]' \
   "Docker Snap compatibility configuration changes the production ingress boundary"
+assert_jq "$validation_dir/snap-docker-compat.json" \
+  '.services.blackbox.user == "65534:65534" and (.services.blackbox.networks | keys | sort) == ["backend", "probes"] and .services.grafana.user == "0:0"' \
+  "Docker Snap compatibility configuration changes an inherited service identity or network boundary"
 
 assert_jq "$validation_dir/test-ingress.json" \
   '[.services | to_entries[] | select(((.value.ports // []) | length) > 0) | .key] == ["grafana"]' \
@@ -294,6 +305,14 @@ grep -q 'size: 1600MB' observability/config/prometheus/prometheus.yaml \
   || fail "Prometheus size retention is missing"
 grep -q 'retention_period: 720h' observability/config/loki/loki.yaml \
   || fail "Loki 720-hour retention is missing"
+grep -Fq 'module:' observability/config/prometheus/prometheus.yaml \
+  || fail "application HTTPS probe module is missing"
+grep -Fq 'https_2xx_internal_ca' observability/config/prometheus/prometheus.yaml \
+  || fail "application probes do not use the internal-CA HTTPS module"
+grep -Fq 'https://dashboard.home.arpa/api/health/ready' observability/config/prometheus/prometheus.yaml \
+  || fail "application probes do not exercise the public HTTPS readiness route"
+grep -Fq 'ca_file: /etc/blackbox/caddy-root.crt' observability/config/blackbox/blackbox.yaml \
+  || fail "Blackbox does not validate the application Caddy root CA"
 grep -q 'working_directory: /loki/compactor' observability/config/loki/loki.yaml \
   || fail "Loki Compactor state is not on persistent storage"
 grep -Fq "sudo sh -c 'cd -- \"\$1\" && sha256sum -- *.tgz > SHA256SUMS' sh \"\$backup_dir\"" \
