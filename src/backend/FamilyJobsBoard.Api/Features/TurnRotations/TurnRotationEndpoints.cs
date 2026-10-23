@@ -17,7 +17,7 @@ internal static class TurnRotationEndpoints
             .WithName("ListTurnRotations")
             .WithSummary("List the household's whose-turn rotations.")
             .WithDescription(
-                "Adult-only. Returns every active rotation with the revision effective today, if any, and a short preview of upcoming turns.");
+                "Adult-only. Returns every active rotation with the revision effective today, if any, a short preview of upcoming turns, and whether it has been ended so that it stops appearing from tomorrow.");
 
         group.MapPost("", CreateAsync)
             .WithName("CreateTurnRotation")
@@ -249,7 +249,8 @@ internal static class TurnRotationEndpoints
                         .ToArray(),
                     rotation.UpNext
                         .Select(child => new TurnRotationChildResponse(child.ChildId, child.ChildDisplayName))
-                        .ToArray()))
+                        .ToArray(),
+                    rotation.EndsTomorrow))
                 .ToArray());
     }
 

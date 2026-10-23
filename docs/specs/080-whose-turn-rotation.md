@@ -110,9 +110,13 @@ drops both tables.
   (empty when none do). This reuses the existing board endpoint so the
   browsed date and the answers always agree.
 - `GET /api/turn-rotations` — adult-only. Returns `{ rotations }`; each item
-  is `{ rotationId, current, upcomingTurns }`, where `current` is the revision
-  applicable today (or `null` if it has not started) and `upcomingTurns` is a
-  14-day preview of `{ date, question, childId, childDisplayName }`.
+  is `{ rotationId, current, upcomingTurns, endsTomorrow }`, where `current`
+  is the revision applicable today (or `null` if it has not started),
+  `upcomingTurns` is a 14-day preview of `{ date, question, childId,
+  childDisplayName }`, and `endsTomorrow` is `true` once the rotation has been
+  ended: it still answers today but stops appearing from tomorrow. The
+  configuration screen then shows “Ends tomorrow. Today’s answer stays as it
+  is.” in place of the rotation's edit and end controls.
 - `POST /api/turn-rotations` — adult-only. Body: `{ participantChildIds,
   firstChildId, effectiveFrom, question }`. Starts a new rotation (effective
   today or later); returns the refreshed `{ rotations }`.
@@ -312,7 +316,10 @@ drops the table and the column.
   tick-to-advance rotation, the participants in turn order starting with
   whoever takes the next turn (empty for a daily rotation).
   `upcomingTurns` leaves out future dates governed by a tick-to-advance
-  revision, since they can't be predicted.
+  revision, since they can't be predicted. That is also why the screen relies
+  on `endsTomorrow` rather than the preview to show a rotation as ending: a
+  tick-to-advance rotation previews no future dates whether or not it has
+  been ended (#158).
 - Each `whoseTurns[]` item in `GET /api/today` gains `revisionId` and
   `turnNumber` (identifying the turn shown), `advanceMode`, `turnTaken`,
   `canTakeTurn` (whether this viewer may tick it today), and `undoableTurn`

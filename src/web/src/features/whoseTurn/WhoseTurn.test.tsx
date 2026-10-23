@@ -526,6 +526,49 @@ describe("Whose Turn Is It?", () => {
     });
   });
 
+  it("keeps Edit and End for a tick-based rotation that hasn't ended", async () => {
+    fakeApi(addie, { whoseTurns: [] }, [showerRotation([fredster, harrie])]);
+    const user = userEvent.setup();
+    renderApp(addie);
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Manage rotations"));
+    const list = await screen.findByRole("list", { name: "Rotations" });
+
+    expect(
+      within(list).getByText("Edit Who is first in the shower?"),
+    ).toBeInTheDocument();
+    expect(
+      within(list).getByRole("button", {
+        name: "End Who is first in the shower?",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(list).queryByText("Ends tomorrow. Today’s answer stays as it is."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows an ended tick-based rotation as ending tomorrow", async () => {
+    fakeApi(addie, { whoseTurns: [] }, [
+      { ...showerRotation([]), endsTomorrow: true },
+    ]);
+    const user = userEvent.setup();
+    renderApp(addie);
+
+    await screen.findByRole("heading", { name: "Good day, Addie!" });
+    await user.click(screen.getByText("Manage rotations"));
+    const list = await screen.findByRole("list", { name: "Rotations" });
+
+    expect(
+      within(list).getByText("Ends tomorrow. Today’s answer stays as it is."),
+    ).toBeInTheDocument();
+    expect(
+      within(list).queryByRole("button", {
+        name: "End Who is first in the shower?",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
   it("previews who is up next and carries on from them when editing a ticked rotation", async () => {
     const api = fakeApi(addie, { whoseTurns: [] }, [
       showerRotation([harrie, fredster]),
@@ -694,6 +737,9 @@ function showerRotation(upNext: ReturnType<typeof member>[]) {
   return {
     ...shower,
     current: { ...shower.current, advanceMode: "whenTicked" },
+    // Future dates of a rotation that moves on when ticked can't be predicted, so the
+    // server previews only today.
+    upcomingTurns: shower.upcomingTurns.slice(0, 1),
     upNext: upNext.map((child) => ({
       childId: child.id,
       childDisplayName: child.displayName,
@@ -738,6 +784,7 @@ function rotation(
       },
     ],
     upNext: [] as { childId: string; childDisplayName: string }[],
+    endsTomorrow: false,
   };
 }
 
@@ -838,7 +885,11 @@ function fakeApi(
         }
         state.rotations = state.rotations.map((r) =>
           r.rotationId === id
-            ? { ...r, upcomingTurns: r.upcomingTurns.slice(0, 1) }
+            ? {
+                ...r,
+                upcomingTurns: r.upcomingTurns.slice(0, 1),
+                endsTomorrow: true,
+              }
             : r,
         );
         return jsonResponse(overview());
