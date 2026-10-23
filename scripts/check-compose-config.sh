@@ -139,6 +139,8 @@ forwarded_https_count=$(grep -Fc 'proxy_set_header X-Forwarded-Proto $http_x_for
 grep -Fq "sudo sed -i 's|^APPLICATION_ORIGIN=.*|APPLICATION_ORIGIN=https://dashboard.home.arpa|'" \
   docs/operations/lan-deployment.md \
   || fail "LAN upgrade does not replace a legacy origin and port with the exact HTTPS origin"
+grep -Fq 'clear cookies and site data' docs/operations/lan-deployment.md \
+  || fail "LAN upgrade does not prevent legacy non-Secure refresh-cookie transmission"
 
 docker run --rm --network none \
   -v "$repository_root/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \

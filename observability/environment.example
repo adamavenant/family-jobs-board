@@ -11,8 +11,10 @@ TELEMETRY_NETWORK_NAME=family-jobs-board-telemetry
 MONITOR_INGRESS_NETWORK_NAME=family-jobs-board-monitor-ingress
 
 # LAN address used by Blackbox to exercise dashboard.home.arpa through Caddy.
-# The explicit hosts entry avoids relying on Docker's embedded resolver to
-# forward the private home.arpa zone.
+# This issue's production ingress intentionally supports only that application
+# hostname; do not apply it to an APP_HOSTNAME-customized deployment. The
+# explicit hosts entry avoids relying on Docker's embedded resolver to forward
+# the private home.arpa zone.
 APP_PROBE_ADDRESS=192.168.0.100
 
 # Absolute host path to Caddy's exported public root certificate. This public

@@ -19,6 +19,14 @@ For an existing deployment environment file, add the three new settings before
 upgrading, then run the same two `openssl` commands above to fill the secret
 values:
 
+Before replacing the HTTP Caddy configuration, clear cookies and site data for
+`dashboard.home.arpa` from every browser profile that has used the application.
+Legacy refresh cookies were issued without the `Secure` attribute; clearing
+them locally prevents a browser from transmitting one on the first HTTP request
+after the upgrade. After cutover, open the explicit `https://` URL and sign in
+again. The temporary HTTP redirect is for cookie-free navigation only; it
+cannot retroactively protect a legacy cookie already attached to a request.
+
 ```sh
 sudo sh -c 'grep -q "^AUTHENTICATION_PIN_PEPPER=" /etc/family-jobs-board/family-jobs-board.env || printf "\nAUTHENTICATION_PIN_PEPPER=\n" >> /etc/family-jobs-board/family-jobs-board.env'
 sudo sh -c 'grep -q "^AUTHENTICATION_JWT_SIGNING_KEY=" /etc/family-jobs-board/family-jobs-board.env || printf "AUTHENTICATION_JWT_SIGNING_KEY=\n" >> /etc/family-jobs-board/family-jobs-board.env'

@@ -255,6 +255,10 @@ Blackbox, or Alloy.
 Blackbox alone has an egress-capable probe network so it can reach
 `dashboard.home.arpa`; it has no host port. Production ingress maps that fixed
 hostname to `APP_PROBE_ADDRESS`, which must be the LAN address served by Caddy.
+The production ingress model is deliberately limited to this issue's
+`dashboard.home.arpa` deployment. Do not apply it when the application's
+`APP_HOSTNAME` is customized; parameterizing Prometheus's static target belongs
+in a separate change.
 It probes HTTPS through Caddy and nginx, validates Caddy's root from the
 read-only exported certificate, and exercises the public web and API health
 routes. If all three application checks go down together, verify that the
