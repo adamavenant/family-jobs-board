@@ -650,7 +650,7 @@ export interface paths {
         };
         /**
          * List the household's whose-turn rotations.
-         * @description Adult-only. Returns every active rotation with the revision effective today, if any, and a short preview of upcoming turns.
+         * @description Adult-only. Returns every active rotation with the revision effective today, if any, a short preview of upcoming turns, and whether it has been ended so that it stops appearing from tomorrow.
          */
         get: operations["ListTurnRotations"];
         put?: never;
@@ -1307,6 +1307,7 @@ export interface components {
             current: null | components["schemas"]["TurnRotationConfigurationResponse"];
             upcomingTurns: components["schemas"]["TurnRotationTurnResponse"][];
             upNext: components["schemas"]["TurnRotationChildResponse"][];
+            endsTomorrow: boolean;
         };
         TurnRotationTurnResponse: {
             /** Format: date */

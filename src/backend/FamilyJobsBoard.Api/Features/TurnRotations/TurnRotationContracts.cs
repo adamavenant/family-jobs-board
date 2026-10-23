@@ -22,7 +22,8 @@ public sealed record TurnRotationSummaryResponse(
     Guid RotationId,
     TurnRotationConfigurationResponse? Current,
     IReadOnlyList<TurnRotationTurnResponse> UpcomingTurns,
-    IReadOnlyList<TurnRotationChildResponse> UpNext);
+    IReadOnlyList<TurnRotationChildResponse> UpNext,
+    bool EndsTomorrow);
 
 public sealed record TurnRotationOverviewResponse(
     IReadOnlyList<TurnRotationSummaryResponse> Rotations);
