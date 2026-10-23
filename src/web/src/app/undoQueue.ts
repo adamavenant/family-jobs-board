@@ -65,8 +65,12 @@ interface Entry {
 }
 
 export interface QueueConnection {
-  /** Reloads the page's data from the server, for example the router's. */
-  revalidate: () => Promise<unknown> | void;
+  /**
+   * Reloads the page's data from the server, for example the router's. Calls
+   * `shown` as the page renders the reloaded data, so the saved action leaves
+   * the page in that same moment, and resolves once it has.
+   */
+  revalidate: (shown: () => void) => Promise<unknown> | void;
   /** Called with how long an action will wait, so the session can outlast it. */
   keepAlive?: (waitMs: number) => void;
 }
@@ -154,12 +158,16 @@ export function createUndoQueue(): UndoQueue {
       }
     })();
     entry.saved = entry.committed.then(async () => {
+      const leave = () => {
+        if (entries.delete(entry.action.id)) {
+          emit();
+        }
+      };
       try {
         // Show the server's state, whether the action was saved or refused.
-        await withinLimit(connection?.revalidate());
+        await withinLimit(connection?.revalidate(leave));
       } finally {
-        entries.delete(entry.action.id);
-        emit();
+        leave();
       }
     });
     return entry.committed;

@@ -14,6 +14,28 @@ export async function saveQueuedAction(user: UserEvent): Promise<void> {
 }
 
 /**
+ * Starts recording every value `read` returns as the page changes, and returns a
+ * function that stops and lists them. A wrong state can last a single render, so only
+ * recording every change shows that it never appeared.
+ */
+export function recordChanges(read: () => readonly string[]): () => string[] {
+  const seen = new Set<string>();
+  const record = () => read().forEach((value) => seen.add(value));
+  const observer = new MutationObserver(record);
+  observer.observe(document.body, {
+    attributes: true,
+    characterData: true,
+    childList: true,
+    subtree: true,
+  });
+  record();
+  return () => {
+    observer.disconnect();
+    return [...seen];
+  };
+}
+
+/**
  * The page's shared status region announced this text. Toasts are announced
  * there, rather than by live regions that appear together with their text.
  */
