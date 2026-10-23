@@ -9,6 +9,8 @@ namespace FamilyJobsBoard.Api.Features.Today;
 
 internal static class TodayEndpoints
 {
+    public const string InsufficientPointsCode = "insufficientPoints";
+
     public static IEndpointRouteBuilder MapTodayEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api").WithTags("Today").RequireAuthorization();
@@ -58,7 +60,15 @@ internal static class TodayEndpoints
             .WithName("ApproveJob")
             .WithSummary("Approve a pending job and award its points.")
             .WithDescription(
-                "The adult must supply expectedPoints from the pending job shown to them. A missing confirmation returns 400. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.");
+                "The adult must supply expectedPoints from the pending job shown to them. A missing confirmation returns 400. Each approval awards once; a job approved again after its approval was reversed awards its points again. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.");
+
+        group.MapPost("/jobs/{id:guid}/reverse-approval", ReverseJobApprovalAsync)
+            .RequireAuthorization("Adult")
+            .Produces(StatusCodes.Status403Forbidden)
+            .WithName("ReverseJobApproval")
+            .WithSummary("Reverse a job's approval and take back its points.")
+            .WithDescription(
+                "Adult-only; children get 403. The adult must supply expectedPoints, the points the approval awarded, as shown to them; a missing confirmation returns 400. A job the child submitted returns to pending approval with its completion time; a job an adult marked done for the child returns to open with no completion. A new negative ledger entry for the job takes back its award, which stays in the ledger, and the job can then be approved again, rejected, or cancelled. Returns the job and the child's new balance. Returns 404 when the job or its active child is unavailable, and 409 when the job isn't approved, its approval was already reversed, its points or state changed, or the child no longer has the points: then the code is 'insufficientPoints' with the current balance, and nothing changes.");
 
         group.MapPost("/jobs/{id:guid}/reject", RejectJobAsync)
             .RequireAuthorization("Adult")
@@ -670,6 +680,75 @@ internal static class TodayEndpoints
                 Detail = exception.Message,
                 Status = StatusCodes.Status409Conflict,
             });
+        }
+    }
+
+    private static async Task<Results<
+        Ok<JobApprovalReversalResponse>,
+        ValidationProblem,
+        NotFound<ProblemDetails>,
+        Conflict<ProblemDetails>,
+        ForbidHttpResult>> ReverseJobApprovalAsync(
+            Guid id,
+            [FromQuery] int? expectedPoints,
+            HttpContext context,
+            TodayBoardService service,
+            CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reversal = await service.ReverseApprovalAsync(
+                id,
+                IdentityEndpoints.PrincipalMemberId(context.User)!.Value,
+                expectedPoints,
+                cancellationToken);
+            return TypedResults.Ok(new JobApprovalReversalResponse(
+                MapJob(reversal.Job),
+                reversal.PointsBalance));
+        }
+        catch (InvalidJobPointsConfirmationException exception)
+        {
+            return TypedResults.ValidationProblem(
+                exception.Errors,
+                title: "Invalid approval reversal");
+        }
+        catch (JobNotFoundException exception)
+        {
+            return TypedResults.NotFound(new ProblemDetails
+            {
+                Title = "Job not found",
+                Detail = exception.Message,
+                Status = StatusCodes.Status404NotFound,
+            });
+        }
+        catch (ApprovalReversalInsufficientPointsException exception)
+        {
+            var problem = new ProblemDetails
+            {
+                Title = "Not enough points",
+                Detail = exception.Message,
+                Status = StatusCodes.Status409Conflict,
+            };
+            problem.Extensions["code"] = InsufficientPointsCode;
+            problem.Extensions["currentBalance"] = exception.CurrentBalance;
+            return TypedResults.Conflict(problem);
+        }
+        catch (Exception exception) when (
+            exception is JobApprovalReversalRejectedException
+                or JobPointsConfirmationConflictException
+                or DuplicateJobApprovalReversalException
+                or JobStateConflictException)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Approval cannot be reversed",
+                Detail = exception.Message,
+                Status = StatusCodes.Status409Conflict,
+            });
+        }
+        catch (JobManagementForbiddenException)
+        {
+            return TypedResults.Forbid();
         }
     }
 

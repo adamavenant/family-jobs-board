@@ -440,6 +440,10 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("agenda_period");
 
+                    b.Property<int>("ApprovalCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("approval_count");
+
                     b.Property<DateTimeOffset?>("ApprovedAtUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("approved_at_utc");
@@ -464,6 +468,10 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset?>("CompletedAtUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at_utc");
+
+                    b.Property<bool>("CompletedByAdult")
+                        .HasColumnType("boolean")
+                        .HasColumnName("completed_by_adult");
 
                     b.Property<string>("Description")
                         .IsRequired()
@@ -527,6 +535,8 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
 
                     b.ToTable("jobs", null, t =>
                         {
+                            t.HasCheckConstraint("ck_jobs_approval_tracking", "approval_count >= 0 AND (status <> 'Approved' OR approval_count >= 1) AND (NOT completed_by_adult OR status = 'Approved')");
+
                             t.HasCheckConstraint("ck_jobs_cancellation_details", "(status = 'Cancelled' AND cancelled_by_member_id IS NOT NULL AND cancelled_at_utc IS NOT NULL) OR (status <> 'Cancelled' AND cancelled_by_member_id IS NULL AND cancelled_at_utc IS NULL AND cancellation_reason IS NULL)");
                         });
                 });
@@ -961,9 +971,18 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("good_behaviour_id");
 
+                    b.Property<int?>("JobApprovalNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("job_approval_number");
+
                     b.Property<Guid?>("JobId")
                         .HasColumnType("uuid")
                         .HasColumnName("job_id");
+
+                    b.Property<string>("JobName")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("job_name");
 
                     b.Property<Guid?>("PointAdjustmentId")
                         .HasColumnType("uuid")
@@ -973,15 +992,15 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("point_redemption_id");
 
+                    b.Property<Guid?>("ReversedEntryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reversed_entry_id");
+
                     b.HasKey("Id");
 
                     b.HasIndex("GoodBehaviourId")
                         .IsUnique()
                         .HasDatabaseName("ux_points_ledger_entries_good_behaviour_id");
-
-                    b.HasIndex("JobId")
-                        .IsUnique()
-                        .HasDatabaseName("ux_points_ledger_entries_job_id");
 
                     b.HasIndex("PointAdjustmentId")
                         .IsUnique()
@@ -991,12 +1010,24 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_points_ledger_entries_point_redemption_id");
 
+                    b.HasIndex("ReversedEntryId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_points_ledger_entries_reversed_entry_id");
+
+                    b.HasIndex("JobId", "JobApprovalNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ux_points_ledger_entries_job_approval");
+
                     b.HasIndex("ChildId", "AwardedAtUtc", "Id")
                         .HasDatabaseName("ix_points_ledger_entries_child_timeline");
 
                     b.ToTable("points_ledger_entries", null, t =>
                         {
-                            t.HasCheckConstraint("ck_points_ledger_entries_amount_sign", "(point_adjustment_id IS NULL AND point_redemption_id IS NULL AND amount >= 0) OR (point_adjustment_id IS NOT NULL AND amount <> 0) OR (point_redemption_id IS NOT NULL AND amount < 0)");
+                            t.HasCheckConstraint("ck_points_ledger_entries_amount_sign", "(point_adjustment_id IS NULL AND point_redemption_id IS NULL AND reversed_entry_id IS NULL AND amount >= 0) OR (point_adjustment_id IS NOT NULL AND amount <> 0) OR (point_redemption_id IS NOT NULL AND amount < 0) OR (reversed_entry_id IS NOT NULL AND amount <= 0)");
+
+                            t.HasCheckConstraint("ck_points_ledger_entries_job_entry", "(job_id IS NULL AND job_approval_number IS NULL AND reversed_entry_id IS NULL) OR (job_id IS NOT NULL AND job_approval_number IS NOT NULL AND job_approval_number >= 1 AND reversed_entry_id IS NULL) OR (job_id IS NOT NULL AND job_approval_number IS NULL AND reversed_entry_id IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_points_ledger_entries_job_name", "(job_id IS NULL) = (job_name IS NULL)");
 
                             t.HasCheckConstraint("ck_points_ledger_entries_single_source", "num_nonnulls(job_id, good_behaviour_id, point_adjustment_id, point_redemption_id) = 1");
                         });
@@ -1374,6 +1405,12 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .WithMany()
                         .HasForeignKey("PointRedemptionId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FamilyJobsBoard.Domain.Points.PointsLedgerEntry", null)
+                        .WithMany()
+                        .HasForeignKey("ReversedEntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_points_ledger_entries_reversed_entry_id");
                 });
 
             modelBuilder.Entity("FamilyJobsBoard.Domain.TurnRotations.TakenTurn", b =>

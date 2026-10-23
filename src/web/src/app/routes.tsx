@@ -30,6 +30,7 @@ import {
   getToday,
   previewRecurringJobChange,
   rejectJob,
+  reverseJobApproval,
   updateJob,
 } from "../api/today";
 import type {
@@ -111,6 +112,12 @@ export interface RejectActionResult {
   error?: string;
 }
 
+export interface ReverseApprovalActionResult {
+  intent: "reverseApproval";
+  jobId: string;
+  error?: string;
+}
+
 export interface EditJobActionResult {
   intent: "editJob";
   jobId: string;
@@ -160,6 +167,7 @@ export type TodayActionResult =
   | PreviewRecurringJobChangeActionResult
   | ApplyRecurringJobChangeActionResult
   | RejectActionResult
+  | ReverseApprovalActionResult
   | ResetJobsAndPointsActionResult;
 
 export interface IdentityActionResult {
@@ -253,6 +261,9 @@ async function todayAction({
   }
   if (form.get("intent") === "reject") {
     return rejectAction(form);
+  }
+  if (form.get("intent") === "reverseApproval") {
+    return reverseApprovalAction(form);
   }
   if (form.get("intent") === "editJob") {
     return editJobAction(form);
@@ -1092,6 +1103,47 @@ async function approveAction(form: FormData): Promise<ApproveActionResult> {
   }
 }
 
+async function reverseApprovalAction(
+  form: FormData,
+): Promise<ReverseApprovalActionResult> {
+  const jobId = form.get("jobId");
+  const expectedPointsValue = form.get("expectedPoints");
+  if (typeof jobId !== "string") {
+    return {
+      intent: "reverseApproval",
+      jobId: "",
+      error: "The selected job was missing.",
+    };
+  }
+
+  const expectedPoints = Number(expectedPointsValue);
+  if (
+    typeof expectedPointsValue !== "string" ||
+    !Number.isInteger(expectedPoints) ||
+    expectedPoints < 0
+  ) {
+    return {
+      intent: "reverseApproval",
+      jobId,
+      error: "The confirmed points were invalid. Refresh and try again.",
+    };
+  }
+
+  try {
+    await reverseJobApproval(jobId, expectedPoints);
+    return { intent: "reverseApproval", jobId };
+  } catch (error) {
+    return {
+      intent: "reverseApproval",
+      jobId,
+      error:
+        error instanceof ApiError
+          ? error.message
+          : "That approval couldn't be reversed.",
+    };
+  }
+}
+
 async function completeAction(form: FormData): Promise<CompleteActionResult> {
   const jobId = form.get("jobId");
   const expectedPointsValue = form.get("expectedPoints");
@@ -1224,11 +1276,17 @@ export const routes: RouteObject[] = [
     Component: AppPage,
     HydrateFallback: LoadingPage,
     shouldRevalidate: ({ actionResult, defaultShouldRevalidate }) => {
+      // Keep the page as it is after most refusals, so typed input survives. A refused
+      // reversal has nothing to keep, and the job has often changed under a stale card; a
+      // refusal that carries a fresh overview reconciles the board with it.
       if (
         actionResult &&
         typeof actionResult === "object" &&
         "error" in actionResult &&
         actionResult.error &&
+        !(
+          "intent" in actionResult && actionResult.intent === "reverseApproval"
+        ) &&
         !("overview" in actionResult)
       ) {
         return false;

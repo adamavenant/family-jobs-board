@@ -344,9 +344,29 @@ export interface paths {
         put?: never;
         /**
          * Approve a pending job and award its points.
-         * @description The adult must supply expectedPoints from the pending job shown to them. A missing confirmation returns 400. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.
+         * @description The adult must supply expectedPoints from the pending job shown to them. A missing confirmation returns 400. Each approval awards once; a job approved again after its approval was reversed awards its points again. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.
          */
         post: operations["ApproveJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{id}/reverse-approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reverse a job's approval and take back its points.
+         * @description Adult-only; children get 403. The adult must supply expectedPoints, the points the approval awarded, as shown to them; a missing confirmation returns 400. A job the child submitted returns to pending approval with its completion time; a job an adult marked done for the child returns to open with no completion. A new negative ledger entry for the job takes back its award, which stays in the ledger, and the job can then be approved again, rejected, or cancelled. Returns the job and the child's new balance. Returns 404 when the job or its active child is unavailable, and 409 when the job isn't approved, its approval was already reversed, its points or state changed, or the child no longer has the points: then the code is 'insufficientPoints' with the current balance, and nothing changes.
+         */
+        post: operations["ReverseJobApproval"];
         delete?: never;
         options?: never;
         head?: never;
@@ -570,7 +590,7 @@ export interface paths {
         };
         /**
          * Get the points ledger, newest first.
-         * @description Children always receive their own ledger; any other childId returns 403. Adults receive every child's ledger, or one child's with childId; an unknown or adult ID returns 400. Each page holds up to 20 entries with the name, signed points, award time, the child's balance after the entry, and recordedByDisplayName: the adult who logged the behaviour, made the adjustment, or redeemed the points (null for job awards). Pass nextCursor as 'before' to read older entries.
+         * @description Children always receive their own ledger; any other childId returns 403. Adults receive every child's ledger, or one child's with childId; an unknown or adult ID returns 400. Each page holds up to 20 entries with the name, signed points, award time, the child's balance after the entry, and recordedByDisplayName: the adult who logged the behaviour, made the adjustment, or redeemed the points (null for job awards and their reversals). isApprovalReversal marks the negative entry that takes back a job's award when its approval is reversed; it carries the job's name, and the award stays in the ledger. Pass nextCursor as 'before' to read older entries.
          */
         get: operations["GetPointsLedger"];
         put?: never;
@@ -904,6 +924,11 @@ export interface components {
             /** Format: int32 */
             pointsBalance: number | string;
         };
+        JobApprovalReversalResponse: {
+            job: components["schemas"]["JobResponse"];
+            /** Format: int32 */
+            pointsBalance: number | string;
+        };
         JobRejectionResponse: {
             /** Format: uuid */
             decisionId: string;
@@ -1015,6 +1040,7 @@ export interface components {
             /** Format: date-time */
             awardedAtUtc: string;
             recordedByDisplayName: null | string;
+            isApprovalReversal: boolean;
         };
         PointsLedgerResponse: {
             /** Format: uuid */
@@ -2126,6 +2152,64 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    ReverseJobApproval: {
+        parameters: {
+            query?: {
+                expectedPoints?: number | string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobApprovalReversalResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Not Found */
             404: {

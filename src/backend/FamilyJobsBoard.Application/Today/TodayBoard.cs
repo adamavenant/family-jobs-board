@@ -72,3 +72,5 @@ public sealed record TodayJobRejection(
     DateTimeOffset RejectedAtUtc);
 
 public sealed record TodayJobApproval(TodayJob Job, int PointsBalance);
+
+public sealed record TodayJobApprovalReversal(TodayJob Job, int PointsBalance);

@@ -1,4 +1,5 @@
 using FamilyJobsBoard.Application.Clock;
+using FamilyJobsBoard.Application.Points;
 using FamilyJobsBoard.Application.Today;
 using FamilyJobsBoard.Application.TurnRotations;
 using FamilyJobsBoard.Domain.Households;
@@ -588,6 +589,314 @@ public sealed class TodayBoardServiceTests
         Assert.All(repository.Series, series => Assert.Equal(requestId, series.AssignmentRequestId));
     }
 
+    [Fact]
+    public async Task Reversing_a_submitted_approval_takes_back_the_points_under_the_childs_lock()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = PendingJob(repository);
+        var service = CreateService(repository);
+        await service.ApproveAsync(job.Id, 5, CancellationToken.None);
+        var award = Assert.Single(repository.PointsAwards);
+
+        var reversal = await service.ReverseApprovalAsync(
+            job.Id,
+            Adult.Id,
+            5,
+            CancellationToken.None);
+
+        Assert.Equal("pendingApproval", reversal.Job.Status);
+        Assert.Equal(new FixedClock().UtcNow, reversal.Job.CompletedAtUtc);
+        Assert.Null(reversal.Job.ApprovedAtUtc);
+        Assert.Equal(0, reversal.PointsBalance);
+        Assert.Collection(
+            repository.PointsAwards,
+            entry => Assert.Same(award, entry),
+            entry =>
+            {
+                Assert.Equal(job.Id, entry.JobId);
+                Assert.Equal(FirstChild.Id, entry.ChildId);
+                Assert.Equal(award.Id, entry.ReversedEntryId);
+                Assert.Equal(-5, entry.Amount);
+            });
+        Assert.Equal(5, award.Amount);
+        Assert.Equal(
+            [JobReviewOutcome.Approved, JobReviewOutcome.ApprovalReversed],
+            repository.ReviewDecisions.Select(decision => decision.Outcome));
+        var pointsLock = Assert.Single(repository.Locks);
+        Assert.Equal(FirstChild.Id, pointsLock.ChildId);
+        Assert.Equal(1, repository.JobReadsWhileLocked);
+        Assert.True(pointsLock.SavedWhileHeld);
+        Assert.True(pointsLock.Committed);
+        Assert.True(pointsLock.Disposed);
+    }
+
+    [Fact]
+    public async Task A_zero_point_approval_can_be_reversed_whatever_the_balance()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Smile", "", 0, Today);
+        job.MarkComplete(new FixedClock().UtcNow);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+        await service.ApproveAsync(job.Id, 0, CancellationToken.None);
+        // A balance left negative before negative balances were refused stays as recorded.
+        repository.PointsFromOtherEntries = -3;
+
+        var reversal = await service.ReverseApprovalAsync(
+            job.Id,
+            Adult.Id,
+            0,
+            CancellationToken.None);
+
+        Assert.Equal("pendingApproval", reversal.Job.Status);
+        Assert.Equal(-3, reversal.PointsBalance);
+        Assert.Equal([0, 0], repository.PointsAwards.Select(entry => entry.Amount));
+    }
+
+    [Fact]
+    public async Task Reopening_a_job_shows_its_latest_rejection_like_the_board()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        repository.Jobs.Add(job);
+        var rejection = new TodayJobRejection(
+            Guid.NewGuid(),
+            job.Id,
+            "Missed the water bowl.",
+            new FixedClock().UtcNow.AddHours(-1));
+        repository.Rejections.Add(rejection);
+        var service = CreateService(repository);
+        await service.CompleteAsync(job.Id, Adult.Id, 5, CancellationToken.None);
+
+        var reversal = await service.ReverseApprovalAsync(
+            job.Id,
+            Adult.Id,
+            5,
+            CancellationToken.None);
+
+        Assert.Equal("open", reversal.Job.Status);
+        Assert.Equal(rejection, reversal.Job.LatestRejection);
+    }
+
+    [Fact]
+    public async Task Reversal_returns_the_balance_after_saving_including_concurrent_awards()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = PendingJob(repository);
+        var service = CreateService(repository);
+        await service.ApproveAsync(job.Id, 5, CancellationToken.None);
+        repository.OnSave = () => repository.PointsFromOtherEntries = 4;
+
+        var reversal = await service.ReverseApprovalAsync(
+            job.Id,
+            Adult.Id,
+            5,
+            CancellationToken.None);
+
+        Assert.Equal(4, reversal.PointsBalance);
+    }
+
+    [Fact]
+    public async Task Reversing_an_adult_completion_reopens_the_job()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+        await service.CompleteAsync(job.Id, Adult.Id, 5, CancellationToken.None);
+
+        var reversal = await service.ReverseApprovalAsync(
+            job.Id,
+            Adult.Id,
+            5,
+            CancellationToken.None);
+
+        Assert.Equal("open", reversal.Job.Status);
+        Assert.Null(reversal.Job.CompletedAtUtc);
+        Assert.Null(reversal.Job.ApprovedAtUtc);
+        Assert.Equal(0, reversal.PointsBalance);
+        Assert.Equal([5, -5], repository.PointsAwards.Select(entry => entry.Amount));
+    }
+
+    [Fact]
+    public async Task A_reversed_job_awards_once_more_when_approved_again()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = PendingJob(repository);
+        var service = CreateService(repository);
+        await service.ApproveAsync(job.Id, 5, CancellationToken.None);
+        await service.ReverseApprovalAsync(job.Id, Adult.Id, 5, CancellationToken.None);
+
+        var approval = await service.ApproveAsync(job.Id, 5, CancellationToken.None);
+        var secondReversal = await service.ReverseApprovalAsync(
+            job.Id,
+            Adult.Id,
+            5,
+            CancellationToken.None);
+        var thirdApproval = await service.ApproveAsync(job.Id, 5, CancellationToken.None);
+
+        Assert.Equal(5, approval.PointsBalance);
+        Assert.Equal(0, secondReversal.PointsBalance);
+        Assert.Equal(5, thirdApproval.PointsBalance);
+        var awards = repository.PointsAwards.Where(entry => !entry.IsApprovalReversal).ToArray();
+        Assert.Equal([1, 2, 3], awards.Select(entry => entry.JobApprovalNumber));
+        Assert.Equal(
+            awards.Take(2).Select(entry => (Guid?)entry.Id),
+            repository.PointsAwards
+                .Where(entry => entry.IsApprovalReversal)
+                .Select(entry => entry.ReversedEntryId));
+    }
+
+    [Fact]
+    public async Task A_reversed_job_can_be_rejected_or_cancelled()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var rejected = PendingJob(repository);
+        var cancelled = PendingJob(repository);
+        var service = CreateService(repository);
+        foreach (var job in new[] { rejected, cancelled })
+        {
+            await service.ApproveAsync(job.Id, 5, CancellationToken.None);
+            await service.ReverseApprovalAsync(job.Id, Adult.Id, 5, CancellationToken.None);
+        }
+
+        var afterRejection = await service.RejectAsync(
+            rejected.Id,
+            "Missed the water bowl.",
+            CancellationToken.None);
+        var afterCancellation = await service.CancelJobAsync(
+            cancelled.Id,
+            Adult.Id,
+            null,
+            CancellationToken.None);
+
+        Assert.Equal("open", afterRejection.Status);
+        Assert.Equal("Missed the water bowl.", afterRejection.LatestRejection?.Reason);
+        Assert.Equal("cancelled", afterCancellation.Status);
+        Assert.Equal(0, await repository.GetPointsBalanceAsync(FirstChild.Id, CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData(-5, 0, "Fredster doesn't have any points left, so reversing this approval can't take back its 5 points. Nothing was changed.")]
+    [InlineData(-4, 1, "Fredster only has 1 point, so reversing this approval can't take back its 5 points. Nothing was changed.")]
+    [InlineData(-1, 4, "Fredster only has 4 points, so reversing this approval can't take back its 5 points. Nothing was changed.")]
+    public async Task Reversal_is_refused_when_the_child_has_spent_the_points(
+        int spentPoints,
+        int currentBalance,
+        string message)
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = PendingJob(repository);
+        var service = CreateService(repository);
+        await service.ApproveAsync(job.Id, 5, CancellationToken.None);
+        repository.PointsFromOtherEntries = spentPoints;
+        var saves = repository.SaveCount;
+
+        var exception = await Assert.ThrowsAsync<ApprovalReversalInsufficientPointsException>(() =>
+            service.ReverseApprovalAsync(job.Id, Adult.Id, 5, CancellationToken.None));
+
+        Assert.Equal(message, exception.Message);
+        Assert.Equal(currentBalance, exception.CurrentBalance);
+        Assert.Equal(JobStatus.Approved, job.Status);
+        Assert.Single(repository.PointsAwards);
+        Assert.Single(repository.ReviewDecisions);
+        Assert.Equal(saves, repository.SaveCount);
+        var pointsLock = Assert.Single(repository.Locks);
+        Assert.False(pointsLock.Committed);
+        Assert.True(pointsLock.Disposed);
+    }
+
+    [Fact]
+    public async Task Reversal_takes_back_only_the_award_and_keeps_other_points()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = PendingJob(repository);
+        var service = CreateService(repository);
+        await service.ApproveAsync(job.Id, 5, CancellationToken.None);
+        repository.PointsFromOtherEntries = 2;
+
+        var reversal = await service.ReverseApprovalAsync(
+            job.Id,
+            Adult.Id,
+            5,
+            CancellationToken.None);
+
+        Assert.Equal(2, reversal.PointsBalance);
+    }
+
+    [Theory]
+    [InlineData(JobStatus.Open)]
+    [InlineData(JobStatus.PendingApproval)]
+    [InlineData(JobStatus.Cancelled)]
+    public async Task Only_an_approved_job_can_be_reversed(JobStatus status)
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        if (status == JobStatus.PendingApproval)
+        {
+            job.MarkComplete(new FixedClock().UtcNow);
+        }
+        else if (status == JobStatus.Cancelled)
+        {
+            job.Cancel(Adult.Id, new FixedClock().UtcNow, null);
+        }
+
+        repository.Jobs.Add(job);
+        var service = CreateService(repository);
+
+        await Assert.ThrowsAsync<JobApprovalReversalRejectedException>(() =>
+            service.ReverseApprovalAsync(job.Id, Adult.Id, 5, CancellationToken.None));
+
+        Assert.Equal(status, job.Status);
+        Assert.Empty(repository.PointsAwards);
+        Assert.Empty(repository.ReviewDecisions);
+        Assert.Equal(0, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Reversal_needs_the_confirmed_points_to_match_the_award()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = PendingJob(repository);
+        var service = CreateService(repository);
+        await service.ApproveAsync(job.Id, 5, CancellationToken.None);
+        var saves = repository.SaveCount;
+
+        var missing = await Assert.ThrowsAsync<InvalidJobPointsConfirmationException>(() =>
+            service.ReverseApprovalAsync(job.Id, Adult.Id, null, CancellationToken.None));
+        await Assert.ThrowsAsync<JobPointsConfirmationConflictException>(() =>
+            service.ReverseApprovalAsync(job.Id, Adult.Id, 4, CancellationToken.None));
+
+        Assert.Contains("expectedPoints", missing.Errors.Keys);
+        Assert.Equal(JobStatus.Approved, job.Status);
+        Assert.Single(repository.PointsAwards);
+        Assert.Equal(saves, repository.SaveCount);
+    }
+
+    [Fact]
+    public async Task Children_cannot_reverse_an_approval()
+    {
+        var repository = new RecordingRepository([Adult, FirstChild]);
+        var job = PendingJob(repository);
+        var service = CreateService(repository);
+        await service.ApproveAsync(job.Id, 5, CancellationToken.None);
+
+        await Assert.ThrowsAsync<JobManagementForbiddenException>(() =>
+            service.ReverseApprovalAsync(job.Id, FirstChild.Id, 5, CancellationToken.None));
+
+        Assert.Equal(JobStatus.Approved, job.Status);
+        Assert.Single(repository.PointsAwards);
+        Assert.Empty(repository.Locks);
+    }
+
+    private static Job PendingJob(RecordingRepository repository)
+    {
+        var job = new Job(Guid.NewGuid(), FirstChild.Id, "Feed the dog", "", 5, Today);
+        job.MarkComplete(new FixedClock().UtcNow);
+        repository.Jobs.Add(job);
+        return job;
+    }
+
     private static TodayBoardService CreateService(
         ITodayBoardRepository repository,
         IHouseholdClock? clock = null)
@@ -753,6 +1062,18 @@ public sealed class TodayBoardServiceTests
 
         public List<JobReviewDecision> ReviewDecisions { get; } = [];
 
+        public List<FakeChildPointsLock> Locks { get; } = [];
+
+        public List<TodayJobRejection> Rejections { get; } = [];
+
+        public int JobReadsWhileLocked { get; private set; }
+
+        /// <summary>Runs as changes are saved, to simulate a concurrent write.</summary>
+        public Action? OnSave { get; set; }
+
+        /// <summary>The signed sum of the child's other ledger entries, such as redemptions.</summary>
+        public int PointsFromOtherEntries { get; set; }
+
         public int SaveCount { get; private set; }
 
         public DateOnly? LastGenerationHorizon { get; private set; }
@@ -796,6 +1117,12 @@ public sealed class TodayBoardServiceTests
 
         public Task SaveChangesAsync(CancellationToken cancellationToken)
         {
+            if (Locks.LastOrDefault() is { Committed: false, Disposed: false } held)
+            {
+                held.SavedWhileHeld = true;
+            }
+
+            OnSave?.Invoke();
             SaveCount++;
             return Task.CompletedTask;
         }
@@ -804,10 +1131,23 @@ public sealed class TodayBoardServiceTests
             Task.FromResult<IReadOnlyList<Job>>(Jobs
                 .Where(job => childIds.Contains(job.ChildId) && job.ScheduledDate == scheduledDate)
                 .ToArray());
-        public Task<Job?> GetJobAsync(Guid jobId, CancellationToken cancellationToken) =>
-            Task.FromResult(Jobs.SingleOrDefault(job => job.Id == jobId));
+        public Task<Job?> GetJobAsync(Guid jobId, CancellationToken cancellationToken)
+        {
+            if (Locks.LastOrDefault() is { Committed: false, Disposed: false })
+            {
+                JobReadsWhileLocked++;
+            }
+
+            return Task.FromResult(Jobs.SingleOrDefault(job => job.Id == jobId));
+        }
+        public Task<Guid?> GetJobChildIdAsync(Guid jobId, CancellationToken cancellationToken) =>
+            Task.FromResult(Jobs.SingleOrDefault(job => job.Id == jobId)?.ChildId);
         public Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(IReadOnlyCollection<Guid> childIds, DateOnly scheduledDate, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<TodayJobRejection>>([]);
+            Task.FromResult<IReadOnlyList<TodayJobRejection>>(Rejections
+                .Where(rejection => Jobs.Any(job => job.Id == rejection.JobId
+                    && childIds.Contains(job.ChildId)
+                    && job.ScheduledDate == scheduledDate))
+                .ToArray());
         public Task<int> CountPendingApprovalJobsAsync(IReadOnlyCollection<Guid> childIds, CancellationToken cancellationToken) =>
             Task.FromResult(Jobs.Count(job => childIds.Contains(job.ChildId) && job.Status == JobStatus.PendingApproval));
 
@@ -843,7 +1183,9 @@ public sealed class TodayBoardServiceTests
             Task.FromResult<IReadOnlyList<RecurringJobSeries>>(
                 Series.Where(item => seriesIds.Contains(item.Id)).ToArray());
         public Task<int> GetPointsBalanceAsync(Guid childId, CancellationToken cancellationToken) =>
-            Task.FromResult(0);
+            Task.FromResult(PointsFromOtherEntries + PointsAwards
+                .Where(entry => entry.ChildId == childId)
+                .Sum(entry => entry.Amount));
         public Task AddPointsAwardAsync(PointsLedgerEntry entry, CancellationToken cancellationToken)
         {
             PointsAwards.Add(entry);
@@ -854,6 +1196,22 @@ public sealed class TodayBoardServiceTests
         {
             ReviewDecisions.Add(decision);
             return Task.CompletedTask;
+        }
+
+        public Task<PointsLedgerEntry?> GetJobAwardAsync(
+            Guid jobId,
+            int approvalNumber,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(PointsAwards.SingleOrDefault(entry =>
+                entry.JobId == jobId && entry.JobApprovalNumber == approvalNumber));
+
+        public Task<IChildPointsLock> LockChildPointsAsync(
+            Guid childId,
+            CancellationToken cancellationToken)
+        {
+            var pointsLock = new FakeChildPointsLock(childId);
+            Locks.Add(pointsLock);
+            return Task.FromResult<IChildPointsLock>(pointsLock);
         }
 
         private static NotSupportedException Unused() => new("This operation is not used by the test.");

@@ -307,16 +307,16 @@ public sealed class PointAdjustmentEndpointsTests : IAsyncLifetime
 
         var negativeWithoutAdjustment = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(
             connection,
-            "INSERT INTO points_ledger_entries (id, child_id, job_id, amount, awarded_at_utc) "
-            + $"VALUES (gen_random_uuid(), '{child}', '{DemoDataIds.FeedDog}', -1, now())"));
+            "INSERT INTO points_ledger_entries (id, child_id, job_id, job_name, job_approval_number, amount, awarded_at_utc) "
+            + $"VALUES (gen_random_uuid(), '{child}', '{DemoDataIds.FeedDog}', 'Feed the dog', 1, -1, now())"));
         var zeroAdjustment = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(
             connection,
             "INSERT INTO points_ledger_entries (id, child_id, point_adjustment_id, amount, awarded_at_utc) "
             + $"VALUES (gen_random_uuid(), '{child}', '{adjustmentId}', 0, now())"));
         var twoSources = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(
             connection,
-            "INSERT INTO points_ledger_entries (id, child_id, job_id, point_adjustment_id, amount, awarded_at_utc) "
-            + $"VALUES (gen_random_uuid(), '{child}', '{DemoDataIds.FeedDog}', '{adjustmentId}', 1, now())"));
+            "INSERT INTO points_ledger_entries (id, child_id, job_id, job_name, job_approval_number, point_adjustment_id, amount, awarded_at_utc) "
+            + $"VALUES (gen_random_uuid(), '{child}', '{DemoDataIds.FeedDog}', 'Feed the dog', 1, '{adjustmentId}', 1, now())"));
         var zeroRecord = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(
             connection,
             "INSERT INTO point_adjustments (id, request_id, child_id, adjusted_by_member_id, amount, reason, adjusted_at_utc) "

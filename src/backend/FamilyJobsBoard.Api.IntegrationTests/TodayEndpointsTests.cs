@@ -277,8 +277,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         Assert.NotNull(childJob);
         var decidedAtUtc = new DateTimeOffset(2026, 9, 7, 8, 0, 0, TimeSpan.Zero);
 
-        adultJob.MarkComplete(decidedAtUtc);
-        adultJob.Approve(decidedAtUtc);
+        adultJob.CompleteForChild(decidedAtUtc);
         await adultRepository.AddReviewDecisionAsync(
             new JobReviewDecision(
                 Guid.NewGuid(),
@@ -288,12 +287,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 decidedAtUtc),
             CancellationToken.None);
         await adultRepository.AddPointsAwardAsync(
-            new PointsLedgerEntry(
-                Guid.NewGuid(),
-                adultJob.ChildId,
-                adultJob.Id,
-                adultJob.Points,
-                decidedAtUtc),
+            PointsLedgerEntry.ForJobApproval(Guid.NewGuid(), adultJob, decidedAtUtc),
             CancellationToken.None);
         await adultRepository.SaveChangesAsync(CancellationToken.None);
 
@@ -335,8 +329,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
         var decidedAtUtc = new DateTimeOffset(2026, 9, 7, 8, 0, 0, TimeSpan.Zero);
 
         childJob.MarkComplete(decidedAtUtc);
-        adultJob.MarkComplete(decidedAtUtc.AddSeconds(1));
-        adultJob.Approve(decidedAtUtc.AddSeconds(1));
+        adultJob.CompleteForChild(decidedAtUtc.AddSeconds(1));
         await adultRepository.AddReviewDecisionAsync(
             new JobReviewDecision(
                 Guid.NewGuid(),
@@ -346,12 +339,7 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
                 decidedAtUtc.AddSeconds(1)),
             CancellationToken.None);
         await adultRepository.AddPointsAwardAsync(
-            new PointsLedgerEntry(
-                Guid.NewGuid(),
-                adultJob.ChildId,
-                adultJob.Id,
-                adultJob.Points,
-                decidedAtUtc.AddSeconds(1)),
+            PointsLedgerEntry.ForJobApproval(Guid.NewGuid(), adultJob, decidedAtUtc.AddSeconds(1)),
             CancellationToken.None);
         await childRepository.SaveChangesAsync(CancellationToken.None);
 
