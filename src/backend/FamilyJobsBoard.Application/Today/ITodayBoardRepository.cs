@@ -42,6 +42,19 @@ public interface ITodayBoardRepository
         DateOnly endDate,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Every job awaiting review for the given children, whatever its scheduled date, oldest
+    /// scheduled date first and in agenda order within a date.
+    /// </summary>
+    Task<IReadOnlyList<Job>> GetPendingApprovalJobsAsync(
+        IReadOnlyCollection<Guid> childIds,
+        CancellationToken cancellationToken);
+
+    /// <summary>How many jobs await review for the given children, whatever their dates.</summary>
+    Task<int> CountPendingApprovalJobsAsync(
+        IReadOnlyCollection<Guid> childIds,
+        CancellationToken cancellationToken);
+
     Task AddJobsAsync(IReadOnlyCollection<Job> jobs, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<RecurringJobSeries>> GetRecurringJobSeriesByRequestAsync(

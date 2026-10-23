@@ -131,8 +131,74 @@ services:
       - /tmp:size=8m,mode=1777
     networks:
       - backend
+      - probes
     healthcheck:
       test: ["CMD", "/bin/busybox", "wget", "--quiet", "--spider", "http://127.0.0.1:9115/"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  node-exporter:
+    <<: *observability-service
+    image: familyjobsboard/observability-node-exporter:1.12.1-healthcheck
+    build:
+      context: ..
+      dockerfile: observability/docker/healthcheck/Dockerfile
+      args:
+        BASE_IMAGE: quay.io/prometheus/node-exporter:v1.12.1
+    user: "65534:65534"
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host/root
+      - --collector.disable-defaults
+      - --collector.cpu
+      - --collector.filesystem
+      - --collector.loadavg
+      - --collector.meminfo
+      - --collector.stat
+      - --collector.filesystem.mount-points-include=^/($|rootfs$)
+      - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|cgroup2?|configfs|debugfs|devpts|devtmpfs|efivarfs|fusectl|hugetlbfs|mqueue|overlay|proc|pstore|securityfs|sysfs|tracefs)$
+      - --web.disable-exporter-metrics
+    expose:
+      - "9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--quiet", "--spider", "http://127.0.0.1:9100/"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  container-exporter:
+    <<: *observability-service
+    image: familyjobsboard/observability-container-exporter:1.0.0
+    build:
+      context: ..
+      dockerfile: observability/container-exporter/Dockerfile
+    user: "65534:${DOCKER_GID:?set DOCKER_GID to the numeric group owner of /var/run/docker.sock}"
+    environment:
+      DOCKER_API_URL: unix:///var/run/docker.sock
+      FJB_COMPOSE_PROJECT_NAME: ${FJB_COMPOSE_PROJECT_NAME:-family-jobs-board}
+      OBSERVABILITY_RESOURCE_PREFIX: ${OBSERVABILITY_RESOURCE_PREFIX:-family-jobs-board-observability}
+    expose:
+      - "9400"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9400/health', timeout=2).read()"]
       interval: 10s
       timeout: 3s
       retries: 12
@@ -155,7 +221,11 @@ services:
         condition: service_healthy
       blackbox:
         condition: service_healthy
+      container-exporter:
+        condition: service_healthy
       loki:
+        condition: service_healthy
+      node-exporter:
         condition: service_healthy
     expose:
       - "9090"
@@ -231,7 +301,7 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_AUTH_BASIC_ENABLED: "true"
       GF_AUTH_DISABLE_LOGIN_FORM: "false"
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/telemetry-stack-health.json
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/family-jobs-board-overview.json
       GF_EXPLORE_ENABLED: "false"
       GF_NEWS_NEWS_FEED_ENABLED: "false"
       GF_PLUGINS_PLUGIN_ADMIN_ENABLED: "false"
@@ -272,6 +342,8 @@ networks:
   backend:
     name: ${OBSERVABILITY_RESOURCE_PREFIX:-family-jobs-board-observability}-backend
     internal: true
+  probes:
+    name: ${OBSERVABILITY_RESOURCE_PREFIX:-family-jobs-board-observability}-probes
   query:
     name: ${OBSERVABILITY_RESOURCE_PREFIX:-family-jobs-board-observability}-query
     internal: true

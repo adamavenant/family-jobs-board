@@ -70,8 +70,10 @@ import {
 import {
   whoseTurnAction,
   whoseTurnLoader,
+  whoseTurnTickAction,
 } from "../features/whoseTurn/whoseTurnRoute";
 import { calendarLoader } from "../features/calendar/calendarRoute";
+import { approvalsLoader } from "../features/approvals/approvalsRoute";
 import { CalendarPage } from "../features/calendar/CalendarPage";
 import { pointsLedgerLoader } from "../features/points/pointsLedgerRoute";
 import { PointsLedgerPage } from "../features/points/PointsLedgerPage";
@@ -1275,13 +1277,17 @@ export const routes: RouteObject[] = [
     HydrateFallback: LoadingPage,
     shouldRevalidate: ({ actionResult, defaultShouldRevalidate }) => {
       // Keep the page as it is after most refusals, so typed input survives. A refused
-      // reversal has nothing to keep, and the job has often changed under a stale card.
+      // reversal has nothing to keep, and the job has often changed under a stale card; a
+      // refusal that carries a fresh overview reconciles the board with it.
       if (
         actionResult &&
         typeof actionResult === "object" &&
         "error" in actionResult &&
         actionResult.error &&
-        !("intent" in actionResult && actionResult.intent === "reverseApproval")
+        !(
+          "intent" in actionResult && actionResult.intent === "reverseApproval"
+        ) &&
+        !("overview" in actionResult)
       ) {
         return false;
       }
@@ -1305,6 +1311,10 @@ export const routes: RouteObject[] = [
     action: whoseTurnAction,
   },
   {
+    path: "/whose-turn/turns",
+    action: whoseTurnTickAction,
+  },
+  {
     path: "/point-adjustments",
     action: pointAdjustmentsAction,
   },
@@ -1317,6 +1327,10 @@ export const routes: RouteObject[] = [
     path: "/calendar",
     loader: calendarLoader,
     Component: CalendarPage,
+  },
+  {
+    path: "/approvals",
+    loader: approvalsLoader,
   },
   {
     path: "/points",

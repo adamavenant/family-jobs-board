@@ -1,33 +1,30 @@
 import createClient from "openapi-fetch";
 
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
 import { authenticatedFetch } from "./auth";
 
-export interface TurnRotationConfiguration {
-  id: string;
-  effectiveFrom: string;
-  question: string;
-  participantChildIds: string[];
-  firstChildId: string;
-  createdByMemberId: string;
-  createdAtUtc: string;
-}
+export type TurnAdvanceMode = "daily" | "whenTicked";
 
-export interface TurnRotationTurn {
-  date: string;
-  question: string;
+export type TurnRotationConfiguration =
+  components["schemas"]["TurnRotationConfigurationResponse"];
+
+export type TurnRotationTurn =
+  components["schemas"]["TurnRotationTurnResponse"];
+
+export type TurnRotationSummary =
+  components["schemas"]["TurnRotationSummaryResponse"];
+
+export type TurnRotationOverview =
+  components["schemas"]["TurnRotationOverviewResponse"];
+
+export type TakenTurn = components["schemas"]["TakenTurnResponse"];
+
+/** Names the turn the board showed, so a stale or replayed tick never ticks again. */
+export interface TakeTurnInput {
+  requestId: string;
+  revisionId: string;
+  turnNumber: number;
   childId: string;
-  childDisplayName: string;
-}
-
-export interface TurnRotationSummary {
-  rotationId: string;
-  current: TurnRotationConfiguration | null;
-  upcomingTurns: TurnRotationTurn[];
-}
-
-export interface TurnRotationOverview {
-  rotations: TurnRotationSummary[];
 }
 
 export interface SaveTurnRotationInput {
@@ -35,6 +32,7 @@ export interface SaveTurnRotationInput {
   firstChildId: string;
   effectiveFrom: string;
   question: string | null;
+  advanceMode: TurnAdvanceMode;
 }
 
 export class TurnRotationApiError extends Error {
@@ -77,13 +75,49 @@ export async function saveTurnRotation(
 export async function endTurnRotation(
   rotationId: string,
 ): Promise<TurnRotationOverview> {
-  const { data, error } = await apiClient().DELETE(
+  const { data, error, response } = await apiClient().DELETE(
     "/api/turn-rotations/{rotationId}",
     { params: { path: { rotationId } } },
   );
   if (!data) {
     throw new TurnRotationApiError(
-      problemMessage(error, "That rotation couldn't be ended."),
+      response.status === 404
+        ? "That rotation is no longer available. Refresh the rotation list and try again."
+        : problemMessage(error, "That rotation couldn't be ended."),
+    );
+  }
+
+  return data;
+}
+
+export async function takeTurn(
+  rotationId: string,
+  input: TakeTurnInput,
+): Promise<TakenTurn> {
+  const { data, error } = await apiClient().POST(
+    "/api/turn-rotations/{rotationId}/turns",
+    { params: { path: { rotationId } }, body: input },
+  );
+  if (!data) {
+    throw new TurnRotationApiError(
+      problemMessage(error, "That turn couldn't be ticked off."),
+    );
+  }
+
+  return data;
+}
+
+export async function undoTurn(
+  rotationId: string,
+  turnId: string,
+): Promise<TakenTurn> {
+  const { data, error } = await apiClient().DELETE(
+    "/api/turn-rotations/{rotationId}/turns/{turnId}",
+    { params: { path: { rotationId, turnId } } },
+  );
+  if (!data) {
+    throw new TurnRotationApiError(
+      problemMessage(error, "That turn couldn't be unticked."),
     );
   }
 

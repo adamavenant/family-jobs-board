@@ -15,6 +15,17 @@ public sealed record WhoseTurnResponse(
     Guid RotationId,
     string Question,
     Guid ChildId,
+    string ChildDisplayName,
+    Guid RevisionId,
+    int TurnNumber,
+    string AdvanceMode,
+    bool TurnTaken,
+    bool CanTakeTurn,
+    WhoseTurnTakenTurnResponse? UndoableTurn);
+
+public sealed record WhoseTurnTakenTurnResponse(
+    Guid TurnId,
+    Guid ChildId,
     string ChildDisplayName);
 
 public sealed record MemberResponse(

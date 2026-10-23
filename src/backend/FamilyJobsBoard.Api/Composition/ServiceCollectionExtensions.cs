@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using FamilyJobsBoard.Api.Features.Identity;
 using FamilyJobsBoard.Application.Administration;
+using FamilyJobsBoard.Application.Approvals;
 using FamilyJobsBoard.Application.Clock;
 using FamilyJobsBoard.Application.Identity;
 using FamilyJobsBoard.Application.GoodBehaviours;
@@ -43,6 +44,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<PointRedemptionService>();
         services.AddScoped<PointsLedgerService>();
         services.AddScoped<CalendarService>();
+        services.AddScoped<PendingApprovalsService>();
         services.AddScoped<IdentityService>();
         services.AddScoped<TurnRotationService>();
         return services;

@@ -1,10 +1,14 @@
 import type { ActionFunctionArgs } from "react-router";
 
+import { createRequestId } from "../../app/requestId";
+
 import {
   TurnRotationApiError,
   endTurnRotation,
   getTurnRotations,
   saveTurnRotation,
+  takeTurn,
+  undoTurn,
 } from "../../api/turnRotation";
 import type { TurnRotationOverview } from "../../api/turnRotation";
 
@@ -14,6 +18,17 @@ export interface WhoseTurnActionResult {
   rotationId?: string | undefined;
   message?: string | undefined;
   error?: string | undefined;
+}
+
+/**
+ * The outcome of ticking a turn off or unticking one from the board. A failure is reported
+ * as `failure` rather than `error` so the board still reloads: a refused tick usually means
+ * the turn has moved on, and the board should show where it is now.
+ */
+export interface WhoseTurnTickResult {
+  intent: "take" | "undo";
+  rotationId: string;
+  failure?: string | undefined;
 }
 
 export async function whoseTurnLoader(): Promise<WhoseTurnActionResult> {
@@ -54,6 +69,8 @@ export async function whoseTurnAction({
     const firstChildId = text(form, "firstChildId");
     const effectiveFrom = text(form, "effectiveFrom");
     const questionRaw = text(form, "question").trim();
+    const advanceMode =
+      text(form, "advanceMode") === "whenTicked" ? "whenTicked" : "daily";
     if (participantChildIds.length === 0 || !firstChildId || !effectiveFrom) {
       return {
         intent,
@@ -69,6 +86,7 @@ export async function whoseTurnAction({
       firstChildId,
       effectiveFrom,
       question: questionRaw === "" ? null : questionRaw,
+      advanceMode,
     });
     return {
       intent,
@@ -82,6 +100,40 @@ export async function whoseTurnAction({
       rotationId,
       overview: await reloadOverview(),
       error: errorMessage(error, "That change couldn't be saved."),
+    };
+  }
+}
+
+export async function whoseTurnTickAction({
+  request,
+}: ActionFunctionArgs): Promise<WhoseTurnTickResult> {
+  const form = await request.formData();
+  const intent = text(form, "intent") === "undo" ? "undo" : "take";
+  const rotationId = text(form, "rotationId");
+
+  try {
+    if (intent === "undo") {
+      await undoTurn(rotationId, text(form, "turnId"));
+    } else {
+      await takeTurn(rotationId, {
+        requestId: createRequestId(),
+        revisionId: text(form, "revisionId"),
+        turnNumber: Number(text(form, "turnNumber")),
+        childId: text(form, "childId"),
+      });
+    }
+
+    return { intent, rotationId };
+  } catch (error) {
+    return {
+      intent,
+      rotationId,
+      failure: errorMessage(
+        error,
+        intent === "undo"
+          ? "That turn couldn't be unticked."
+          : "That turn couldn't be ticked off.",
+      ),
     };
   }
 }

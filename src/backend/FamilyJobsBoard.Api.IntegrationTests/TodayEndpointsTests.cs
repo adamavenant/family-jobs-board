@@ -1483,6 +1483,79 @@ public sealed class TodayEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task All_future_edit_without_an_end_date_removes_the_end_and_resumes_generation()
+    {
+        var endDate = CurrentDate.AddDays(2);
+        using var createResponse = await Client.PostAsJsonAsync(
+            "/api/recurring-jobs/daily",
+            new
+            {
+                requestId = Guid.NewGuid(),
+                childIds = new[] { DemoDataIds.Fredster },
+                name = "Feed the fish",
+                description = "One small scoop.",
+                points = 2,
+                agendaPeriod = "morning",
+                scheduledTime = (string?)null,
+                startDate = CurrentDate,
+                endDate,
+            });
+        createResponse.EnsureSuccessStatusCode();
+        var created = await createResponse.Content.ReadFromJsonAsync<RecurringJobResponse>();
+        var seriesId = Assert.Single(created!.Assignments).SeriesId;
+
+        var board = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}");
+        var anchor = Assert.Single(board!.Jobs, job => job.RecurringJobSeriesId == seriesId);
+        Assert.NotNull(anchor.Recurrence);
+        Assert.Equal(endDate, anchor.Recurrence.EndDate);
+
+        using var applyResponse = await Client.PostAsJsonAsync(
+            $"/api/jobs/{anchor.Id}/recurring-change",
+            new
+            {
+                requestId = Guid.NewGuid(),
+                change = new
+                {
+                    operation = "edit",
+                    scope = "allFuture",
+                    expectedSeriesVersion = anchor.Recurrence.Version,
+                    name = anchor.Name,
+                    description = anchor.Description,
+                    points = anchor.Points,
+                    scheduledDate = anchor.ScheduledDate,
+                    agendaPeriod = anchor.AgendaPeriod,
+                    scheduledTime = (string?)null,
+                    frequency = "daily",
+                    weekdays = Array.Empty<string>(),
+                    dayOfMonth = (int?)null,
+                    endDate = (DateOnly?)null,
+                },
+            });
+        Assert.Equal(HttpStatusCode.OK, applyResponse.StatusCode);
+
+        var refreshed = await Client.GetFromJsonAsync<TodayResponse>(
+            $"/api/today?memberId={DemoDataIds.Addie}");
+        var refreshedAnchor = Assert.Single(
+            refreshed!.Jobs,
+            job => job.RecurringJobSeriesId == seriesId);
+        Assert.NotNull(refreshedAnchor.Recurrence);
+        Assert.Null(refreshedAnchor.Recurrence.EndDate);
+
+        await using var scope = (_factory
+            ?? throw new InvalidOperationException("Test API was not initialised."))
+            .Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var storedSeries = await database.RecurringJobSeries.SingleAsync(
+            series => series.Id == seriesId);
+        Assert.Null(storedSeries.EndDate);
+        Assert.Equal(CurrentDate.AddDays(55), storedSeries.GeneratedThrough);
+        Assert.True(await database.Jobs.AnyAsync(job =>
+            job.RecurringJobSeriesId == seriesId
+            && job.ScheduledDate == endDate.AddDays(1)));
+    }
+
+    [Fact]
     public async Task This_only_move_beyond_the_horizon_is_not_recreated_by_later_generation()
     {
         using var createResponse = await Client.PostAsJsonAsync(

@@ -18,6 +18,7 @@ public sealed record CalendarBoard(
     DateOnly RangeStart,
     DateOnly RangeEnd,
     Guid? SelectedChildId,
+    int PendingApprovalCount,
     IReadOnlyList<CalendarDay> Days);
 
 public sealed record CalendarDay(

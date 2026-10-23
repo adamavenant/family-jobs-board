@@ -24,11 +24,11 @@ history. Rejection returns the job for another attempt and may include feedback.
 ## Scope
 
 Delivered scope includes child and adult-on-behalf completion submission,
-pending state, adult controls on the daily board,
-approve/reject decisions, optional rejection feedback, one job-sourced ledger
-award per approval, balance calculation, and child earning history. A separate
-queue, reviewer identity, approval reason, point override, redemptions,
-and adjustments are not implemented. Good-behaviour awards were added to the
+pending state, adult controls on the daily board, a household review queue
+across all dates (issue #137), approve/reject decisions, optional rejection
+feedback, one job-sourced ledger award per approval, balance calculation, and
+child earning history. Reviewer identity, approval reason, and point override
+are not implemented. Good-behaviour awards were added to the
 same ledger in Phase 5; see `050-good-behaviours.md`.
 
 ## Domain rules and state
@@ -74,8 +74,16 @@ not record the reviewing adult.
   approved job and updated balance when it still matches.
 - `POST /api/jobs/{id}/reject` accepts an optional reason and returns the open
   job with its latest rejection.
-- `GET /api/today` exposes pending count to adults and the balance to the
-  authenticated child. Earning history moved to `GET /api/points-ledger` with
+- `GET /api/today` exposes the pending count to adults and the balance to the
+  authenticated child. The pending count is household-wide: it counts every
+  `PendingApproval` job for active children whatever its scheduled date, and
+  ignores the viewed date and child filter, so work submitted on an earlier
+  day stays counted until it is decided. `GET /api/calendar` returns the same
+  count.
+- `GET /api/approvals/pending` is adult-only and lists every pending job for
+  active children across all dates, oldest scheduled date first and in agenda
+  order within a date, using the shared `JobResponse` shape. Children get
+  `403`. Earning history moved to `GET /api/points-ledger` with
   issue #77; see the points ledger view in
   `060-redemptions-adjustments-and-audit.md`.
 
@@ -86,7 +94,14 @@ rejection reason or missing adult points confirmation returns validation errors.
 
 ## UI states
 
-Adults see pending jobs and approve/reject controls in the daily agenda.
+Adults see pending jobs and approve/reject controls in the daily agenda. The
+"awaiting review" badge on the daily board and the calendar is a button that
+opens a non-modal side panel (full width on phones) listing every pending job,
+grouped by scheduled date, with Approve and Reject (optional reason) for each.
+Decisions reuse the approve/reject operations and refresh the page in place, so
+grown-ups never navigate away to review. Focus moves to the panel heading when
+it opens and stays in the panel as decided jobs leave the list; Escape or the
+close button returns focus to the badge.
 Completing on a child's behalf first shows an inline confirmation naming the
 child and points award; confirming still completes, approves, and awards in one
 server operation, while keeping the job open makes no request. Initial focus
@@ -127,9 +142,13 @@ stable conflict responses, and the standard readiness check covers PostgreSQL.
 
 Domain tests cover approve/reject state guards and decision validation.
 Application and integration tests cover atomic awards, duplicate prevention,
-rejection/retry, authorization, balance, and history. Component and Playwright
-tests cover the child-to-adult approval loop, adult-on-behalf completion, and
-rejection errors.
+rejection/retry, authorization, balance, and history. Application and
+PostgreSQL integration tests also cover the review queue's cross-date
+ordering, exclusion of cancelled jobs and inactive children, and the
+household-wide pending count on the daily board and calendar. Component and
+Playwright tests cover the child-to-adult approval loop, adult-on-behalf
+completion, rejection errors, and reviewing from the side panel at phone,
+tablet, and desktop widths.
 
 ## Reversing an approval
 

@@ -2116,6 +2116,33 @@
         ]
       }
     },
+    "/api/approvals/pending": {
+      "get": {
+        "tags": [
+          "Approvals"
+        ],
+        "summary": "List every job awaiting an adult's review.",
+        "description": "Adult-only. Returns pending-approval jobs for every active child across all scheduled dates, oldest scheduled date first and in agenda order within a date. Decisions use the existing approve and reject operations.",
+        "operationId": "GetPendingApprovals",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingApprovalsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
     "/api/turn-rotations": {
       "get": {
         "tags": [
@@ -2270,7 +2297,7 @@
           "Whose turn"
         ],
         "summary": "End a rotation from tomorrow.",
-        "description": "Adult-only. The rotation stops appearing on the board from tomorrow; earlier dates keep their answers.",
+        "description": "Adult-only. The rotation stops appearing on the board from tomorrow, including any scheduled configurations; earlier dates keep their answers. Repeating End for a known rotation succeeds without adding duplicate revisions.",
         "operationId": "EndTurnRotation",
         "parameters": [
           {
@@ -2296,6 +2323,151 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/turn-rotations/{rotationId}/turns": {
+      "post": {
+        "tags": [
+          "Whose turn"
+        ],
+        "summary": "Tick off today's turn in a rotation that moves on when ticked.",
+        "description": "Any adult, or the child whose turn it is. The body names the turn from the board by revision, turn number, and child; a tick for a turn that has already moved on, or a second tick today in a rotation of one or three or more children, is a conflict. A two-child rotation moves straight on to the other child. Replaying a request ID returns the original tick without ticking again.",
+        "operationId": "TakeTurn",
+        "parameters": [
+          {
+            "name": "rotationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TakeTurnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TakenTurnResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/turn-rotations/{rotationId}/turns/{turnId}": {
+      "delete": {
+        "tags": [
+          "Whose turn"
+        ],
+        "summary": "Untick the rotation's most recent tick.",
+        "description": "Any adult, or the child whose turn was ticked. Only the rotation's most recent tick can be unticked, on the household-local day it was made; the tick is kept with who unticked it and when.",
+        "operationId": "UndoTurn",
+        "parameters": [
+          {
+            "name": "rotationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "turnId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TakenTurnResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -2551,6 +2723,7 @@
           "rangeStart",
           "rangeEnd",
           "selectedChildId",
+          "pendingApprovalCount",
           "days"
         ],
         "type": "object",
@@ -2589,6 +2762,14 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "pendingApprovalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           },
           "days": {
             "type": "array",
@@ -3367,6 +3548,20 @@
           },
           "isAdult": {
             "type": "boolean"
+          }
+        }
+      },
+      "PendingApprovalsResponse": {
+        "required": [
+          "jobs"
+        ],
+        "type": "object",
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobResponse"
+            }
           }
         }
       },
@@ -4247,7 +4442,8 @@
           "participantChildIds",
           "firstChildId",
           "effectiveFrom",
-          "question"
+          "question",
+          "advanceMode"
         ],
         "type": "object",
         "properties": {
@@ -4276,6 +4472,12 @@
             "format": "date"
           },
           "question": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "advanceMode": {
             "type": [
               "null",
               "string"
@@ -4361,6 +4563,123 @@
           }
         }
       },
+      "TakenTurnResponse": {
+        "required": [
+          "id",
+          "requestId",
+          "rotationId",
+          "revisionId",
+          "turnNumber",
+          "date",
+          "childId",
+          "childDisplayName",
+          "recordedByMemberId",
+          "recordedAtUtc",
+          "undoneByMemberId",
+          "undoneAtUtc"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rotationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revisionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "turnNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childDisplayName": {
+            "type": "string"
+          },
+          "recordedByMemberId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "recordedAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "undoneByMemberId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "undoneAtUtc": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "TakeTurnRequest": {
+        "required": [
+          "requestId",
+          "revisionId",
+          "turnNumber",
+          "childId"
+        ],
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "revisionId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "turnNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "childId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
       "TodayResponse": {
         "required": [
           "viewer",
@@ -4430,6 +4749,22 @@
           }
         }
       },
+      "TurnRotationChildResponse": {
+        "required": [
+          "childId",
+          "childDisplayName"
+        ],
+        "type": "object",
+        "properties": {
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childDisplayName": {
+            "type": "string"
+          }
+        }
+      },
       "TurnRotationConfigurationResponse": {
         "required": [
           "id",
@@ -4437,6 +4772,7 @@
           "question",
           "participantChildIds",
           "firstChildId",
+          "advanceMode",
           "createdByMemberId",
           "createdAtUtc"
         ],
@@ -4463,6 +4799,9 @@
           "firstChildId": {
             "type": "string",
             "format": "uuid"
+          },
+          "advanceMode": {
+            "type": "string"
           },
           "createdByMemberId": {
             "type": "string",
@@ -4492,7 +4831,8 @@
         "required": [
           "rotationId",
           "current",
-          "upcomingTurns"
+          "upcomingTurns",
+          "upNext"
         ],
         "type": "object",
         "properties": {
@@ -4514,6 +4854,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/TurnRotationTurnResponse"
+            }
+          },
+          "upNext": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TurnRotationChildResponse"
             }
           }
         }
@@ -4629,7 +4975,13 @@
           "rotationId",
           "question",
           "childId",
-          "childDisplayName"
+          "childDisplayName",
+          "revisionId",
+          "turnNumber",
+          "advanceMode",
+          "turnTaken",
+          "canTakeTurn",
+          "undoableTurn"
         ],
         "type": "object",
         "properties": {
@@ -4639,6 +4991,58 @@
           },
           "question": {
             "type": "string"
+          },
+          "childId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "childDisplayName": {
+            "type": "string"
+          },
+          "revisionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "turnNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "advanceMode": {
+            "type": "string"
+          },
+          "turnTaken": {
+            "type": "boolean"
+          },
+          "canTakeTurn": {
+            "type": "boolean"
+          },
+          "undoableTurn": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WhoseTurnTakenTurnResponse"
+              }
+            ]
+          }
+        }
+      },
+      "WhoseTurnTakenTurnResponse": {
+        "required": [
+          "turnId",
+          "childId",
+          "childDisplayName"
+        ],
+        "type": "object",
+        "properties": {
+          "turnId": {
+            "type": "string",
+            "format": "uuid"
           },
           "childId": {
             "type": "string",
@@ -4686,6 +5090,9 @@
     },
     {
       "name": "Calendar"
+    },
+    {
+      "name": "Approvals"
     },
     {
       "name": "Whose turn"

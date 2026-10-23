@@ -1,4 +1,28 @@
 services:
+  application-health-fixture:
+    image: nginx:1.31.5-alpine3.24
+    user: "101:101"
+    entrypoint:
+      - /usr/sbin/nginx
+    command:
+      - -g
+      - daemon off;
+      - -c
+      - /etc/nginx/nginx.conf
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./tests/application-health-nginx.conf:/etc/nginx/nginx.conf:ro
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    networks:
+      probes:
+        aliases:
+          - dashboard.home.arpa
+
   grafana:
     ports:
       - "127.0.0.1:${GRAFANA_TEST_PORT:-33000}:3000"

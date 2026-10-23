@@ -621,6 +621,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/approvals/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every job awaiting an adult's review.
+         * @description Adult-only. Returns pending-approval jobs for every active child across all scheduled dates, oldest scheduled date first and in agenda order within a date. Decisions use the existing approve and reject operations.
+         */
+        get: operations["GetPendingApprovals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/turn-rotations": {
         parameters: {
             query?: never;
@@ -661,9 +681,49 @@ export interface paths {
         post?: never;
         /**
          * End a rotation from tomorrow.
-         * @description Adult-only. The rotation stops appearing on the board from tomorrow; earlier dates keep their answers.
+         * @description Adult-only. The rotation stops appearing on the board from tomorrow, including any scheduled configurations; earlier dates keep their answers. Repeating End for a known rotation succeeds without adding duplicate revisions.
          */
         delete: operations["EndTurnRotation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/turn-rotations/{rotationId}/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tick off today's turn in a rotation that moves on when ticked.
+         * @description Any adult, or the child whose turn it is. The body names the turn from the board by revision, turn number, and child; a tick for a turn that has already moved on, or a second tick today in a rotation of one or three or more children, is a conflict. A two-child rotation moves straight on to the other child. Replaying a request ID returns the original tick without ticking again.
+         */
+        post: operations["TakeTurn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/turn-rotations/{rotationId}/turns/{turnId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Untick the rotation's most recent tick.
+         * @description Any adult, or the child whose turn was ticked. Only the rotation's most recent tick can be unticked, on the household-local day it was made; the tick is kept with who unticked it and when.
+         */
+        delete: operations["UndoTurn"];
         options?: never;
         head?: never;
         patch?: never;
@@ -738,6 +798,8 @@ export interface components {
             rangeEnd: string;
             /** Format: uuid */
             selectedChildId: null | string;
+            /** Format: int32 */
+            pendingApprovalCount: number | string;
             days: components["schemas"]["CalendarDayResponse"][];
         };
         CancelJobRequest: {
@@ -919,6 +981,9 @@ export interface components {
             nickname: null | string;
             displayName: string;
             isAdult: boolean;
+        };
+        PendingApprovalsResponse: {
+            jobs: components["schemas"]["JobResponse"][];
         };
         PinSetupResponse: {
             setupToken: string;
@@ -1141,6 +1206,7 @@ export interface components {
             /** Format: date */
             effectiveFrom: null | string;
             question: null | string;
+            advanceMode: null | string;
         };
         SetupPinRequest: {
             setupToken: null | string;
@@ -1161,6 +1227,41 @@ export interface components {
         StartPinSetupRequest: {
             surname: null | string;
         };
+        TakenTurnResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            requestId: string;
+            /** Format: uuid */
+            rotationId: string;
+            /** Format: uuid */
+            revisionId: string;
+            /** Format: int32 */
+            turnNumber: number | string;
+            /** Format: date */
+            date: string;
+            /** Format: uuid */
+            childId: string;
+            childDisplayName: string;
+            /** Format: uuid */
+            recordedByMemberId: string;
+            /** Format: date-time */
+            recordedAtUtc: string;
+            /** Format: uuid */
+            undoneByMemberId: null | string;
+            /** Format: date-time */
+            undoneAtUtc: null | string;
+        };
+        TakeTurnRequest: {
+            /** Format: uuid */
+            requestId: null | string;
+            /** Format: uuid */
+            revisionId: null | string;
+            /** Format: int32 */
+            turnNumber: null | number | string;
+            /** Format: uuid */
+            childId: null | string;
+        };
         TodayResponse: {
             viewer: components["schemas"]["MemberResponse"];
             members: components["schemas"]["MemberResponse"][];
@@ -1177,6 +1278,11 @@ export interface components {
             pendingApprovalCount: number | string;
             whoseTurns: components["schemas"]["WhoseTurnResponse"][];
         };
+        TurnRotationChildResponse: {
+            /** Format: uuid */
+            childId: string;
+            childDisplayName: string;
+        };
         TurnRotationConfigurationResponse: {
             /** Format: uuid */
             id: string;
@@ -1186,6 +1292,7 @@ export interface components {
             participantChildIds: string[];
             /** Format: uuid */
             firstChildId: string;
+            advanceMode: string;
             /** Format: uuid */
             createdByMemberId: string;
             /** Format: date-time */
@@ -1199,6 +1306,7 @@ export interface components {
             rotationId: string;
             current: null | components["schemas"]["TurnRotationConfigurationResponse"];
             upcomingTurns: components["schemas"]["TurnRotationTurnResponse"][];
+            upNext: components["schemas"]["TurnRotationChildResponse"][];
         };
         TurnRotationTurnResponse: {
             /** Format: date */
@@ -1228,6 +1336,21 @@ export interface components {
             /** Format: uuid */
             rotationId: string;
             question: string;
+            /** Format: uuid */
+            childId: string;
+            childDisplayName: string;
+            /** Format: uuid */
+            revisionId: string;
+            /** Format: int32 */
+            turnNumber: number | string;
+            advanceMode: string;
+            turnTaken: boolean;
+            canTakeTurn: boolean;
+            undoableTurn: null | components["schemas"]["WhoseTurnTakenTurnResponse"];
+        };
+        WhoseTurnTakenTurnResponse: {
+            /** Format: uuid */
+            turnId: string;
             /** Format: uuid */
             childId: string;
             childDisplayName: string;
@@ -2742,6 +2865,26 @@ export interface operations {
             };
         };
     };
+    GetPendingApprovals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingApprovalsResponse"];
+                };
+            };
+        };
+    };
     ListTurnRotations: {
         parameters: {
             query?: never;
@@ -2870,6 +3013,100 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    TakeTurn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rotationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TakeTurnRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TakenTurnResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    UndoTurn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rotationId: string;
+                turnId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TakenTurnResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

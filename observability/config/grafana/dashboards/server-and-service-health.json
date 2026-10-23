@@ -1,0 +1,237 @@
+{
+  "annotations": { "list": [] },
+  "description": "Read-only Serendipity capacity, Family Jobs Board service availability, and privacy-bounded container state.",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    { "asDropdown": false, "icon": "external link", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Family Jobs Board", "tooltip": "Open the application overview", "type": "link", "url": "/d/family-jobs-board-overview/family-jobs-board-overview" },
+    { "asDropdown": false, "icon": "external link", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Telemetry stack", "tooltip": "Open collector and storage diagnostics", "type": "link", "url": "/d/telemetry-stack-health/telemetry-stack-health" }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Public web, API liveness, and API readiness checks. This is endpoint availability, not Docker health.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "0": { "color": "red", "text": "DOWN" }, "1": { "color": "green", "text": "UP" } }, "type": "value" }
+          ],
+          "noValue": "NO DATA",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "probe_success{job=\"family-jobs-board-service-health\"} and on(service) (time() - timestamp(probe_success{job=\"family-jobs-board-service-health\"}) < 120)", "instant": true, "legendFormat": "{{service}}", "range": false, "refId": "A" }],
+      "title": "Service health",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Elapsed time since Serendipity booted.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 4, "x": 8, "y": 0 },
+      "id": 2,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "(time() - node_boot_time_seconds{job=\"node-exporter\"}) and on() (time() - timestamp(node_boot_time_seconds{job=\"node-exporter\"}) < 120)", "instant": true, "legendFormat": "uptime", "range": false, "refId": "A" }],
+      "title": "Host uptime",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Five-minute CPU utilisation across Serendipity cores.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "max": 100, "min": 0, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }] }, "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 4, "x": 12, "y": 0 },
+      "id": 3,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "(100 * (1 - avg(rate(node_cpu_seconds_total{job=\"node-exporter\",mode=\"idle\"}[5m])))) and on() (time() - timestamp(node_boot_time_seconds{job=\"node-exporter\"}) < 120)", "instant": true, "legendFormat": "CPU", "range": false, "refId": "A" }],
+      "title": "CPU utilisation",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Memory pressure based on MemAvailable rather than free memory.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "max": 100, "min": 0, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 }] }, "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 4, "x": 16, "y": 0 },
+      "id": 4,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "(100 * (1 - node_memory_MemAvailable_bytes{job=\"node-exporter\"} / node_memory_MemTotal_bytes{job=\"node-exporter\"})) and on() (time() - timestamp(node_boot_time_seconds{job=\"node-exporter\"}) < 120)", "instant": true, "legendFormat": "memory", "range": false, "refId": "A" }],
+      "title": "Memory used",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Serendipity root filesystem capacity in use.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "max": 100, "min": 0, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 }] }, "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 4, "x": 20, "y": 0 },
+      "id": 5,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "(100 * (1 - node_filesystem_avail_bytes{job=\"node-exporter\",mountpoint=~\"/|/rootfs\"} / node_filesystem_size_bytes{job=\"node-exporter\",mountpoint=~\"/|/rootfs\"})) and on() (time() - timestamp(node_boot_time_seconds{job=\"node-exporter\"}) < 120)", "instant": true, "legendFormat": "root", "range": false, "refId": "A" }],
+      "title": "Root filesystem used",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "One-minute and five-minute host load averages.",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "noValue": "NO DATA", "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 7 },
+      "id": 6,
+      "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [
+        { "editorMode": "code", "expr": "node_load1{job=\"node-exporter\"}", "legendFormat": "load 1m", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "node_load5{job=\"node-exporter\"}", "legendFormat": "load 5m", "range": true, "refId": "B" }
+      ],
+      "title": "Host load",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Presence of only the four allowlisted Family Jobs Board runtime services.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [{ "options": { "0": { "color": "red", "text": "MISSING" }, "1": { "color": "green", "text": "PRESENT" } }, "type": "value" }], "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 7 },
+      "id": 7,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "family_jobs_board_container_present and on() (time() - family_jobs_board_container_collector_last_success_timestamp_seconds < 120) and on() (min(up{job=\"family-jobs-board-containers\"}) == 1)", "instant": true, "legendFormat": "{{service}}", "range": false, "refId": "A" }],
+      "title": "Container presence",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Docker health-check result for present Family Jobs Board runtime services.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "green", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 7 },
+      "id": 8,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "name", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "family_jobs_board_container_health and on() (time() - family_jobs_board_container_collector_last_success_timestamp_seconds < 120) and on() (min(up{job=\"family-jobs-board-containers\"}) == 1)", "instant": true, "legendFormat": "{{service}}: {{status}}", "range": false, "refId": "A" }],
+      "title": "Container Docker health",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Docker restart counter. A rise indicates container churn even if the service recovered.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 3 }] }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 14 },
+      "id": 9,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "family_jobs_board_container_restart_count and on() (time() - family_jobs_board_container_collector_last_success_timestamp_seconds < 120) and on() (min(up{job=\"family-jobs-board-containers\"}) == 1)", "instant": true, "legendFormat": "{{service}}", "range": false, "refId": "A" }],
+      "title": "Container restart count",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "One means the last stop was caused by the kernel out-of-memory killer.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [{ "options": { "0": { "color": "green", "text": "NO" }, "1": { "color": "red", "text": "YES" } }, "type": "value" }], "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 14 },
+      "id": 10,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "family_jobs_board_container_oom_killed and on() (time() - family_jobs_board_container_collector_last_success_timestamp_seconds < 120) and on() (min(up{job=\"family-jobs-board-containers\"}) == 1)", "instant": true, "legendFormat": "{{service}}", "range": false, "refId": "A" }],
+      "title": "Container OOM killed",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Age since each present runtime service last started.",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "noValue": "NO DATA", "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 14 },
+      "id": 11,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "family_jobs_board_container_age_seconds and on() (time() - family_jobs_board_container_collector_last_success_timestamp_seconds < 120) and on() (min(up{job=\"family-jobs-board-containers\"}) == 1)", "instant": true, "legendFormat": "{{service}}", "range": false, "refId": "A" }],
+      "title": "Container age",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Sanitized deployment tag plus immutable Docker content ID; repository names, container names, mounts, environment, and arbitrary labels are never exported.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 21 },
+      "id": 12,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "name", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "family_jobs_board_container_info and on() (time() - family_jobs_board_container_collector_last_success_timestamp_seconds < 120) and on() (min(up{job=\"family-jobs-board-containers\"}) == 1)", "instant": true, "legendFormat": "{{service}}: {{image_tag}} ({{image_id}})", "range": false, "refId": "A" }],
+      "title": "Deployed images",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Age of the last successful Docker API read.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 60 }, { "color": "red", "value": 120 }] }, "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 12, "y": 21 },
+      "id": 13,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "time() - family_jobs_board_container_collector_last_success_timestamp_seconds", "instant": true, "legendFormat": "seconds stale", "range": false, "refId": "A" }],
+      "title": "Container collector freshness",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "The latest bounded Docker API collection result. A failure is immediately red even while prior samples remain stored.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [{ "options": { "0": { "color": "red", "text": "FAILED" }, "1": { "color": "green", "text": "HEALTHY" } }, "type": "value" }], "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 4, "x": 20, "y": 21 },
+      "id": 14,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "family_jobs_board_container_collector_success and on() (min(up{job=\"family-jobs-board-containers\"}) == 1)", "instant": true, "legendFormat": "collector", "range": false, "refId": "A" }],
+      "title": "Container collector",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Exact Docker state label for each present allowlisted Family Jobs Board runtime service.",
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" }, "noValue": "NO DATA" }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 28 },
+      "id": 15,
+      "options": { "colorMode": "none", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "name", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "family_jobs_board_container_state and on() (time() - family_jobs_board_container_collector_last_success_timestamp_seconds < 120) and on() (min(up{job=\"family-jobs-board-containers\"}) == 1)", "instant": true, "legendFormat": "{{service}}: {{state}}", "range": false, "refId": "A" }],
+      "title": "Container state",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Root-filesystem inode consumption. This exposes filesystem pressure that byte-capacity alone can miss.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "max": 100, "min": 0, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 }] }, "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 33 },
+      "id": 16,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "(100 * (1 - node_filesystem_files_free{job=\"node-exporter\",mountpoint=~\"/|/rootfs\"} / node_filesystem_files{job=\"node-exporter\",mountpoint=~\"/|/rootfs\"})) and on() (time() - timestamp(node_boot_time_seconds{job=\"node-exporter\"}) < 120)", "instant": true, "legendFormat": "root inodes", "range": false, "refId": "A" }],
+      "title": "Root inode usage",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Actual bytes used by the allowlisted Prometheus Docker volume. Production places this volume on a dedicated filesystem capped at 2048 MiB.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1610612736 }, { "color": "red", "value": 1932735283 }] }, "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 33 },
+      "id": 17,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "family_jobs_board_telemetry_storage_used_bytes{store=\"prometheus\"} and on() (family_jobs_board_telemetry_storage_collector_success == 1) and on() (time() - family_jobs_board_telemetry_storage_collector_last_success_timestamp_seconds < 600) and on() (min(up{job=\"family-jobs-board-containers\"}) == 1)", "instant": true, "legendFormat": "Prometheus volume", "range": false, "refId": "A" }],
+      "title": "Prometheus volume used",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Actual bytes used by the allowlisted Loki Docker volume, including chunks, WAL, index, and Compactor state. Production caps its dedicated filesystem at 4096 MiB.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 3221225472 }, { "color": "red", "value": 3865470566 }] }, "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 33 },
+      "id": 18,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "family_jobs_board_telemetry_storage_used_bytes{store=\"loki\"} and on() (family_jobs_board_telemetry_storage_collector_success == 1) and on() (time() - family_jobs_board_telemetry_storage_collector_last_success_timestamp_seconds < 600) and on() (min(up{job=\"family-jobs-board-containers\"}) == 1)", "instant": true, "legendFormat": "Loki volume", "range": false, "refId": "A" }],
+      "title": "Loki volume used",
+      "type": "stat"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 42,
+  "tags": ["family-jobs-board", "observability", "server-health"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": { "refresh_intervals": ["30s", "1m", "5m"], "time_options": ["15m", "1h", "6h", "24h", "7d", "30d"] },
+  "timezone": "browser",
+  "title": "Server and service health",
+  "uid": "server-and-service-health",
+  "version": 1,
+  "weekStart": ""
+}
