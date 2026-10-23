@@ -9,7 +9,8 @@ public sealed record TodayResponse(
     IReadOnlyList<JobResponse> Jobs,
     int? PointsBalance,
     int PendingApprovalCount,
-    IReadOnlyList<WhoseTurnResponse> WhoseTurns);
+    IReadOnlyList<WhoseTurnResponse> WhoseTurns,
+    int UndoGracePeriodSeconds);
 
 public sealed record WhoseTurnResponse(
     Guid RotationId,

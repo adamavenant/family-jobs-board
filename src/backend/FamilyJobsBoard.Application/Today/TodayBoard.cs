@@ -11,7 +11,8 @@ public sealed record TodayBoard(
     IReadOnlyList<TodayJob> Jobs,
     int? PointsBalance,
     int PendingApprovalCount,
-    IReadOnlyList<TodayWhoseTurn> WhoseTurns);
+    IReadOnlyList<TodayWhoseTurn> WhoseTurns,
+    int UndoGracePeriodSeconds);
 
 public sealed record TodayWhoseTurn(
     Guid RotationId,

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Link, useLoaderData } from "react-router";
 
 import type { TodayJob } from "../../api/today";
+import { useUndoQueue } from "../../app/undoQueue";
 import type {
   CalendarBoard,
   CalendarDay,
@@ -21,6 +22,10 @@ import {
   jobStatusLabel,
 } from "../today/jobFormatting";
 import type { CalendarLoaderData } from "./calendarRoute";
+import {
+  queuedPendingApprovalCount,
+  showQueuedJob,
+} from "../today/queuedJobChanges";
 
 const viewLabels: Record<CalendarView, string> = {
   day: "Day",
@@ -30,6 +35,8 @@ const viewLabels: Record<CalendarView, string> = {
 
 export function CalendarPage() {
   const data = useLoaderData() as CalendarLoaderData;
+  // Queued actions already show as done; they are saved after the undo time.
+  const { actions } = useUndoQueue();
 
   if (data.state === "error") {
     return (
@@ -46,6 +53,11 @@ export function CalendarPage() {
 
   const { board } = data;
   const children = board.members.filter((member) => !member.isAdult);
+  const pendingApprovalCount = queuedPendingApprovalCount(
+    board.pendingApprovalCount,
+    board.days.flatMap((day) => day.jobs),
+    actions,
+  );
 
   return (
     <ApprovalsReview currentDate={board.currentDate}>
@@ -66,7 +78,7 @@ export function CalendarPage() {
               </p>
             </div>
             <div className="hero__stats">
-              <ApprovalsTrigger count={board.pendingApprovalCount} />
+              <ApprovalsTrigger count={pendingApprovalCount} />
             </div>
           </div>
         </header>
@@ -257,12 +269,17 @@ function MonthView({ board }: { board: CalendarBoard }) {
 }
 
 function MonthChip({
-  job,
+  job: loaded,
   currentDate,
 }: {
   job: TodayJob;
   currentDate: string;
 }) {
+  const job = showQueuedJob(loaded, useUndoQueue().actions).job;
+  if (!job) {
+    return null;
+  }
+
   const isOverdue = job.status === "open" && job.scheduledDate < currentDate;
 
   return (
@@ -277,7 +294,7 @@ function MonthChip({
 }
 
 function CalendarJobRow({
-  job,
+  job: loaded,
   currentDate,
   detailed = false,
 }: {
@@ -285,6 +302,9 @@ function CalendarJobRow({
   currentDate: string;
   detailed?: boolean;
 }) {
+  // Queued actions already show as done; a cancelled job leaves once it is saved.
+  const shown = showQueuedJob(loaded, useUndoQueue().actions).job;
+  const job = shown ?? loaded;
   const isOverdue = job.status === "open" && job.scheduledDate < currentDate;
   const isPending = job.status === "pendingApproval";
   const linkRef = useRef<HTMLAnchorElement>(null);
@@ -297,6 +317,10 @@ function CalendarJobRow({
     }
     wasPending.current = isPending;
   }, [isPending]);
+
+  if (!shown) {
+    return null;
+  }
 
   return (
     <li

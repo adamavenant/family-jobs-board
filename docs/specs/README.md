@@ -27,6 +27,7 @@ into the phase table above:
 | Feature | Specification status |
 | --- | --- |
 | Whose Turn Is It? household rotations | Daily rotations implemented with issue #112 and tick-to-advance rotations with issue #135: `080-whose-turn-rotation.md` |
+| Undo toast and household undo time | Implemented with issue #139: `100-undo-and-household-settings.md` |
 | Family Jobs Board observability dashboard | Foundation implemented with issue #127: `090-observability-dashboard.md` |
 
 ## Phase 7 historical exception

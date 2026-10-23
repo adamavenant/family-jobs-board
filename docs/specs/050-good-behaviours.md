@@ -104,7 +104,8 @@ yet count deleted behaviour logs.
 - Adults get a "Good behaviours" tool on the board: a log form (the same
   child-assignment checkboxes used for jobs, so one or both children can be
   chosen; type; editable points defaulting to the type's), and type management
-  with confirmation before delete.
+  with confirmation before delete. Logging and type changes wait behind the
+  undo toast (`100-undo-and-household-settings.md`).
 - Children get a read-only "Ways to earn points" list and see behaviour entries
   in their points ledger.
 

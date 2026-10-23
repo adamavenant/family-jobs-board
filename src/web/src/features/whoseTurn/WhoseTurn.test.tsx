@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { acceptSession, clearIdentity } from "../../api/auth";
 import type { WhoseTurn } from "../../api/today";
 import { routes } from "../../app/routes";
+import { saveQueuedAction } from "../../test/undo";
 
 const addie = member("22eb0cc1-058e-4b2e-bb18-d7aaad564a6c", "Addie", true);
 const fredster = member(
@@ -120,8 +121,12 @@ describe("Whose Turn Is It?", () => {
     );
 
     expect(
-      await screen.findByText("Whose Turn Is It? rotation saved."),
+      await screen.findByText("Started “Who feeds the fish?” from 2026-09-21"),
     ).toBeInTheDocument();
+    expect(screen.getByText("Being added")).toBeInTheDocument();
+    expect(api.requests).toHaveLength(0);
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.requests).toHaveLength(1));
     expect(api.requests).toEqual([
       {
         method: "POST",
@@ -163,14 +168,18 @@ describe("Whose Turn Is It?", () => {
       within(form).getByRole("button", { name: "Add rotation" }),
     );
 
-    await screen.findByText("Whose Turn Is It? rotation saved.");
+    await screen.findByText("Started “Who sits next to Mum?” from 2026-09-21");
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.requests).toHaveLength(1));
     expect(api.requests[0]).toMatchObject({
       method: "POST",
       path: "/api/turn-rotations",
     });
     const list = await screen.findByRole("list", { name: "Rotations" });
-    expect(within(list).getAllByRole("button", { name: /^End / })).toHaveLength(
-      2,
+    await waitFor(() =>
+      expect(
+        within(list).getAllByRole("button", { name: /^End / }),
+      ).toHaveLength(2),
     );
     expect(within(list).getByText("Who sits next to Mum?")).toBeInTheDocument();
     expect(within(list).getByText("Who is Pink today?")).toBeInTheDocument();
@@ -205,7 +214,11 @@ describe("Whose Turn Is It?", () => {
       within(form).getByRole("button", { name: "Save changes" }),
     );
 
-    await screen.findByText("Whose Turn Is It? rotation saved.");
+    await screen.findByText(
+      "Saved changes to “Who is Pink today?” from 2026-09-22",
+    );
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.requests).toHaveLength(1));
     expect(api.requests[0]).toMatchObject({
       method: "PUT",
       path: `/api/turn-rotations/${pinkId}`,
@@ -229,9 +242,14 @@ describe("Whose Turn Is It?", () => {
 
     expect(
       await screen.findByText(
-        "Rotation ended. It stops appearing from tomorrow.",
+        "Ended “Who is Pink today?”. It stops appearing from tomorrow",
       ),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "End Who is Pink today?" }),
+    ).not.toBeInTheDocument();
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.requests).toHaveLength(1));
     expect(api.requests).toEqual([
       {
         method: "DELETE",
@@ -271,19 +289,32 @@ describe("Whose Turn Is It?", () => {
         })[0]!,
       );
       await user.click(screen.getByRole("button", { name: "Yes, end it" }));
+      // A queued End shows the rotation as ending until it is saved.
+      expect(
+        within(list).getByText("Ends tomorrow. Today’s answer stays as it is."),
+      ).toBeInTheDocument();
+      await saveQueuedAction(user);
       if (missingOnEnd) {
         expect(await screen.findByRole("alert")).toHaveTextContent(
           "That rotation is no longer available",
         );
-        expect(
-          within(list).queryByText("Today: Fredster"),
-        ).not.toBeInTheDocument();
-        expect(document.querySelectorAll(".whose-turn-card")).toHaveLength(1);
-      } else {
-        await screen.findByText(
-          "Ends tomorrow. Today’s answer stays as it is.",
+        await waitFor(() =>
+          expect(
+            within(list).queryByText("Today: Fredster"),
+          ).not.toBeInTheDocument(),
         );
-        expect(within(list).getByText("Today: Fredster")).toBeInTheDocument();
+        await waitFor(() =>
+          expect(document.querySelectorAll(".whose-turn-card")).toHaveLength(1),
+        );
+      } else {
+        expect(
+          await within(list).findByText("Today: Fredster"),
+        ).toBeInTheDocument();
+        expect(
+          within(list).getByText(
+            "Ends tomorrow. Today’s answer stays as it is.",
+          ),
+        ).toBeInTheDocument();
       }
       expect(
         within(list).getAllByRole("button", { name: "End Who is Pink today?" }),
@@ -348,6 +379,14 @@ describe("Whose Turn Is It?", () => {
     expect(
       screen.getByRole("checkbox", { name: "Fredster has had their turn" }),
     ).toBeChecked();
+    expect(
+      screen.getByText(
+        "Ticked off Fredster’s turn: “Who is first in the shower?”",
+      ),
+    ).toBeInTheDocument();
+    expect(api.requests).toEqual([]);
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.requests).toHaveLength(1));
     expect(api.requests).toEqual([
       {
         method: "POST",
@@ -360,6 +399,31 @@ describe("Whose Turn Is It?", () => {
         },
       },
     ]);
+  });
+
+  it("puts a queued tick back without sending it when Undo is pressed", async () => {
+    const api = fakeApi(fredster, {
+      whoseTurns: [ticked(fredster, { canTakeTurn: true })],
+    });
+    const user = userEvent.setup();
+    renderApp(fredster);
+
+    const tick = await screen.findByRole("checkbox", {
+      name: "Fredster has had their turn",
+    });
+    await user.click(tick);
+    expect(tick).toBeChecked();
+    expect(tick).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+
+    expect(
+      screen.getByRole("checkbox", { name: "Fredster has had their turn" }),
+    ).not.toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Fredster has had their turn" }),
+    ).toBeEnabled();
+    expect(api.requests).toEqual([]);
   });
 
   it("unticks a turn that is done for today with the same checkbox", async () => {
@@ -390,6 +454,14 @@ describe("Whose Turn Is It?", () => {
         screen.getByRole("checkbox", { name: "Fredster has had their turn" }),
       ).not.toBeChecked(),
     );
+    expect(
+      screen.getByText(
+        "Unticked Fredster’s turn: “Who is first in the shower?”",
+      ),
+    ).toBeInTheDocument();
+    expect(api.requests).toEqual([]);
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.requests).toHaveLength(1));
     expect(api.requests).toEqual([
       {
         method: "DELETE",
@@ -420,6 +492,10 @@ describe("Whose Turn Is It?", () => {
     await user.click(
       within(card).getByRole("button", { name: "Undo Fredster’s turn" }),
     );
+    expect(
+      within(card).queryByText("Fredster just had a turn."),
+    ).not.toBeInTheDocument();
+    await saveQueuedAction(user);
 
     expect(
       await screen.findByRole("checkbox", {
@@ -485,14 +561,15 @@ describe("Whose Turn Is It?", () => {
         name: "Fredster has had their turn",
       }),
     );
+    await saveQueuedAction(user);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "It's Harrie's turn now.",
+      "Not saved: Ticked off Fredster’s turn: “Who is first in the shower?”. It's Harrie's turn now.",
     );
     const card = screen
       .getByText("Who is first in the shower?")
       .closest(".whose-turn-card") as HTMLElement;
-    expect(within(card).getByText("Harrie")).toBeInTheDocument();
+    expect(await within(card).findByText("Harrie")).toBeInTheDocument();
   });
 
   it("adds a rotation that moves on when a turn is ticked off", async () => {
@@ -518,7 +595,8 @@ describe("Whose Turn Is It?", () => {
       within(form).getByRole("button", { name: "Add rotation" }),
     );
 
-    await screen.findByText("Whose Turn Is It? rotation saved.");
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.requests).toHaveLength(1));
     expect(api.requests[0]).toMatchObject({
       method: "POST",
       path: "/api/turn-rotations",
@@ -599,7 +677,8 @@ describe("Whose Turn Is It?", () => {
     await user.click(
       within(form).getByRole("button", { name: "Save changes" }),
     );
-    await screen.findByText("Whose Turn Is It? rotation saved.");
+    await saveQueuedAction(user);
+    await waitFor(() => expect(api.requests).toHaveLength(1));
     expect(api.requests[0]).toMatchObject({
       method: "PUT",
       body: { firstChildId: harrie.id, advanceMode: "whenTicked" },
@@ -635,6 +714,7 @@ describe("Whose Turn Is It?", () => {
     await user.click(
       screen.getByRole("checkbox", { name: "Fredster has had their turn" }),
     );
+    await saveQueuedAction(user);
     await screen.findByText("Fredster just had a turn.");
     await user.click(screen.getByText("Edit Who is first in the shower?"));
 
@@ -676,11 +756,13 @@ describe("Whose Turn Is It?", () => {
     await user.click(
       screen.getByRole("checkbox", { name: "Fredster has had their turn" }),
     );
+    await saveQueuedAction(user);
     await user.click(
       await screen.findByRole("checkbox", {
         name: "Harrie has had their turn",
       }),
     );
+    await saveQueuedAction(user);
     await screen.findByRole("checkbox", {
       name: "Fredster has had their turn",
     });

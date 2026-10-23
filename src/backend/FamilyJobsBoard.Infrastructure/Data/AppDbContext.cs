@@ -6,6 +6,7 @@ using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Domain.PointAdjustments;
 using FamilyJobsBoard.Domain.PointRedemptions;
 using FamilyJobsBoard.Domain.Points;
+using FamilyJobsBoard.Domain.Settings;
 using FamilyJobsBoard.Domain.TurnRotations;
 using Microsoft.EntityFrameworkCore;
 
@@ -54,6 +55,8 @@ public sealed class AppDbContext : DbContext
     public DbSet<TurnRotationRevision> TurnRotationRevisions => Set<TurnRotationRevision>();
 
     public DbSet<TakenTurn> TakenTurns => Set<TakenTurn>();
+
+    public DbSet<HouseholdSettings> HouseholdSettings => Set<HouseholdSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

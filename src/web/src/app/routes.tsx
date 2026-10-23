@@ -1,4 +1,5 @@
-import { useLoaderData } from "react-router";
+import { useEffect } from "react";
+import { Outlet, useLoaderData, useRevalidator } from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { RouteObject } from "react-router";
 
@@ -11,6 +12,7 @@ import {
   currentPinSetup,
   currentSession,
   getAuthenticationStart,
+  keepSessionActiveFor,
   logout,
   refreshSession,
   setupPin,
@@ -34,7 +36,6 @@ import {
   updateJob,
 } from "../api/today";
 import type {
-  RecurringJobChangeImpact,
   RecurringJobChangeInput,
   RecurringJobChangeScope,
   RecurringJobScopePreview,
@@ -57,7 +58,18 @@ import {
   AdministrationApiError,
   resetJobsAndPoints,
 } from "../api/administration";
-import { SuccessToastProvider } from "./SuccessToast";
+import {
+  queueUndoableAction,
+  revalidateUnlessQueued,
+  undoQueue,
+} from "./undoQueue";
+import { UndoToasts } from "./UndoToasts";
+import {
+  formText,
+  pointsText,
+  quoted,
+  selectedChildNames,
+} from "./actionDescriptions";
 import {
   goodBehavioursAction,
   goodBehavioursLoader,
@@ -72,60 +84,63 @@ import {
   whoseTurnLoader,
   whoseTurnTickAction,
 } from "../features/whoseTurn/whoseTurnRoute";
+import {
+  householdSettingsAction,
+  householdSettingsLoader,
+} from "../features/settings/householdSettingsRoute";
 import { calendarLoader } from "../features/calendar/calendarRoute";
 import { approvalsLoader } from "../features/approvals/approvalsRoute";
 import { CalendarPage } from "../features/calendar/CalendarPage";
 import { pointsLedgerLoader } from "../features/points/pointsLedgerRoute";
 import { PointsLedgerPage } from "../features/points/PointsLedgerPage";
 
-export interface CompleteActionResult {
+/** Set when the action passed validation and now waits behind an undo toast. */
+interface QueuedFlag {
+  queued?: true;
+}
+
+export interface CompleteActionResult extends QueuedFlag {
   intent: "complete";
   jobId: string;
   error?: string;
 }
 
-export interface AddJobActionResult {
+export interface AddJobActionResult extends QueuedFlag {
   intent: "add";
-  success?: boolean;
   scheduledDate?: string;
   error?: string;
 }
 
-export interface ApproveActionResult {
+export interface ApproveActionResult extends QueuedFlag {
   intent: "approve";
   jobId: string;
   error?: string;
 }
 
-export interface AddRecurringJobActionResult {
+export interface AddRecurringJobActionResult extends QueuedFlag {
   intent: "addRecurring";
-  frequency?: "daily" | "weekly" | "monthly";
-  takesTurns?: boolean;
-  success?: boolean;
-  generatedThrough?: string;
   error?: string;
 }
 
-export interface RejectActionResult {
+export interface RejectActionResult extends QueuedFlag {
   intent: "reject";
   jobId: string;
   error?: string;
 }
 
-export interface ReverseApprovalActionResult {
+export interface ReverseApprovalActionResult extends QueuedFlag {
   intent: "reverseApproval";
   jobId: string;
   error?: string;
 }
 
-export interface EditJobActionResult {
+export interface EditJobActionResult extends QueuedFlag {
   intent: "editJob";
   jobId: string;
-  success?: boolean;
   error?: string;
 }
 
-export interface CancelJobActionResult {
+export interface CancelJobActionResult extends QueuedFlag {
   intent: "cancelJob";
   jobId: string;
   error?: string;
@@ -140,12 +155,10 @@ export interface PreviewRecurringJobChangeActionResult {
   error?: string;
 }
 
-export interface ApplyRecurringJobChangeActionResult {
+export interface ApplyRecurringJobChangeActionResult extends QueuedFlag {
   intent: "applyRecurringJobChange";
   jobId: string;
   operation: "edit" | "cancel";
-  success?: boolean;
-  impact?: RecurringJobChangeImpact;
   error?: string;
 }
 
@@ -181,10 +194,14 @@ export interface IdentityActionResult {
   error?: string;
 }
 
-export interface FamilyMembersActionResult {
+export interface FamilyMembersLoaderData {
+  members?: FamilyMember[] | undefined;
+  error?: string;
+}
+
+export interface FamilyMembersActionResult extends QueuedFlag {
   intent?:
     "createMember" | "updateMember" | "deactivateMember" | "restoreMember";
-  members?: FamilyMember[] | undefined;
   affectedMemberId?: string | undefined;
   error?: string;
 }
@@ -212,10 +229,10 @@ async function appLoader({
         selectedDate && /^\d{4}-\d{2}-\d{2}$/.test(selectedDate)
           ? selectedDate
           : undefined;
-      return {
-        state: "authenticated",
-        board: await getToday(date, selectedChildId),
-      };
+      const board = await getToday(date, selectedChildId);
+      // Every device follows the household's undo time from its latest board.
+      undoQueue.setGracePeriodSeconds(board.undoGracePeriodSeconds);
+      return { state: "authenticated", board };
     } catch (error) {
       if (!(error instanceof AuthApiError) || error.status !== 401) {
         throw error;
@@ -231,6 +248,18 @@ async function todayAction({
   request,
 }: ActionFunctionArgs): Promise<AppActionResult> {
   const form = await request.formData();
+  const intent = form.get("intent");
+  if (
+    intent === "logout" ||
+    intent === "signIn" ||
+    intent === "bootstrap" ||
+    intent === "setupPin"
+  ) {
+    // Queued actions belong to whoever is signed in now, so send them first,
+    // and never let the next person resend one of them as their own.
+    await undoQueue.flush();
+    undoQueue.forgetRetries();
+  }
   if (form.get("intent") === "bootstrap") {
     return bootstrapAction(form);
   }
@@ -347,19 +376,9 @@ async function applyRecurringJobChangeAction(
     };
   }
 
+  let change: RecurringJobChangeInput;
   try {
-    const result = await applyRecurringJobChange(
-      jobId,
-      requestId,
-      recurringChangeFromForm(form, operation, scope),
-    );
-    return {
-      intent: "applyRecurringJobChange",
-      jobId,
-      operation,
-      success: true,
-      impact: result.impact,
-    };
+    change = recurringChangeFromForm(form, operation, scope);
   } catch (error) {
     return {
       intent: "applyRecurringJobChange",
@@ -371,6 +390,28 @@ async function applyRecurringJobChangeAction(
           : "That recurring change couldn't be applied.",
     };
   }
+
+  const reach =
+    scope === "thisOnly"
+      ? "this job only"
+      : scope === "allFuture"
+        ? "this and later jobs"
+        : "every job in the schedule";
+  return queueUndoableAction(
+    { intent: "applyRecurringJobChange", jobId, operation },
+    {
+      form,
+      description:
+        operation === "cancel"
+          ? `Cancelled ${quoted(change.name)} (${reach})`
+          : `Saved changes to ${quoted(change.name)} (${reach})`,
+      commit: () => applyRecurringJobChange(jobId, requestId, change),
+      failure: (error) =>
+        error instanceof ApiError
+          ? error.message
+          : "That recurring change couldn't be applied.",
+    },
+  );
 }
 
 function recurringChangeFromForm(
@@ -468,7 +509,7 @@ async function resetJobsAndPointsAction(
   }
 }
 
-async function familyLoader(): Promise<FamilyMembersActionResult> {
+async function familyLoader(): Promise<FamilyMembersLoaderData> {
   try {
     return { members: await getFamilyMembers(true) };
   } catch (error) {
@@ -495,81 +536,90 @@ async function familyAction({
     return { error: "That family action wasn't recognised." };
   }
 
-  const firstName = form.get("firstName");
-  const surname = form.get("surname");
-  const nickname = form.get("nickname");
   const submittedMemberId = form.get("memberId");
   const memberId =
     typeof submittedMemberId === "string" && submittedMemberId.length > 0
       ? submittedMemberId
       : undefined;
-  const names = normalizeMemberNames(firstName, surname, nickname);
-  const needsNames = intent === "createMember" || intent === "updateMember";
-  if (needsNames && names === null) {
-    return {
-      intent,
-      affectedMemberId: memberId,
-      members: await loadFamilyMembersAfterAction(),
-      error: "Check the family member details.",
-    };
-  }
+  const failure = (error: unknown) =>
+    error instanceof FamilyMemberApiError
+      ? error.message
+      : "That family change couldn't be saved.";
 
-  try {
-    let affected: FamilyMember;
-    if (intent === "createMember") {
-      const role = form.get("role");
-      if (names === null || (role !== "adult" && role !== "child")) {
-        return {
-          intent,
-          members: await loadFamilyMembersAfterAction(),
-          error: "Check the family member details.",
-        };
-      }
-
-      affected = await createFamilyMember({
-        firstName: names.firstName,
-        surname: names.surname,
-        nickname: names.nickname,
-        role,
-      });
-    } else {
-      if (memberId === undefined) {
-        return { intent, error: "Choose a family member." };
-      }
-
-      if (intent === "updateMember") {
-        if (names === null) {
-          return {
-            intent,
-            members: await loadFamilyMembersAfterAction(),
-            error: "Check the family member details.",
-          };
-        }
-
-        affected = await updateFamilyMember(memberId, names);
-      } else if (intent === "deactivateMember") {
-        affected = await deactivateFamilyMember(memberId);
-      } else {
-        affected = await restoreFamilyMember(memberId);
-      }
+  if (intent === "createMember") {
+    const names = normalizeMemberNames(
+      form.get("firstName"),
+      form.get("surname"),
+      form.get("nickname"),
+    );
+    const role = form.get("role");
+    if (names === null || (role !== "adult" && role !== "child")) {
+      return { intent, error: "Check the family member details." };
     }
 
-    return {
-      intent,
-      members: await getFamilyMembers(true),
-      affectedMemberId: affected.id,
-    };
-  } catch (error) {
-    return {
-      intent,
-      affectedMemberId: memberId,
-      members: await loadFamilyMembersAfterAction(),
-      error:
-        error instanceof FamilyMemberApiError
-          ? error.message
-          : "That family change couldn't be saved.",
-    };
+    return queueUndoableAction(
+      { intent },
+      {
+        form,
+        description: `Added ${names.nickname ?? names.firstName} as a ${role === "adult" ? "grown-up" : "child"}`,
+        commit: () =>
+          createFamilyMember({
+            firstName: names.firstName,
+            surname: names.surname,
+            nickname: names.nickname,
+            role,
+          }),
+        failure,
+      },
+    );
   }
+
+  if (memberId === undefined) {
+    return { intent, error: "Choose a family member." };
+  }
+
+  const memberName = formText(form, "memberName") || "the family member";
+  if (intent === "updateMember") {
+    const names = normalizeMemberNames(
+      form.get("firstName"),
+      form.get("surname"),
+      form.get("nickname"),
+    );
+    if (names === null) {
+      return {
+        intent,
+        affectedMemberId: memberId,
+        error: "Check the family member details.",
+      };
+    }
+
+    return queueUndoableAction(
+      { intent, affectedMemberId: memberId },
+      {
+        form,
+        description: `Saved ${names.nickname ?? names.firstName}’s profile`,
+        commit: () => updateFamilyMember(memberId, names),
+        failure,
+      },
+    );
+  }
+
+  return queueUndoableAction(
+    { intent, affectedMemberId: memberId },
+    intent === "deactivateMember"
+      ? {
+          form,
+          description: `Deactivated ${memberName}’s profile`,
+          commit: () => deactivateFamilyMember(memberId),
+          failure,
+        }
+      : {
+          form,
+          description: `Restored ${memberName}’s profile`,
+          commit: () => restoreFamilyMember(memberId),
+          failure,
+        },
+  );
 }
 
 function normalizeMemberNames(
@@ -595,16 +645,6 @@ function normalizeMemberNames(
     surname: surname.trim(),
     nickname: nickname.trim() || null,
   };
-}
-
-async function loadFamilyMembersAfterAction(): Promise<
-  FamilyMember[] | undefined
-> {
-  try {
-    return await getFamilyMembers(true);
-  } catch {
-    return undefined;
-  }
 }
 
 async function bootstrapAction(form: FormData): Promise<IdentityActionResult> {
@@ -752,6 +792,10 @@ async function beginPinResetAction(
   }
 }
 
+function jobChildName(form: FormData): string {
+  return formText(form, "childName") || "the child";
+}
+
 function identityError(
   fallback: string,
   intent: IdentityActionResult["intent"],
@@ -847,72 +891,69 @@ async function addRecurringJobAction(
     };
   }
 
+  let requestId: string;
   try {
-    let requestId: string;
-    try {
-      requestId =
-        typeof submittedRequestId === "string" && submittedRequestId.length > 0
-          ? submittedRequestId
-          : createRequestId();
-    } catch {
-      return {
-        intent: "addRecurring",
-        error:
-          "Your browser couldn't prepare this recurring job. Try again or use another browser. Your details have been kept.",
-      };
-    }
-    const recurringRequest = {
-      requestId,
-      childIds,
-      name,
-      description,
-      points,
-      agendaPeriod: agendaPeriod as (typeof validAgendaPeriods)[number],
-      scheduledTime:
-        typeof scheduledTime === "string" && scheduledTime.length > 0
-          ? scheduledTime
-          : null,
-      startDate,
-      endDate:
-        typeof endDate === "string" && endDate.length > 0 ? endDate : null,
-      assignmentMode: takesTurns
-        ? ("takeTurns" as const)
-        : ("eachChild" as const),
-    };
-    let result;
-    if (recurrenceFrequency === "monthly") {
-      result = await createMonthlyRecurringJob({
-        ...recurringRequest,
-        dayOfMonth,
-      });
-    } else if (recurrenceFrequency === "weekly") {
-      result = await createWeeklyRecurringJob({
-        ...recurringRequest,
-        weekdays,
-      });
-    } else {
-      result = await createDailyRecurringJob(recurringRequest);
-    }
-    const generatedThrough = result.assignments[0]?.generatedThrough;
-    if (!generatedThrough) {
-      throw new Error("The recurring job response contained no assignments.");
-    }
-    return {
-      intent: "addRecurring",
-      frequency: recurrenceFrequency,
-      takesTurns,
-      success: true,
-      generatedThrough,
-    };
-  } catch (error) {
+    requestId =
+      typeof submittedRequestId === "string" && submittedRequestId.length > 0
+        ? submittedRequestId
+        : createRequestId();
+  } catch {
     return {
       intent: "addRecurring",
       error:
+        "Your browser couldn't prepare this recurring job. Try again or use another browser. Your details have been kept.",
+    };
+  }
+  const recurringRequest = {
+    requestId,
+    childIds,
+    name,
+    description,
+    points,
+    agendaPeriod: agendaPeriod as (typeof validAgendaPeriods)[number],
+    scheduledTime:
+      typeof scheduledTime === "string" && scheduledTime.length > 0
+        ? scheduledTime
+        : null,
+    startDate,
+    endDate: typeof endDate === "string" && endDate.length > 0 ? endDate : null,
+    assignmentMode: takesTurns
+      ? ("takeTurns" as const)
+      : ("eachChild" as const),
+  };
+  const kind = takesTurns
+    ? `take-turns ${recurrenceFrequency}`
+    : recurrenceFrequency;
+  return queueUndoableAction(
+    { intent: "addRecurring" },
+    {
+      form,
+      description: `Created ${kind} job ${quoted(name)} for ${selectedChildNames(form)}`,
+      commit: async () => {
+        const result =
+          recurrenceFrequency === "monthly"
+            ? await createMonthlyRecurringJob({
+                ...recurringRequest,
+                dayOfMonth,
+              })
+            : recurrenceFrequency === "weekly"
+              ? await createWeeklyRecurringJob({
+                  ...recurringRequest,
+                  weekdays,
+                })
+              : await createDailyRecurringJob(recurringRequest);
+        if (result.assignments.length === 0) {
+          throw new Error(
+            "The recurring job response contained no assignments.",
+          );
+        }
+      },
+      failure: (error) =>
         error instanceof ApiError
           ? error.message
           : "That recurring job couldn't be created.",
-    };
-  }
+    },
+  );
 }
 
 async function rejectAction(form: FormData): Promise<RejectActionResult> {
@@ -926,19 +967,19 @@ async function rejectAction(form: FormData): Promise<RejectActionResult> {
     };
   }
 
-  try {
-    await rejectJob(jobId, typeof reason === "string" ? reason : null);
-    return { intent: "reject", jobId };
-  } catch (error) {
-    return {
-      intent: "reject",
-      jobId,
-      error:
+  return queueUndoableAction(
+    { intent: "reject", jobId },
+    {
+      form,
+      description: `Sent ${quoted(formText(form, "jobName"))} back to ${jobChildName(form)}`,
+      commit: () =>
+        rejectJob(jobId, typeof reason === "string" ? reason : null),
+      failure: (error) =>
         error instanceof ApiError
           ? error.message
           : "That job couldn't be rejected.",
-    };
-  }
+    },
+  );
 }
 
 async function editJobAction(form: FormData): Promise<EditJobActionResult> {
@@ -1006,29 +1047,29 @@ async function editJobAction(form: FormData): Promise<EditJobActionResult> {
     return { intent: "editJob", jobId, error: "Choose a part of the day." };
   }
 
-  try {
-    await updateJob(jobId, {
-      name,
-      description,
-      points,
-      scheduledDate,
-      agendaPeriod: agendaPeriod as (typeof validAgendaPeriods)[number],
-      scheduledTime:
-        typeof scheduledTime === "string" && scheduledTime.length > 0
-          ? scheduledTime
-          : null,
-    });
-    return { intent: "editJob", jobId, success: true };
-  } catch (error) {
-    return {
-      intent: "editJob",
-      jobId,
-      error:
+  return queueUndoableAction(
+    { intent: "editJob", jobId },
+    {
+      form,
+      description: `Saved changes to ${quoted(name)}`,
+      commit: () =>
+        updateJob(jobId, {
+          name,
+          description,
+          points,
+          scheduledDate,
+          agendaPeriod: agendaPeriod as (typeof validAgendaPeriods)[number],
+          scheduledTime:
+            typeof scheduledTime === "string" && scheduledTime.length > 0
+              ? scheduledTime
+              : null,
+        }),
+      failure: (error) =>
         error instanceof ApiError
           ? error.message
           : "That job couldn't be updated.",
-    };
-  }
+    },
+  );
 }
 
 async function cancelJobAction(form: FormData): Promise<CancelJobActionResult> {
@@ -1049,19 +1090,19 @@ async function cancelJobAction(form: FormData): Promise<CancelJobActionResult> {
     };
   }
 
-  try {
-    await cancelJob(jobId, typeof reason === "string" ? reason : null);
-    return { intent: "cancelJob", jobId };
-  } catch (error) {
-    return {
-      intent: "cancelJob",
-      jobId,
-      error:
+  return queueUndoableAction(
+    { intent: "cancelJob", jobId },
+    {
+      form,
+      description: `Cancelled ${quoted(formText(form, "jobName"))} for ${jobChildName(form)}`,
+      commit: () =>
+        cancelJob(jobId, typeof reason === "string" ? reason : null),
+      failure: (error) =>
         error instanceof ApiError
           ? error.message
           : "That job couldn't be cancelled.",
-    };
-  }
+    },
+  );
 }
 
 async function approveAction(form: FormData): Promise<ApproveActionResult> {
@@ -1088,19 +1129,18 @@ async function approveAction(form: FormData): Promise<ApproveActionResult> {
     };
   }
 
-  try {
-    await approveJob(jobId, expectedPoints);
-    return { intent: "approve", jobId };
-  } catch (error) {
-    return {
-      intent: "approve",
-      jobId,
-      error:
+  return queueUndoableAction(
+    { intent: "approve", jobId },
+    {
+      form,
+      description: `Approved ${quoted(formText(form, "jobName"))} for ${jobChildName(form)}: +${pointsText(expectedPoints)}`,
+      commit: () => approveJob(jobId, expectedPoints),
+      failure: (error) =>
         error instanceof ApiError
           ? error.message
           : "That job couldn't be approved.",
-    };
-  }
+    },
+  );
 }
 
 async function reverseApprovalAction(
@@ -1129,19 +1169,18 @@ async function reverseApprovalAction(
     };
   }
 
-  try {
-    await reverseJobApproval(jobId, expectedPoints);
-    return { intent: "reverseApproval", jobId };
-  } catch (error) {
-    return {
-      intent: "reverseApproval",
-      jobId,
-      error:
+  return queueUndoableAction(
+    { intent: "reverseApproval", jobId },
+    {
+      form,
+      description: `Reversed approval of ${quoted(formText(form, "jobName"))} for ${jobChildName(form)}: −${pointsText(expectedPoints)}`,
+      commit: () => reverseJobApproval(jobId, expectedPoints),
+      failure: (error) =>
         error instanceof ApiError
           ? error.message
           : "That approval couldn't be reversed.",
-    };
-  }
+    },
+  );
 }
 
 async function completeAction(form: FormData): Promise<CompleteActionResult> {
@@ -1170,19 +1209,22 @@ async function completeAction(form: FormData): Promise<CompleteActionResult> {
     };
   }
 
-  try {
-    await completeJob(jobId, expectedPoints);
-    return { intent: "complete", jobId };
-  } catch (error) {
-    return {
-      intent: "complete",
-      jobId,
-      error:
+  const jobName = quoted(formText(form, "jobName"));
+  return queueUndoableAction(
+    { intent: "complete", jobId },
+    {
+      form,
+      description:
+        expectedPoints === null
+          ? `Sent ${jobName} for approval`
+          : `Marked ${jobName} done for ${jobChildName(form)}: +${pointsText(expectedPoints)}`,
+      commit: () => completeJob(jobId, expectedPoints),
+      failure: (error) =>
         error instanceof ApiError
           ? error.message
           : "That job couldn't be completed.",
-    };
-  }
+    },
+  );
 }
 
 async function addJobAction(form: FormData): Promise<AddJobActionResult> {
@@ -1243,109 +1285,167 @@ async function addJobAction(form: FormData): Promise<AddJobActionResult> {
     return { intent: "add", error: "Choose a part of the day." };
   }
 
-  try {
-    await addJob({
-      childIds,
-      name,
-      description,
-      points,
-      scheduledDate,
-      agendaPeriod: agendaPeriod as (typeof validAgendaPeriods)[number],
-      scheduledTime:
-        typeof scheduledTime === "string" && scheduledTime.length > 0
-          ? scheduledTime
-          : null,
-    });
-    return { intent: "add", success: true, scheduledDate };
-  } catch (error) {
-    return {
-      intent: "add",
-      error:
+  return queueUndoableAction(
+    { intent: "add", scheduledDate },
+    {
+      form,
+      description: `Scheduled ${quoted(name)} for ${selectedChildNames(form)} on ${scheduledDate}`,
+      commit: () =>
+        addJob({
+          childIds,
+          name,
+          description,
+          points,
+          scheduledDate,
+          agendaPeriod: agendaPeriod as (typeof validAgendaPeriods)[number],
+          scheduledTime:
+            typeof scheduledTime === "string" && scheduledTime.length > 0
+              ? scheduledTime
+              : null,
+        }),
+      failure: (error) =>
         error instanceof ApiError
           ? error.message
           : "That job couldn't be added.",
-    };
-  }
+    },
+  );
 }
 
 export const routes: RouteObject[] = [
   {
-    path: "/",
-    loader: appLoader,
-    action: todayAction,
-    Component: AppPage,
-    HydrateFallback: LoadingPage,
-    shouldRevalidate: ({ actionResult, defaultShouldRevalidate }) => {
-      // Keep the page as it is after most refusals, so typed input survives. A refused
-      // reversal has nothing to keep, and the job has often changed under a stale card; a
-      // refusal that carries a fresh overview reconciles the board with it.
-      if (
-        actionResult &&
-        typeof actionResult === "object" &&
-        "error" in actionResult &&
-        actionResult.error &&
-        !(
-          "intent" in actionResult && actionResult.intent === "reverseApproval"
-        ) &&
-        !("overview" in actionResult)
-      ) {
-        return false;
-      }
+    id: "app",
+    Component: AppShell,
+    children: [
+      {
+        path: "/",
+        loader: appLoader,
+        action: todayAction,
+        Component: AppPage,
+        HydrateFallback: LoadingPage,
+        shouldRevalidate: (args) => {
+          // Keep the page as it is after most refusals, so typed input survives. A refused
+          // reversal has nothing to keep, and the job has often changed under a stale card; a
+          // refusal that carries a fresh overview reconciles the board with it.
+          const { actionResult } = args;
+          if (
+            actionResult &&
+            typeof actionResult === "object" &&
+            "error" in actionResult &&
+            actionResult.error &&
+            !(
+              "intent" in actionResult &&
+              actionResult.intent === "reverseApproval"
+            ) &&
+            !("overview" in actionResult)
+          ) {
+            return false;
+          }
 
-      return defaultShouldRevalidate;
-    },
-  },
-  {
-    path: "/family",
-    loader: familyLoader,
-    action: familyAction,
-  },
-  {
-    path: "/good-behaviours",
-    loader: goodBehavioursLoader,
-    action: goodBehavioursAction,
-  },
-  {
-    path: "/whose-turn",
-    loader: whoseTurnLoader,
-    action: whoseTurnAction,
-  },
-  {
-    path: "/whose-turn/turns",
-    action: whoseTurnTickAction,
-  },
-  {
-    path: "/point-adjustments",
-    action: pointAdjustmentsAction,
-  },
-  {
-    path: "/point-redemptions",
-    loader: pointRedemptionsLoader,
-    action: pointRedemptionsAction,
-  },
-  {
-    path: "/calendar",
-    loader: calendarLoader,
-    Component: CalendarPage,
-  },
-  {
-    path: "/approvals",
-    loader: approvalsLoader,
-  },
-  {
-    path: "/points",
-    loader: pointsLedgerLoader,
-    Component: PointsLedgerPage,
-    HydrateFallback: LoadingPage,
+          return revalidateUnlessQueued(args);
+        },
+      },
+      {
+        path: "/family",
+        loader: familyLoader,
+        action: familyAction,
+        shouldRevalidate: revalidateUnlessQueued,
+      },
+      {
+        path: "/good-behaviours",
+        loader: goodBehavioursLoader,
+        action: goodBehavioursAction,
+        shouldRevalidate: revalidateUnlessQueued,
+      },
+      {
+        path: "/whose-turn",
+        loader: whoseTurnLoader,
+        action: whoseTurnAction,
+        shouldRevalidate: revalidateUnlessQueued,
+      },
+      {
+        path: "/whose-turn/turns",
+        action: whoseTurnTickAction,
+      },
+      {
+        path: "/point-adjustments",
+        action: pointAdjustmentsAction,
+      },
+      {
+        path: "/point-redemptions",
+        loader: pointRedemptionsLoader,
+        action: pointRedemptionsAction,
+        shouldRevalidate: revalidateUnlessQueued,
+      },
+      {
+        path: "/household-settings",
+        loader: householdSettingsLoader,
+        action: householdSettingsAction,
+        shouldRevalidate: revalidateUnlessQueued,
+      },
+      {
+        path: "/calendar",
+        loader: calendarLoader,
+        Component: CalendarPage,
+        shouldRevalidate: revalidateUnlessQueued,
+      },
+      {
+        path: "/approvals",
+        loader: approvalsLoader,
+        shouldRevalidate: revalidateUnlessQueued,
+      },
+      {
+        path: "/points",
+        loader: pointsLedgerLoader,
+        Component: PointsLedgerPage,
+        HydrateFallback: LoadingPage,
+        shouldRevalidate: revalidateUnlessQueued,
+      },
+    ],
   },
 ];
+
+/**
+ * Hosts the undo toasts on every page. Queued actions are sent when the page
+ * is hidden or closed, and the router revalidates after each one is saved.
+ */
+function AppShell() {
+  const { revalidate } = useRevalidator();
+
+  useEffect(
+    () => undoQueue.connect({ revalidate, keepAlive: keepSessionActiveFor }),
+    [revalidate],
+  );
+
+  useEffect(() => {
+    function flushWhenHidden() {
+      if (document.visibilityState === "hidden") {
+        void undoQueue.flush();
+      }
+    }
+    function flush() {
+      void undoQueue.flush();
+    }
+
+    document.addEventListener("visibilitychange", flushWhenHidden);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", flushWhenHidden);
+      window.removeEventListener("pagehide", flush);
+    };
+  }, []);
+
+  return (
+    <>
+      <Outlet />
+      <UndoToasts />
+    </>
+  );
+}
 
 function AppPage() {
   const data = useLoaderData() as AppLoaderData;
   return data.state === "authenticated" ? (
-    <SuccessToastProvider>
-      <TodayPage board={data.board} />
-    </SuccessToastProvider>
+    <TodayPage board={data.board} />
   ) : (
     <AuthPage state={data} />
   );

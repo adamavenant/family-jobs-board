@@ -3,6 +3,7 @@ import type { useFetcher } from "react-router";
 
 import type { TodayJob } from "../../api/today";
 import type { TodayActionResult } from "../../app/routes";
+import { JobNameFields } from "./JobNameFields";
 
 /**
  * Lets an adult undo an approved job: the job goes back to how it was before it was approved
@@ -64,6 +65,7 @@ export function ReverseApprovalControl({
               <input type="hidden" name="intent" value="reverseApproval" />
               <input type="hidden" name="jobId" value={job.id} />
               <input type="hidden" name="expectedPoints" value={job.points} />
+              <JobNameFields job={job} />
               <button
                 type="submit"
                 className="button--danger"

@@ -1,6 +1,7 @@
 import { useFetcher } from "react-router";
 
 import type { WhoseTurn } from "../../api/today";
+import { useUndoQueue } from "../../app/undoQueue";
 import type { WhoseTurnTickResult } from "./whoseTurnRoute";
 
 export function WhoseTurnCard({
@@ -13,6 +14,8 @@ export function WhoseTurnCard({
   isToday: boolean;
 }) {
   const movesOnWhenTicked = whoseTurn.advanceMode === "whenTicked";
+  const queuedTick = useQueuedTick(whoseTurn.rotationId);
+  const turnTaken = queuedTick ? queuedTick === "take" : whoseTurn.turnTaken;
 
   return (
     <div className="whose-turn-card">
@@ -25,7 +28,7 @@ export function WhoseTurnCard({
             {whoseTurn.childDisplayName.charAt(0).toUpperCase()}
           </span>
           {whoseTurn.childDisplayName}
-          {movesOnWhenTicked && whoseTurn.turnTaken ? (
+          {movesOnWhenTicked && turnTaken ? (
             <span className="whose-turn-card__taken">
               <span aria-hidden="true">✓</span> had their turn
             </span>
@@ -44,13 +47,16 @@ export function WhoseTurnCard({
  */
 function TurnTick({ whoseTurn }: { whoseTurn: WhoseTurn }) {
   const fetcher = useFetcher<WhoseTurnTickResult>();
-  const submitting = fetcher.state !== "idle";
+  // A tick waits behind the undo toast, so show it as done and lock the card
+  // until it has been saved or undone.
+  const queuedTick = useQueuedTick(whoseTurn.rotationId);
+  const submitting = fetcher.state !== "idle" || queuedTick !== undefined;
   const undoable = whoseTurn.undoableTurn;
   const untickHere =
     whoseTurn.turnTaken && undoable?.childId === whoseTurn.childId;
   const showCheckbox =
     (!whoseTurn.turnTaken && whoseTurn.canTakeTurn) || untickHere;
-  const pendingIntent = fetcher.formData?.get("intent");
+  const pendingIntent = queuedTick ?? fetcher.formData?.get("intent");
   const checked = submitting ? pendingIntent === "take" : whoseTurn.turnTaken;
   const failure = fetcher.state === "idle" ? fetcher.data?.failure : undefined;
 
@@ -58,12 +64,16 @@ function TurnTick({ whoseTurn }: { whoseTurn: WhoseTurn }) {
     const form = new FormData();
     form.set("intent", intent);
     form.set("rotationId", whoseTurn.rotationId);
+    // Names the undo toast uses to describe the tick.
+    form.set("question", whoseTurn.question);
     if (intent === "take") {
       form.set("revisionId", whoseTurn.revisionId);
       form.set("turnNumber", String(whoseTurn.turnNumber));
       form.set("childId", whoseTurn.childId);
+      form.set("childName", whoseTurn.childDisplayName);
     } else if (undoable) {
       form.set("turnId", undoable.turnId);
+      form.set("childName", undoable.childDisplayName);
     }
     void fetcher.submit(form, { method: "post", action: "/whose-turn/turns" });
   }
@@ -87,7 +97,7 @@ function TurnTick({ whoseTurn }: { whoseTurn: WhoseTurn }) {
           <span>{whoseTurn.childDisplayName} has had their turn</span>
         </label>
       ) : null}
-      {undoable && !untickHere ? (
+      {undoable && !untickHere && queuedTick !== "undo" ? (
         <p className="whose-turn-card__undo">
           <span>{undoable.childDisplayName} just had a turn.</span>
           <button
@@ -107,6 +117,19 @@ function TurnTick({ whoseTurn }: { whoseTurn: WhoseTurn }) {
       ) : null}
     </div>
   );
+}
+
+/** The tick or untick waiting behind an undo toast for this rotation, if any. */
+function useQueuedTick(rotationId: string): "take" | "undo" | undefined {
+  const intent = useUndoQueue()
+    .actions.map((action) => action.formData)
+    .find(
+      (form) =>
+        form.get("rotationId") === rotationId &&
+        (form.get("intent") === "take" || form.get("intent") === "undo"),
+    )
+    ?.get("intent");
+  return intent === "take" || intent === "undo" ? intent : undefined;
 }
 
 function phraseForDate(

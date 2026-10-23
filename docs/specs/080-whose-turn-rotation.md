@@ -153,7 +153,8 @@ drops both tables.
   a "first turn" picker restricted to the selected children, an effective
   date input (its minimum enforced client-side and re-validated
   server-side), an optional question field, and — once configured — a
-  14-day upcoming-turns preview.
+  14-day upcoming-turns preview. Starting, changing, and ending a rotation
+  wait behind the undo toast (`100-undo-and-household-settings.md`).
 
 ## Audit and security
 
@@ -287,6 +288,10 @@ board.
 - The most recent tick can be unticked on the day it was made, by any adult or
   by the child whose turn was ticked, restoring the previous answer. Older
   ticks, and ticks from earlier days, cannot be unticked.
+- On the board, a tick or untick first waits behind the undo toast
+  (`100-undo-and-household-settings.md`): the card shows it done and locked,
+  and Undo drops it without a request. Unticking remains the way to reverse a
+  tick once it has been saved.
 - Deactivating a participant still creates a replacement revision from
   tomorrow. It keeps the rotation's mode and starts from the child projected
   to be next once ticks are counted.

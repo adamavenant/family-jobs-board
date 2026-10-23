@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { acceptSession, clearIdentity } from "../../api/auth";
 import { routes } from "../../app/routes";
+import { expectAnnounced, saveQueuedAction } from "../../test/undo";
 
 const addie = {
   id: "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c",
@@ -108,6 +109,7 @@ describe("Reversing an approval", () => {
       within(card).getByRole("button", { name: "Yes, reverse approval" }),
     );
 
+    // The reversal shows at once and waits behind its undo toast.
     expect(
       await screen.findByRole("button", { name: "Approve +5 points" }),
     ).toBeInTheDocument();
@@ -118,6 +120,16 @@ describe("Reversing an approval", () => {
     expect(
       screen.queryByRole("button", { name: "Reverse approval" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "1 jobs awaiting review" }),
+    ).toBeInTheDocument();
+    expectAnnounced(
+      "Reversed approval of “Feed the dog” for Fredster: −5 points",
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    await saveQueuedAction(user);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
     const request = fetch.mock.calls[1]?.[0] as Request;
     expect(request.method).toBe("POST");
     const url = new URL(request.url);
@@ -125,7 +137,7 @@ describe("Reversing an approval", () => {
     expect(url.searchParams.get("expectedPoints")).toBe("5");
   });
 
-  it("shows why a reversal was refused and keeps the job approved", async () => {
+  it("explains a refused reversal and shows the job approved again", async () => {
     const message =
       "Fredster only has 2 points, so reversing this approval can't take back its 5 points. Nothing was changed.";
     const fetch = vi
@@ -155,15 +167,16 @@ describe("Reversing an approval", () => {
     await user.click(
       within(card).getByRole("button", { name: "Yes, reverse approval" }),
     );
+    await saveQueuedAction(user);
 
-    expect(await within(card).findByRole("alert")).toHaveTextContent(message);
-    expect(card).toHaveTextContent("Approved — 5 points awarded");
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
     expect(
-      within(card).getByRole("group", {
-        name: "Confirm reversing the approval for Fredster",
-      }),
+      await within(card).findByText("Approved — 5 points awarded"),
     ).toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: "Reverse approval" }),
+    ).toBeEnabled();
   });
 
   it("shows the job as it is now when another grown-up already reversed it", async () => {
@@ -196,11 +209,13 @@ describe("Reversing an approval", () => {
     await user.click(
       within(card).getByRole("button", { name: "Yes, reverse approval" }),
     );
+    await saveQueuedAction(user);
 
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
     expect(
       await within(card).findByRole("button", { name: "Approve +5 points" }),
-    ).toBeInTheDocument();
-    expect(within(card).getByRole("alert")).toHaveTextContent(message);
+    ).toBeEnabled();
     expect(card).not.toHaveTextContent("Approved — 5 points awarded");
   });
 

@@ -54,6 +54,18 @@ export class AuthApiError extends Error {
 
 let session: AuthSession | null = null;
 let pendingPinSetup: PendingPinSetup | null = null;
+let refreshing: Promise<AuthSession | null> | null = null;
+// When the server last saw this session, by the browser's clock. The server
+// signs a session out after ten minutes without a protected request or refresh.
+let lastActivityAt = 0;
+const sessionInactivityMs = 10 * 60_000;
+const sessionSafetyMarginMs = 60_000;
+
+function startSession(value: AuthSession): AuthSession {
+  session = value;
+  lastActivityAt = Date.now();
+  return value;
+}
 
 export function currentSession(): AuthSession | null {
   return session;
@@ -64,7 +76,7 @@ export function currentPinSetup(): PendingPinSetup | null {
 }
 
 export function acceptSession(value: AuthSession): void {
-  session = value;
+  startSession(value);
   pendingPinSetup = null;
 }
 
@@ -95,7 +107,20 @@ export async function getAuthenticationStart(): Promise<AuthStart> {
   throw new AuthApiError("The sign-in state was not recognised.", 500);
 }
 
-export async function refreshSession(): Promise<AuthSession | null> {
+/**
+ * Rotates the refresh cookie for a new access token. Concurrent callers share
+ * one request: the server treats a second use of a rotated cookie as theft and
+ * revokes the session, and saving several queued actions at once can ask for a
+ * refresh from each of them.
+ */
+export function refreshSession(): Promise<AuthSession | null> {
+  refreshing ??= requestRefresh().finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
+}
+
+async function requestRefresh(): Promise<AuthSession | null> {
   const response = await fetch("/api/auth/refresh", {
     method: "POST",
     credentials: "include",
@@ -105,8 +130,24 @@ export async function refreshSession(): Promise<AuthSession | null> {
     return null;
   }
 
-  session = mapAuthResponse(await readJson<GeneratedAuthResponse>(response));
-  return session;
+  return startSession(
+    mapAuthResponse(await readJson<GeneratedAuthResponse>(response)),
+  );
+}
+
+/**
+ * Refreshes the session now if it would time out within `withinMs`. Queued
+ * actions send nothing during their undo time, so without this an action
+ * queued after a long idle spell could find its session gone when it is sent.
+ */
+export function keepSessionActiveFor(withinMs: number): void {
+  if (
+    session &&
+    Date.now() + withinMs + sessionSafetyMarginMs >=
+      lastActivityAt + sessionInactivityMs
+  ) {
+    void refreshSession().catch(() => undefined);
+  }
 }
 
 export async function bootstrap(request: {
@@ -116,23 +157,25 @@ export async function bootstrap(request: {
   surname: string;
   pin: string;
 }): Promise<AuthSession> {
-  session = mapAuthResponse(
-    await postJson<GeneratedAuthResponse>("/api/auth/bootstrap", request),
+  return startSession(
+    mapAuthResponse(
+      await postJson<GeneratedAuthResponse>("/api/auth/bootstrap", request),
+    ),
   );
-  return session;
 }
 
 export async function signIn(
   memberId: string,
   pin: string,
 ): Promise<AuthSession> {
-  session = mapAuthResponse(
-    await postJson<GeneratedAuthResponse>("/api/auth/sign-in", {
-      memberId,
-      pin,
-    }),
+  return startSession(
+    mapAuthResponse(
+      await postJson<GeneratedAuthResponse>("/api/auth/sign-in", {
+        memberId,
+        pin,
+      }),
+    ),
   );
-  return session;
 }
 
 export async function logout(): Promise<void> {
@@ -194,14 +237,16 @@ export async function setupPin(pin: string): Promise<AuthSession> {
     );
   }
 
-  session = mapAuthResponse(
-    await postJson<GeneratedAuthResponse>("/api/auth/setup-pin", {
-      setupToken: pendingPinSetup.setupToken,
-      pin,
-    }),
+  const established = startSession(
+    mapAuthResponse(
+      await postJson<GeneratedAuthResponse>("/api/auth/setup-pin", {
+        setupToken: pendingPinSetup.setupToken,
+        pin,
+      }),
+    ),
   );
   pendingPinSetup = null;
-  return session;
+  return established;
 }
 
 export async function authenticatedFetch(
@@ -223,13 +268,21 @@ export async function authenticatedFetch(
     init.headers ?? (input instanceof Request ? input.headers : undefined),
   );
   headers.set("Authorization", `Bearer ${session.accessToken}`);
+  const method = (
+    init.method ?? (input instanceof Request ? input.method : "GET")
+  ).toUpperCase();
   const response = await fetch(input, {
     ...init,
     credentials: "include",
     headers,
+    // Queued actions are sent as the page is hidden or closed; keepalive lets
+    // those saves finish after the page goes away.
+    ...(method === "GET" || method === "HEAD" ? {} : { keepalive: true }),
   });
   if (response.status === 401) {
     session = null;
+  } else {
+    lastActivityAt = Date.now();
   }
   return response;
 }

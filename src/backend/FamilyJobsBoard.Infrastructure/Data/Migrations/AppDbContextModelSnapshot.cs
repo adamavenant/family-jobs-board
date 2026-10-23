@@ -1033,6 +1033,37 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FamilyJobsBoard.Domain.Settings.HouseholdSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<int>("UndoGracePeriodSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("undo_grace_period_seconds");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<Guid?>("UpdatedByMemberId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_member_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_household_settings");
+
+                    b.HasIndex("UpdatedByMemberId");
+
+                    b.ToTable("household_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_household_settings_singleton", "id = 1");
+
+                            t.HasCheckConstraint("ck_household_settings_undo_grace_period_seconds", "undo_grace_period_seconds BETWEEN 5 AND 120");
+                        });
+                });
+
             modelBuilder.Entity("FamilyJobsBoard.Domain.TurnRotations.TakenTurn", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1411,6 +1442,14 @@ namespace FamilyJobsBoard.Infrastructure.Data.Migrations
                         .HasForeignKey("ReversedEntryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("FK_points_ledger_entries_reversed_entry_id");
+                });
+
+            modelBuilder.Entity("FamilyJobsBoard.Domain.Settings.HouseholdSettings", b =>
+                {
+                    b.HasOne("FamilyJobsBoard.Domain.Households.HouseholdMember", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedByMemberId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("FamilyJobsBoard.Domain.TurnRotations.TakenTurn", b =>

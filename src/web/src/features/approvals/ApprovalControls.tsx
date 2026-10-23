@@ -3,6 +3,8 @@ import { useFetcher } from "react-router";
 
 import type { TodayJob } from "../../api/today";
 import type { TodayActionResult } from "../../app/routes";
+import { useUndoQueue } from "../../app/undoQueue";
+import { JobNameFields } from "../today/JobNameFields";
 
 /**
  * Approve and reject controls for one pending job, usable away from the daily board. Decisions
@@ -11,7 +13,11 @@ import type { TodayActionResult } from "../../app/routes";
 export function ApprovalControls({ job }: { job: TodayJob }) {
   const fetcher = useFetcher<TodayActionResult>();
   const reasonId = useId();
-  const isSubmitting = fetcher.state !== "idle";
+  // A decision waiting behind its undo toast can't be made twice.
+  const queued = useUndoQueue().actions.some(
+    (action) => action.formData.get("jobId") === job.id,
+  );
+  const isSubmitting = fetcher.state !== "idle" || queued;
   const submittingIntent = fetcher.formData?.get("intent");
   const error =
     (fetcher.data?.intent === "approve" || fetcher.data?.intent === "reject") &&
@@ -35,6 +41,7 @@ export function ApprovalControls({ job }: { job: TodayJob }) {
       <fetcher.Form method="post" action="/">
         <input type="hidden" name="jobId" value={job.id} />
         <input type="hidden" name="expectedPoints" value={job.points} />
+        <JobNameFields job={job} />
         <button
           ref={approveRef}
           type="submit"
@@ -56,6 +63,7 @@ export function ApprovalControls({ job }: { job: TodayJob }) {
         <fetcher.Form method="post" action="/">
           <input type="hidden" name="intent" value="reject" />
           <input type="hidden" name="jobId" value={job.id} />
+          <JobNameFields job={job} />
           <label htmlFor={reasonId}>
             Rejection reason <span>(optional)</span>
           </label>

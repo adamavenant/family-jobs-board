@@ -6,6 +6,8 @@ type MemberResponse = components["schemas"]["MemberResponse"];
 type TodayResponse = components["schemas"]["TodayResponse"];
 type WhoseTurnResponse = components["schemas"]["WhoseTurnResponse"];
 
+import { saveQueuedAction } from "./undo";
+
 const addieId = "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c";
 const albaId = "c8318644-906d-420c-89f4-d5672e2c9b71";
 const benId = "38692edf-3474-45a5-b979-5fb206f34c59";
@@ -85,6 +87,12 @@ for (const viewport of [
     await shower
       .getByRole("checkbox", { name: "Alba has had their turn" })
       .click();
+    // The tick waits behind the undo toast, shown as done, until it is saved.
+    await expect(
+      shower.getByRole("checkbox", { name: "Alba has had their turn" }),
+    ).toBeChecked();
+    expect(showerTickBodies).toEqual([]);
+    await saveQueuedAction(page);
     await expect(shower.locator(".whose-turn-card__child")).toHaveText(/Ben/);
     expect(showerTickBodies).toEqual([
       {
@@ -99,6 +107,7 @@ for (const viewport of [
     await expectNoSidewaysScroll(page);
 
     await shower.getByRole("button", { name: "Undo Alba’s turn" }).click();
+    await saveQueuedAction(page);
     await expect(shower.locator(".whose-turn-card__child")).toHaveText(/Alba/);
     await expect(
       shower.getByRole("checkbox", { name: "Alba has had their turn" }),
@@ -272,8 +281,11 @@ test("an adult runs several whose-turn rotations side by side", async ({
   await first.getByLabel("First turn").selectOption(albaId);
   await first.getByRole("button", { name: "Add rotation" }).click();
   await expect(
-    page.getByText("Whose Turn Is It? rotation saved."),
+    page
+      .locator(".toast-stack")
+      .getByText("Started “Who is Pink today?” from 2026-09-21"),
   ).toBeVisible();
+  await saveQueuedAction(page);
 
   const second = page.getByRole("form", { name: "Add a rotation" });
   await second.getByLabel("Alba").check();
@@ -281,6 +293,7 @@ test("an adult runs several whose-turn rotations side by side", async ({
   await second.getByLabel("First turn").selectOption(benId);
   await second.getByLabel("Question (optional)").fill("Who sits next to Mum?");
   await second.getByRole("button", { name: "Add rotation" }).click();
+  await saveQueuedAction(page);
 
   const pink = page.locator(".whose-turn-card").filter({
     hasText: "Who is Pink today?",
@@ -319,6 +332,11 @@ test("an adult runs several whose-turn rotations side by side", async ({
   await expect(
     page.getByRole("button", { name: "End Who is Pink today?", exact: true }),
   ).toHaveCount(0);
+  // Save the queued End before reloading, so the reloaded page reads it back.
+  await saveQueuedAction(page);
+  await expect(
+    page.getByText("Ends tomorrow. Today’s answer stays as it is."),
+  ).toBeVisible();
   await page.reload();
   await page.getByText("Manage rotations").click();
   await expect(

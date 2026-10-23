@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   createMemoryRouter,
@@ -8,7 +8,6 @@ import {
 import { expect, it } from "vitest";
 
 import type { HouseholdMember } from "../../api/today";
-import { SuccessToastProvider } from "../../app/SuccessToast";
 import { RecurringJobForm } from "./RecurringJobForm";
 
 const children: HouseholdMember[] = [
@@ -27,19 +26,10 @@ it("clears a chosen end date before creating the job", async () => {
     [
       {
         path: "/",
-        element: (
-          <SuccessToastProvider>
-            <RecurringJobForm children={children} today="2026-10-15" />
-          </SuccessToastProvider>
-        ),
+        element: <RecurringJobForm children={children} today="2026-10-15" />,
         action: async ({ request }: ActionFunctionArgs) => {
           submissions.push(await request.formData());
-          return {
-            intent: "addRecurring",
-            frequency: "daily",
-            success: true,
-            generatedThrough: "2026-12-09",
-          };
+          return { intent: "addRecurring", queued: true };
         },
       },
     ],
@@ -67,9 +57,10 @@ it("clears a chosen end date before creating the job", async () => {
 
   await user.click(screen.getByRole("button", { name: "Create daily job" }));
 
-  expect(
-    await screen.findByText("Daily job created through 2026-12-09."),
-  ).toBeInTheDocument();
+  // Queued behind its undo toast, the job resets the form straight away.
+  await waitFor(() =>
+    expect(screen.getByLabelText("Daily job name")).toHaveValue(""),
+  );
   expect(submissions).toHaveLength(1);
   expect(submissions[0]?.get("endDate")).toBe("");
 });
@@ -79,17 +70,8 @@ it("empties the end date when the form resets after creating a job", async () =>
     [
       {
         path: "/",
-        element: (
-          <SuccessToastProvider>
-            <RecurringJobForm children={children} today="2026-10-15" />
-          </SuccessToastProvider>
-        ),
-        action: async () => ({
-          intent: "addRecurring",
-          frequency: "daily",
-          success: true,
-          generatedThrough: "2026-11-30",
-        }),
+        element: <RecurringJobForm children={children} today="2026-10-15" />,
+        action: async () => ({ intent: "addRecurring", queued: true }),
       },
     ],
     { initialEntries: ["/"] },
@@ -105,9 +87,9 @@ it("empties the end date when the form resets after creating a job", async () =>
   );
   await user.click(screen.getByRole("button", { name: "Create daily job" }));
 
-  expect(
-    await screen.findByText("Daily job created through 2026-11-30."),
-  ).toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.getByLabelText("Daily job name")).toHaveValue(""),
+  );
   expect(screen.getByLabelText("Daily job ends (optional)")).toHaveValue("");
   expect(
     screen.queryByRole("button", { name: "Clear end date" }),
