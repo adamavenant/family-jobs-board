@@ -50,8 +50,8 @@ instead.
 ### Positive
 
 1. **Uniform:** wrapping an action is one call in its route action; new
-   actions (for example the approvals panel and reversible approvals) get
-   undo by posting to an existing intent.
+   actions get undo by posting to an existing intent (the approvals panel and
+   calendar decisions) or by wrapping their own (reversing an approval).
 2. **No reversal semantics:** the server never sees undone actions, so ledgers
    and audit history contain only real changes.
 3. **Idempotent retries:** a refused save can be sent again with the same

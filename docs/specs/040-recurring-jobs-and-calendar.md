@@ -118,7 +118,8 @@ onto an occupied date returns `409`. A child caller receives `403`.
 - `GET /api/calendar?view={day|week|month}&date={yyyy-MM-dd}&childId={guid}` —
   adult-only. `view` and `date` default to the week containing household today
   when omitted. Returns the same `viewer`/`members` shape as `/api/today`, plus
-  `anchorDate`, `rangeStart`, `rangeEnd`, `selectedChildId`, and one
+  `anchorDate`, `rangeStart`, `rangeEnd`, `selectedChildId`, the
+  household-wide `pendingApprovalCount` (issue #137), and one
   `CalendarDayResponse` per date in range (`date`, `isInFocusedPeriod`, and
   `jobs` using the exact same `JobResponse` type `/api/today` returns for that
   date — the two endpoints share their mapping code, so they cannot disagree).
@@ -140,9 +141,12 @@ A separate, bookmarkable `/calendar` page (linked from the daily board's header
 for adults only) offers day/week/month views with the same child filter as the
 daily agenda. Week starts on Monday; month view is always a fixed 42-day (six
 week) grid, with days outside the focused month visually de-emphasized, so the
-grid's shape never changes between months. The calendar is read-only: each job
-links back to the daily agenda at its date for completing, approving, or
-rejecting it, so only one page is ever responsible for state-changing actions.
+grid's shape never changes between months. Each job links back to the daily
+agenda at its date for completing or changing it. Since issue #137, pending
+jobs in the day and week views also carry inline Approve and Reject controls,
+and the header's "awaiting review" badge opens the review panel, so grown-ups
+can decide work without leaving the calendar. Those controls submit to the
+daily board's own action, so approval rules live in one place.
 A job whose scheduled date has passed while it is still `Open` is marked
 "overdue" in the calendar, directly demonstrating that it remains visible on
 its originally assigned date rather than silently disappearing or moving.
@@ -219,8 +223,9 @@ the calendar and the daily agenda return identical job state for the same
 date across day and week views, cover a real recurring series generating
 correctly across a multi-week range, an overdue job seeded directly (since the
 once-off creation endpoint itself rejects a past date), and authorization.
-Vitest tests cover switching views, the child filter, the overdue marker, and
-that only adults see the calendar link.
+Vitest tests cover switching views, the child filter, the overdue marker,
+that only adults see the calendar link, and inline approval from a week-view
+row.
 
 Daylight saving isn't separately exercised for the calendar: its range
 computation is pure `DateOnly` arithmetic with no time-of-day or UTC-offset
@@ -244,7 +249,6 @@ restart the stack to confirm no duplicate occurrences.
 ## Unresolved decisions
 
 Pause/resume, changing the take-turn rotation membership, and dedicated weekend
-authoring remain future work (issue #107). The calendar itself is read-only by design;
-adding actions directly on it (rather than linking to the daily agenda) is not
-planned but could be revisited if that link-out proves inconvenient in
-practice.
+authoring remain future work (issue #107). Review decisions moved
+onto the calendar with issue #137 after the link-out proved inconvenient;
+completing, editing, and cancelling still happen on the daily agenda.

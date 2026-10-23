@@ -5,11 +5,13 @@ import type { HouseholdMember, TodayBoard, TodayJob } from "../../api/today";
 import type { AppActionResult, TodayActionResult } from "../../app/routes";
 import { useUndoQueue } from "../../app/undoQueue";
 import { AddJobForm } from "./AddJobForm";
+import { FloatingDateBar } from "./FloatingDateBar";
 import { RecurringJobForm } from "./RecurringJobForm";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { FamilyMembersPanel } from "../identity/FamilyMembersPanel";
 import { AdminDataResetPanel } from "../administration/AdminDataResetPanel";
 import { HouseholdSettingsPanel } from "../settings/HouseholdSettingsPanel";
+import { ApprovalsReview, ApprovalsTrigger } from "../approvals/ApprovalsPanel";
 import {
   addDays,
   boardHref,
@@ -29,6 +31,8 @@ import {
   ScopedRecurringJobCancelForm,
   ScopedRecurringJobEditForm,
 } from "./ScopedRecurringJobForms";
+import { JobNameFields } from "./JobNameFields";
+import { ReverseApprovalControl } from "./ReverseApprovalControl";
 import { showQueuedJobChanges } from "./queuedJobChanges";
 import type { ShownJob } from "./queuedJobChanges";
 
@@ -39,6 +43,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
     (child) => child.id === board.selectedChildId,
   );
   const isToday = board.date === currentDate;
+  const dateLineRef = useRef<HTMLParagraphElement>(null);
   // Queued actions already show as done; they are saved after the undo time.
   const { actions } = useUndoQueue();
   const { jobs, pendingApprovalCount } = showQueuedJobChanges(board, actions);
@@ -47,195 +52,197 @@ export function TodayPage({ board }: { board: TodayBoard }) {
     day: "numeric",
     month: "long",
   }).format(new Date(`${board.date}T12:00:00`));
+  const previousDayHref = boardHref(
+    addDays(board.date, -1),
+    currentDate,
+    board.selectedChildId,
+  );
+  const nextDayHref = boardHref(
+    addDays(board.date, 1),
+    currentDate,
+    board.selectedChildId,
+  );
   return (
-    <main>
-      <header className="hero">
-        <div className="hero__toolbar">
-          <p className="eyebrow">Family Jobs Board</p>
-          <div className="hero__actions">
-            {board.viewer.isAdult ? (
-              <>
-                <Link className="calendar-link" to="/calendar">
-                  Calendar
-                </Link>
-                <Link className="points-link" to="/points">
-                  Points
-                </Link>
-              </>
-            ) : null}
-            <IdentityControls viewer={board.viewer} />
-            <ThemeToggle />
-          </div>
-        </div>
-        <div className="hero__content">
-          <div>
-            <h1>Good day, {board.viewer.displayName}!</h1>
-            <p className="hero__date">
-              {formattedDate}
-              {isToday ? <span>Today</span> : null}
-            </p>
-          </div>
-          <div className="hero__stats">
-            {board.viewer.isAdult ? (
-              <div
-                className="hero__balance"
-                aria-label={`${pendingApprovalCount} jobs awaiting review`}
-              >
-                <strong>{pendingApprovalCount}</strong>
-                <span>awaiting review</span>
-              </div>
-            ) : (
-              <Link
-                className="hero__balance"
-                to="/points"
-                aria-label={`${formatBalance(board.pointsBalance ?? 0)} points earned. See how you earned them`}
-              >
-                <strong>{formatBalance(board.pointsBalance ?? 0)}</strong>
-                <span>points earned</span>
-              </Link>
-            )}
-            <div
-              className="hero__count"
-              aria-label={`${jobs.length} jobs on this day`}
-            >
-              <strong>{jobs.length}</strong>
-              <span>jobs this day</span>
+    <ApprovalsReview currentDate={currentDate}>
+      <main>
+        <FloatingDateBar
+          dateLineRef={dateLineRef}
+          date={board.date}
+          isToday={isToday}
+          todayHref={boardHref(currentDate, currentDate, board.selectedChildId)}
+          previousHref={previousDayHref}
+          nextHref={nextDayHref}
+          pendingApprovalCount={
+            board.viewer.isAdult ? pendingApprovalCount : null
+          }
+        />
+        <header className="hero">
+          <div className="hero__toolbar">
+            <p className="eyebrow">Family Jobs Board</p>
+            <div className="hero__actions">
+              {board.viewer.isAdult ? (
+                <>
+                  <Link className="calendar-link" to="/calendar">
+                    Calendar
+                  </Link>
+                  <Link className="points-link" to="/points">
+                    Points
+                  </Link>
+                </>
+              ) : null}
+              <IdentityControls viewer={board.viewer} />
+              <ThemeToggle />
             </div>
           </div>
-        </div>
-      </header>
-
-      {board.viewer.isAdult ? (
-        <div className="grown-up-toolbox">
-          <FamilyMembersPanel currentMemberId={board.viewer.id} />
-          <AddJobForm
-            key={board.date}
-            children={children}
-            currentDate={currentDate}
-            selectedDate={board.date}
-            selectedChildId={board.selectedChildId}
-          />
-          <RecurringJobForm children={children} today={currentDate} />
-          <GoodBehavioursPanel children={children} />
-          <PointAdjustmentsPanel children={children} />
-          <RedeemRewardPanel children={children} />
-          <WhoseTurnPanel children={children} currentDate={currentDate} />
-          <HouseholdSettingsPanel />
-          <AdminDataResetPanel />
-        </div>
-      ) : null}
-
-      <section className="board" aria-labelledby="today-heading">
-        {board.viewer.isAdult ? (
-          <nav className="child-filter" aria-label="Filter agenda by child">
-            <span>Show jobs for</span>
+          <div className="hero__content">
             <div>
-              <Link
-                to={boardHref(board.date, currentDate, null)}
-                aria-current={
-                  board.selectedChildId === null ? "page" : undefined
-                }
-              >
-                All children
-              </Link>
-              {children.map((child) => (
+              <h1>Good day, {board.viewer.displayName}!</h1>
+              <p className="hero__date" ref={dateLineRef}>
+                {formattedDate}
+                {isToday ? <span>Today</span> : null}
+              </p>
+            </div>
+            <div className="hero__stats">
+              {board.viewer.isAdult ? (
+                <ApprovalsTrigger count={pendingApprovalCount} />
+              ) : (
                 <Link
-                  key={child.id}
-                  to={boardHref(board.date, currentDate, child.id)}
+                  className="hero__balance"
+                  to="/points"
+                  aria-label={`${formatBalance(board.pointsBalance ?? 0)} points earned. See how you earned them`}
+                >
+                  <strong>{formatBalance(board.pointsBalance ?? 0)}</strong>
+                  <span>points earned</span>
+                </Link>
+              )}
+              <div
+                className="hero__count"
+                aria-label={`${jobs.length} jobs on this day`}
+              >
+                <strong>{jobs.length}</strong>
+                <span>jobs this day</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {board.viewer.isAdult ? (
+          <div className="grown-up-toolbox">
+            <FamilyMembersPanel currentMemberId={board.viewer.id} />
+            <AddJobForm
+              key={board.date}
+              children={children}
+              currentDate={currentDate}
+              selectedDate={board.date}
+              selectedChildId={board.selectedChildId}
+            />
+            <RecurringJobForm children={children} today={currentDate} />
+            <GoodBehavioursPanel children={children} />
+            <PointAdjustmentsPanel children={children} />
+            <RedeemRewardPanel children={children} />
+            <WhoseTurnPanel children={children} currentDate={currentDate} />
+            <HouseholdSettingsPanel />
+            <AdminDataResetPanel />
+          </div>
+        ) : null}
+
+        <section className="board" aria-labelledby="today-heading">
+          {board.viewer.isAdult ? (
+            <nav className="child-filter" aria-label="Filter agenda by child">
+              <span>Show jobs for</span>
+              <div>
+                <Link
+                  to={boardHref(board.date, currentDate, null)}
                   aria-current={
-                    board.selectedChildId === child.id ? "page" : undefined
+                    board.selectedChildId === null ? "page" : undefined
                   }
                 >
-                  {child.displayName}
+                  All children
                 </Link>
-              ))}
-            </div>
+                {children.map((child) => (
+                  <Link
+                    key={child.id}
+                    to={boardHref(board.date, currentDate, child.id)}
+                    aria-current={
+                      board.selectedChildId === child.id ? "page" : undefined
+                    }
+                  >
+                    {child.displayName}
+                  </Link>
+                ))}
+              </div>
+            </nav>
+          ) : null}
+          <nav className="date-navigation" aria-label="Daily agenda">
+            <Link to={previousDayHref}>← Previous day</Link>
+            {!isToday ? (
+              <Link
+                to={boardHref(currentDate, currentDate, board.selectedChildId)}
+              >
+                Today
+              </Link>
+            ) : (
+              <span aria-current="date">Today</span>
+            )}
+            <Link to={nextDayHref}>Next day →</Link>
           </nav>
-        ) : null}
-        <nav className="date-navigation" aria-label="Daily agenda">
-          <Link
-            to={boardHref(
-              addDays(board.date, -1),
-              currentDate,
-              board.selectedChildId,
-            )}
-          >
-            ← Previous day
-          </Link>
-          {!isToday ? (
-            <Link
-              to={boardHref(currentDate, currentDate, board.selectedChildId)}
-            >
-              Today
-            </Link>
-          ) : (
-            <span aria-current="date">Today</span>
-          )}
-          <Link
-            to={boardHref(
-              addDays(board.date, 1),
-              currentDate,
-              board.selectedChildId,
-            )}
-          >
-            Next day →
-          </Link>
-        </nav>
-        <div className="board__heading">
-          <div>
-            <p className="eyebrow">
-              {board.viewer.isAdult ? "Household list" : "Your list"}
-            </p>
-            <h2 id="today-heading">
-              {board.viewer.isAdult
-                ? selectedChild
-                  ? `${selectedChild.displayName}’s jobs`
+          <div className="board__heading">
+            <div>
+              <p className="eyebrow">
+                {board.viewer.isAdult ? "Household list" : "Your list"}
+              </p>
+              <h2 id="today-heading">
+                {board.viewer.isAdult
+                  ? selectedChild
+                    ? `${selectedChild.displayName}’s jobs`
+                    : isToday
+                      ? "Family jobs"
+                      : "Family agenda"
                   : isToday
-                    ? "Family jobs"
-                    : "Family agenda"
-                : isToday
-                  ? "Today’s jobs"
-                  : "Your jobs"}
-            </h2>
+                    ? "Today’s jobs"
+                    : "Your jobs"}
+              </h2>
+            </div>
+            <p>
+              {board.viewer.isAdult
+                ? "Assign jobs and review each child’s completed work."
+                : "Finish a job to send it for a grown-up to approve."}
+            </p>
           </div>
-          <p>
-            {board.viewer.isAdult
-              ? "Assign jobs and review each child’s completed work."
-              : "Finish a job to send it for a grown-up to approve."}
-          </p>
-        </div>
 
-        {board.whoseTurns.map((turn) => (
-          <WhoseTurnCard
-            key={turn.rotationId}
-            whoseTurn={turn}
-            date={board.date}
-            isToday={isToday}
-          />
-        ))}
-        {board.whoseTurns.length === 0 && board.viewer.isAdult ? (
-          <p className="whose-turn-card whose-turn-card--unset">
-            Whose Turn Is It? isn’t set up yet. Configure it in the tools above.
-          </p>
+          {board.whoseTurns.map((turn) => (
+            <WhoseTurnCard
+              key={turn.rotationId}
+              whoseTurn={turn}
+              date={board.date}
+              isToday={isToday}
+            />
+          ))}
+          {board.whoseTurns.length === 0 && board.viewer.isAdult ? (
+            <p className="whose-turn-card whose-turn-card--unset">
+              Whose Turn Is It? isn’t set up yet. Configure it in the tools
+              above.
+            </p>
+          ) : null}
+
+          {jobs.length === 0 ? (
+            <p className="board__empty">
+              {selectedChild
+                ? `No jobs are scheduled for ${selectedChild.displayName} on this day.`
+                : "No jobs are scheduled for this day."}
+            </p>
+          ) : (
+            <Agenda jobs={jobs} isAdult={board.viewer.isAdult} />
+          )}
+        </section>
+
+        {!board.viewer.isAdult ? (
+          <div className="grown-up-toolbox">
+            <GoodBehaviourTypesList />
+          </div>
         ) : null}
-
-        {jobs.length === 0 ? (
-          <p className="board__empty">
-            {selectedChild
-              ? `No jobs are scheduled for ${selectedChild.displayName} on this day.`
-              : "No jobs are scheduled for this day."}
-          </p>
-        ) : (
-          <Agenda jobs={jobs} isAdult={board.viewer.isAdult} />
-        )}
-      </section>
-
-      {!board.viewer.isAdult ? (
-        <div className="grown-up-toolbox">
-          <GoodBehaviourTypesList />
-        </div>
-      ) : null}
-    </main>
+      </main>
+    </ApprovalsReview>
   );
 }
 
@@ -371,6 +378,23 @@ function JobCard({
       restoreCompletionFocus.current = false;
     }
   }, [confirmingAdultCompletion]);
+  // A reversal swaps the card's controls, so keep the reader on the card they acted on.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const focusedReversal = useRef<TodayActionResult | null>(null);
+  useEffect(() => {
+    const result = fetcher.data;
+    if (
+      fetcher.state === "idle" &&
+      result?.intent === "reverseApproval" &&
+      result.jobId === job.id &&
+      !result.error &&
+      job.status !== "approved" &&
+      focusedReversal.current !== result
+    ) {
+      focusedReversal.current = result;
+      headingRef.current?.focus();
+    }
+  }, [fetcher.state, fetcher.data, job.id, job.status]);
   // While a queued action waits to be saved, the job can't be acted on again.
   const isSubmitting = fetcher.state !== "idle" || queued;
   const submittingIntent = fetcher.formData?.get("intent");
@@ -379,7 +403,8 @@ function JobCard({
       fetcher.data?.intent === "approve" ||
       fetcher.data?.intent === "reject" ||
       fetcher.data?.intent === "editJob" ||
-      fetcher.data?.intent === "cancelJob") &&
+      fetcher.data?.intent === "cancelJob" ||
+      fetcher.data?.intent === "reverseApproval") &&
     fetcher.data.jobId === job.id
       ? fetcher.data.error
       : undefined;
@@ -400,7 +425,9 @@ function JobCard({
         {isAdult ? (
           <p className="job-card__assignee">For {job.childDisplayName}</p>
         ) : null}
-        <h3>{job.name}</h3>
+        <h3 ref={headingRef} tabIndex={-1}>
+          {job.name}
+        </h3>
         <p className="job-card__schedule">
           {job.recurringJobSeriesId
             ? `${formatRecurrenceFrequency(job.recurrenceFrequency)} · `
@@ -531,10 +558,18 @@ function JobCard({
       ) : null}
 
       {isApproved ? (
-        <div className="complete-state complete-state--approved" role="status">
-          <span aria-hidden="true">★</span>
-          Approved — {job.points} points awarded
-        </div>
+        <>
+          <div
+            className="complete-state complete-state--approved"
+            role="status"
+          >
+            <span aria-hidden="true">★</span>
+            Approved — {job.points} points awarded
+          </div>
+          {isAdult && !queued ? (
+            <ReverseApprovalControl job={job} fetcher={fetcher} />
+          ) : null}
+        </>
       ) : isPending && isAdult ? (
         <fetcher.Form method="post" className="approval-form">
           <input type="hidden" name="jobId" value={job.id} />
@@ -660,15 +695,5 @@ function JobCard({
         </p>
       ) : null}
     </article>
-  );
-}
-
-/** Names the undo toast uses to describe what happened to this job. */
-function JobNameFields({ job }: { job: TodayJob }) {
-  return (
-    <>
-      <input type="hidden" name="jobName" value={job.name} />
-      <input type="hidden" name="childName" value={job.childDisplayName} />
-    </>
   );
 }

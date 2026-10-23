@@ -1,8 +1,10 @@
+using FamilyJobsBoard.Application.Points;
 using FamilyJobsBoard.Application.Today;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Domain.Points;
 using FamilyJobsBoard.Infrastructure.Data;
+using FamilyJobsBoard.Infrastructure.Points;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -62,6 +64,15 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         return _database.Jobs.SingleOrDefaultAsync(job => job.Id == jobId, cancellationToken);
     }
 
+    public Task<Guid?> GetJobChildIdAsync(Guid jobId, CancellationToken cancellationToken)
+    {
+        return _database.Jobs
+            .AsNoTracking()
+            .Where(job => job.Id == jobId)
+            .Select(job => (Guid?)job.ChildId)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(
         IReadOnlyCollection<Guid> childIds,
         DateOnly scheduledDate,
@@ -111,6 +122,31 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Job>> GetPendingApprovalJobsAsync(
+        IReadOnlyCollection<Guid> childIds,
+        CancellationToken cancellationToken)
+    {
+        return await _database.Jobs
+            .AsNoTracking()
+            .Where(job => childIds.Contains(job.ChildId)
+                && job.Status == JobStatus.PendingApproval)
+            .OrderBy(job => job.ScheduledDate)
+            .ThenBy(job => job.AgendaPeriod)
+            .ThenBy(job => job.ScheduledTime == null)
+            .ThenBy(job => job.ScheduledTime)
+            .ThenBy(job => job.Name)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<int> CountPendingApprovalJobsAsync(
+        IReadOnlyCollection<Guid> childIds,
+        CancellationToken cancellationToken)
+    {
+        return _database.Jobs.CountAsync(
+            job => childIds.Contains(job.ChildId) && job.Status == JobStatus.PendingApproval,
+            cancellationToken);
+    }
+
     public async Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsInRangeAsync(
         IReadOnlyCollection<Guid> childIds,
         DateOnly startDate,
@@ -153,10 +189,19 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
             when (exception.InnerException is PostgresException
             {
                 SqlState: PostgresErrorCodes.UniqueViolation,
-                ConstraintName: "ux_points_ledger_entries_job_id",
+                ConstraintName: PointsLedgerEntryConfiguration.JobApprovalIndexName,
             })
         {
             throw new DuplicateJobPointsAwardException();
+        }
+        catch (DbUpdateException exception)
+            when (exception.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation,
+                ConstraintName: PointsLedgerEntryConfiguration.ReversedEntryIndexName,
+            })
+        {
+            throw new DuplicateJobApprovalReversalException();
         }
         catch (DbUpdateConcurrencyException exception)
         {
@@ -263,6 +308,25 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         CancellationToken cancellationToken)
     {
         await _database.PointsLedgerEntries.AddAsync(entry, cancellationToken);
+    }
+
+    public Task<PointsLedgerEntry?> GetJobAwardAsync(
+        Guid jobId,
+        int approvalNumber,
+        CancellationToken cancellationToken)
+    {
+        return _database.PointsLedgerEntries
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                entry => entry.JobId == jobId && entry.JobApprovalNumber == approvalNumber,
+                cancellationToken);
+    }
+
+    public Task<IChildPointsLock> LockChildPointsAsync(
+        Guid childId,
+        CancellationToken cancellationToken)
+    {
+        return EfChildPointsLock.AcquireAsync(_database, childId, cancellationToken);
     }
 
     public async Task AddReviewDecisionAsync(

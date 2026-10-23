@@ -81,19 +81,62 @@ export function showQueuedJobChanges(
     }
   }
 
-  const pendingBefore = board.jobs.filter(
-    (job) => job.status === "pendingApproval",
-  ).length;
-  const pendingAfter = jobs.filter(
-    ({ job, adding }) => !adding && job.status === "pendingApproval",
-  ).length;
   return {
     jobs,
-    pendingApprovalCount: Math.max(
-      0,
-      board.pendingApprovalCount - pendingBefore + pendingAfter,
+    pendingApprovalCount: queuedPendingApprovalCount(
+      board.pendingApprovalCount,
+      board.jobs,
+      actions,
     ),
   };
+}
+
+/**
+ * One job as it will look once its queued action is saved: `null` when the action removes it
+ * (cancelling), and `queued` while that action waits behind its undo toast.
+ */
+export function showQueuedJob(
+  job: TodayJob,
+  actions: readonly QueuedAction[],
+): { job: TodayJob | null; queued: boolean } {
+  const form = actions.find(
+    (action) => action.formData.get("jobId") === job.id,
+  )?.formData;
+  return form
+    ? { job: applyQueuedChange(job, form), queued: true }
+    : { job, queued: false };
+}
+
+/**
+ * The household's "awaiting review" count once every queued action is saved. The count spans
+ * every date, but a page holds only some jobs: those it holds are counted by their new state,
+ * and an approval or rejection queued for any other job (from the approvals panel or the
+ * calendar) always decides one that was waiting.
+ */
+export function queuedPendingApprovalCount(
+  count: number,
+  jobs: readonly TodayJob[],
+  actions: readonly QueuedAction[],
+): number {
+  let pending = count;
+  for (const job of jobs) {
+    const shown = showQueuedJob(job, actions).job;
+    pending +=
+      Number(shown?.status === "pendingApproval") -
+      Number(job.status === "pendingApproval");
+  }
+
+  const held = new Set(jobs.map((job) => job.id));
+  pending -= actions.filter((action) => {
+    const intent = action.formData.get("intent");
+    const jobId = action.formData.get("jobId");
+    return (
+      (intent === "approve" || intent === "reject") &&
+      typeof jobId === "string" &&
+      !held.has(jobId)
+    );
+  }).length;
+  return Math.max(0, pending);
 }
 
 function applyQueuedChange(job: TodayJob, form: FormData): TodayJob | null {
@@ -106,6 +149,13 @@ function applyQueuedChange(job: TodayJob, form: FormData): TodayJob | null {
       };
     case "approve":
       return { ...job, status: "approved" };
+    case "reverseApproval":
+      // A grown-up's own completion is approved at the moment it is completed, and
+      // reversing it reopens the job; a child's completion goes back for review.
+      return job.completedAtUtc !== null &&
+        job.completedAtUtc === job.approvedAtUtc
+        ? { ...job, status: "open", completedAtUtc: null, approvedAtUtc: null }
+        : { ...job, status: "pendingApproval", approvedAtUtc: null };
     case "reject":
       return {
         ...job,

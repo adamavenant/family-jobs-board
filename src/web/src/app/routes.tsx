@@ -32,6 +32,7 @@ import {
   getToday,
   previewRecurringJobChange,
   rejectJob,
+  reverseJobApproval,
   updateJob,
 } from "../api/today";
 import type {
@@ -88,6 +89,7 @@ import {
   householdSettingsLoader,
 } from "../features/settings/householdSettingsRoute";
 import { calendarLoader } from "../features/calendar/calendarRoute";
+import { approvalsLoader } from "../features/approvals/approvalsRoute";
 import { CalendarPage } from "../features/calendar/CalendarPage";
 import { pointsLedgerLoader } from "../features/points/pointsLedgerRoute";
 import { PointsLedgerPage } from "../features/points/PointsLedgerPage";
@@ -122,6 +124,12 @@ export interface AddRecurringJobActionResult extends QueuedFlag {
 
 export interface RejectActionResult extends QueuedFlag {
   intent: "reject";
+  jobId: string;
+  error?: string;
+}
+
+export interface ReverseApprovalActionResult extends QueuedFlag {
+  intent: "reverseApproval";
   jobId: string;
   error?: string;
 }
@@ -172,6 +180,7 @@ export type TodayActionResult =
   | PreviewRecurringJobChangeActionResult
   | ApplyRecurringJobChangeActionResult
   | RejectActionResult
+  | ReverseApprovalActionResult
   | ResetJobsAndPointsActionResult;
 
 export interface IdentityActionResult {
@@ -281,6 +290,9 @@ async function todayAction({
   }
   if (form.get("intent") === "reject") {
     return rejectAction(form);
+  }
+  if (form.get("intent") === "reverseApproval") {
+    return reverseApprovalAction(form);
   }
   if (form.get("intent") === "editJob") {
     return editJobAction(form);
@@ -1131,6 +1143,46 @@ async function approveAction(form: FormData): Promise<ApproveActionResult> {
   );
 }
 
+async function reverseApprovalAction(
+  form: FormData,
+): Promise<ReverseApprovalActionResult> {
+  const jobId = form.get("jobId");
+  const expectedPointsValue = form.get("expectedPoints");
+  if (typeof jobId !== "string") {
+    return {
+      intent: "reverseApproval",
+      jobId: "",
+      error: "The selected job was missing.",
+    };
+  }
+
+  const expectedPoints = Number(expectedPointsValue);
+  if (
+    typeof expectedPointsValue !== "string" ||
+    !Number.isInteger(expectedPoints) ||
+    expectedPoints < 0
+  ) {
+    return {
+      intent: "reverseApproval",
+      jobId,
+      error: "The confirmed points were invalid. Refresh and try again.",
+    };
+  }
+
+  return queueUndoableAction(
+    { intent: "reverseApproval", jobId },
+    {
+      form,
+      description: `Reversed approval of ${quoted(formText(form, "jobName"))} for ${jobChildName(form)}: −${pointsText(expectedPoints)}`,
+      commit: () => reverseJobApproval(jobId, expectedPoints),
+      failure: (error) =>
+        error instanceof ApiError
+          ? error.message
+          : "That approval couldn't be reversed.",
+    },
+  );
+}
+
 async function completeAction(form: FormData): Promise<CompleteActionResult> {
   const jobId = form.get("jobId");
   const expectedPointsValue = form.get("expectedPoints");
@@ -1271,12 +1323,20 @@ export const routes: RouteObject[] = [
         Component: AppPage,
         HydrateFallback: LoadingPage,
         shouldRevalidate: (args) => {
+          // Keep the page as it is after most refusals, so typed input survives. A refused
+          // reversal has nothing to keep, and the job has often changed under a stale card; a
+          // refusal that carries a fresh overview reconciles the board with it.
           const { actionResult } = args;
           if (
             actionResult &&
             typeof actionResult === "object" &&
             "error" in actionResult &&
-            actionResult.error
+            actionResult.error &&
+            !(
+              "intent" in actionResult &&
+              actionResult.intent === "reverseApproval"
+            ) &&
+            !("overview" in actionResult)
           ) {
             return false;
           }
@@ -1326,6 +1386,11 @@ export const routes: RouteObject[] = [
         path: "/calendar",
         loader: calendarLoader,
         Component: CalendarPage,
+        shouldRevalidate: revalidateUnlessQueued,
+      },
+      {
+        path: "/approvals",
+        loader: approvalsLoader,
         shouldRevalidate: revalidateUnlessQueued,
       },
       {

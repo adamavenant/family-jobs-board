@@ -28,7 +28,8 @@ every device in the household uses it.
 Actions that wait behind the undo toast:
 
 - completing a job (a child's "Mark as done" and a grown-up's "Mark as done
-  for…"), approving, and rejecting;
+  for…"), approving, and rejecting, including from the approvals panel and
+  the calendar (issue #137), and reversing an approval (issue #138);
 - adding, editing, and cancelling a once-off job; creating a recurring job and
   applying a scoped recurring change;
 - logging a good behaviour, adjusting points, and redeeming a reward;
@@ -97,9 +98,14 @@ points" leaves the setting alone.
   “Feed the dog” for Sam: +5 points"), a visible countdown, **Undo**, and a
   dismiss control that saves straight away. The item shows its after-action
   state: jobs appear approved, sent for approval, rejected, edited, or gone;
-  counts update; new jobs, members, behaviour types, and rotations appear as
+  a reversed approval shows the job awaiting review again (or open, when a
+  grown-up had completed it); a job decided in the approvals panel leaves its
+  list, and on the calendar it shows its new status; the "awaiting review"
+  count updates, including for jobs on other days; an ended rotation shows
+  "Ends tomorrow"; new jobs, members, behaviour types, and rotations appear as
   "Being added"; balances in the redeem form count queued spends. Controls on a
-  queued item are disabled so it can't be acted on twice.
+  queued item are disabled so it can't be acted on twice, and an approval that
+  is still queued is undone with Undo rather than reversed.
 - **Undone:** the toast closes and the item returns to its previous state.
 - **Saved:** the toast closes, the request is sent once, and the page
   revalidates to the server's state.

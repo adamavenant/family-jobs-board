@@ -115,6 +115,11 @@ export interface JobApproval {
   pointsBalance: number;
 }
 
+export interface JobApprovalReversal {
+  job: TodayJob;
+  pointsBalance: number;
+}
+
 export interface RecurringJobCreation {
   assignments: {
     seriesId: string;
@@ -281,6 +286,26 @@ export async function approveJob(
   });
   if (!data) {
     throw new ApiError(problemMessage(error, "That job couldn't be approved."));
+  }
+
+  return {
+    job: mapJob(data.job),
+    pointsBalance: Number(data.pointsBalance),
+  };
+}
+
+export async function reverseJobApproval(
+  id: string,
+  expectedPoints: number,
+): Promise<JobApprovalReversal> {
+  const client = apiClient();
+  const { data, error } = await client.POST("/api/jobs/{id}/reverse-approval", {
+    params: { path: { id }, query: { expectedPoints } },
+  });
+  if (!data) {
+    throw new ApiError(
+      problemMessage(error, "That approval couldn't be reversed."),
+    );
   }
 
   return {

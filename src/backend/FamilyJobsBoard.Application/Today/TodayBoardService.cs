@@ -119,6 +119,12 @@ public sealed class TodayBoardService
             ? null
             : await _repository.GetPointsBalanceAsync(viewer.Id, cancellationToken);
 
+        // Awaiting-review work stays counted after its scheduled day passes, so a job a child
+        // submitted yesterday is never silently dropped from the household's review count.
+        var pendingApprovalCount = await _repository.CountPendingApprovalJobsAsync(
+            householdVisibleChildIds,
+            cancellationToken);
+
         var turns = await _turnRotationService.GetTurnsAsync(
             date,
             new TurnRotationViewer(viewer.Id, viewer.IsAdult),
@@ -152,7 +158,7 @@ public sealed class TodayBoardService
                     ? seriesById.GetValueOrDefault(seriesId)
                     : null)).ToArray(),
             pointsBalance,
-            householdVisibleJobs.Count(job => job.Status == JobStatus.PendingApproval),
+            pendingApprovalCount,
             whoseTurns,
             settings.UndoGracePeriodSeconds);
     }
@@ -178,10 +184,14 @@ public sealed class TodayBoardService
         }
 
         var completedAtUtc = _clock.UtcNow;
-        job.MarkComplete(completedAtUtc);
         if (actor.IsAdult)
         {
-            await ApproveAndAwardAsync(job, completedAtUtc, cancellationToken);
+            job.CompleteForChild(completedAtUtc);
+            await RecordApprovalAsync(job, completedAtUtc, cancellationToken);
+        }
+        else
+        {
+            job.MarkComplete(completedAtUtc);
         }
 
         await _repository.SaveChangesAsync(cancellationToken);
@@ -788,7 +798,8 @@ public sealed class TodayBoardService
         EnsureConfirmedPoints(job, expectedPoints);
 
         var decidedAtUtc = _clock.UtcNow;
-        await ApproveAndAwardAsync(job, decidedAtUtc, cancellationToken);
+        job.Approve(decidedAtUtc);
+        await RecordApprovalAsync(job, decidedAtUtc, cancellationToken);
         await _repository.SaveChangesAsync(cancellationToken);
         var pointsBalance = await _repository.GetPointsBalanceAsync(
             job.ChildId,
@@ -813,12 +824,12 @@ public sealed class TodayBoardService
         }
     }
 
-    private async Task ApproveAndAwardAsync(
+    /// <summary>Records the decision and points award for the job's latest approval.</summary>
+    private async Task RecordApprovalAsync(
         Job job,
         DateTimeOffset decidedAtUtc,
         CancellationToken cancellationToken)
     {
-        job.Approve(decidedAtUtc);
         await _repository.AddReviewDecisionAsync(
             new JobReviewDecision(
                 Guid.NewGuid(),
@@ -828,13 +839,101 @@ public sealed class TodayBoardService
                 decidedAtUtc),
             cancellationToken);
         await _repository.AddPointsAwardAsync(
-            new PointsLedgerEntry(
-                Guid.NewGuid(),
-                job.ChildId,
-                job.Id,
-                job.Points,
-                decidedAtUtc),
+            PointsLedgerEntry.ForJobApproval(Guid.NewGuid(), job, decidedAtUtc),
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Reverses a job's approval: the job returns to how it was before it was approved, and a
+    /// new negative ledger entry takes back the points it awarded. The award itself is never
+    /// changed. Like every points removal, it holds the child's points lock and is refused if
+    /// the child no longer has the points.
+    /// </summary>
+    public async Task<TodayJobApprovalReversal> ReverseApprovalAsync(
+        Guid jobId,
+        Guid viewerId,
+        int? expectedPoints,
+        CancellationToken cancellationToken)
+    {
+        await EnsureAdultAsync(viewerId, cancellationToken);
+        if (expectedPoints is null)
+        {
+            throw new InvalidJobPointsConfirmationException(new Dictionary<string, string[]>
+            {
+                [nameof(expectedPoints)] = ["Confirm the points to take back before continuing."],
+            });
+        }
+
+        // Take the lock before reading the job, so every decision below is made on the job as
+        // it is now rather than as it was before a concurrent change released the lock.
+        var childId = await _repository.GetJobChildIdAsync(jobId, cancellationToken)
+            ?? throw new JobNotFoundException(jobId);
+        await using var pointsLock = await _repository.LockChildPointsAsync(
+            childId,
+            cancellationToken);
+        var job = await GetJobAsync(jobId, cancellationToken);
+        if (job.ChildId != childId)
+        {
+            throw new JobStateConflictException(
+                new InvalidOperationException("The job moved to another child."));
+        }
+
+        var child = await GetChildAsync(job, cancellationToken);
+        var award = job.Status == JobStatus.Approved
+            ? await _repository.GetJobAwardAsync(job.Id, job.ApprovalCount, cancellationToken)
+            : null;
+        if (award is null)
+        {
+            throw new JobApprovalReversalRejectedException(job.Id);
+        }
+
+        if (expectedPoints != award.Amount)
+        {
+            throw new JobPointsConfirmationConflictException(job.Id);
+        }
+
+        var currentBalance = await _repository.GetPointsBalanceAsync(
+            job.ChildId,
+            cancellationToken);
+        if (award.Amount > 0 && currentBalance < award.Amount)
+        {
+            throw new ApprovalReversalInsufficientPointsException(
+                child.DisplayName,
+                currentBalance,
+                award.Amount);
+        }
+
+        var reversedAtUtc = _clock.UtcNow;
+        job.ReverseApproval();
+        await _repository.AddReviewDecisionAsync(
+            new JobReviewDecision(
+                Guid.NewGuid(),
+                job.Id,
+                JobReviewOutcome.ApprovalReversed,
+                null,
+                reversedAtUtc),
+            cancellationToken);
+        await _repository.AddPointsAwardAsync(
+            PointsLedgerEntry.ForApprovalReversal(Guid.NewGuid(), award, reversedAtUtc),
+            cancellationToken);
+        await _repository.SaveChangesAsync(cancellationToken);
+        await pointsLock.CommitAsync(cancellationToken);
+
+        // A job reopened by the reversal shows its latest rejection again, as on the board.
+        var latestRejection = job.Status == JobStatus.Open
+            ? (await _repository.GetLatestRejectionsAsync(
+                    [job.ChildId],
+                    job.ScheduledDate,
+                    cancellationToken))
+                .SingleOrDefault(rejection => rejection.JobId == job.Id)
+            : null;
+        // Awards don't take the lock, so read the balance again rather than assume it.
+        var pointsBalance = await _repository.GetPointsBalanceAsync(
+            job.ChildId,
+            cancellationToken);
+        return new TodayJobApprovalReversal(
+            MapJob(job, child, latestRejection),
+            pointsBalance);
     }
 
     public async Task<TodayJob> RejectAsync(

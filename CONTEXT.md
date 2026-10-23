@@ -65,6 +65,19 @@ The process by which an Adult verifies that a Child has completed a Job before p
 4. Adult approves or rejects job completion
 5. Points awarded if approved, no points if rejected
 
+An Adult may also mark a Child's open job done on the Child's behalf, which
+approves it and awards its points in one step.
+
+#### Reversing an approval
+An Adult can reverse an approval at any time, for example after approving a job
+they meant to cancel. The job returns to how it was before it was approved:
+waiting for approval, with its completion time, if the Child submitted it; open,
+with no completion, if an Adult marked it done for the Child. A new negative
+points entry takes the award back; the award itself stays in the history. The
+reversal is recorded as a review decision, and the job can then be approved
+again (awarding its points once more), rejected, or cancelled. It is refused if
+the Child no longer has the points, for example because they were redeemed.
+
 ### Good Behaviour
 A positive action observed and logged by an Adult that earns points for a Child
 immediately. Points default to the type's points and can be changed when
@@ -94,9 +107,9 @@ a type never changes behaviours already logged.
 - Active flag with audit of who created, edited, and deleted it
 
 ### Points
-The currency accumulated by Children. Job-earned awards, good-behaviour awards,
-manual adjustments, and adult redemptions, with their append-only history, are
-implemented.
+The currency accumulated by Children. Job-earned awards and their approval
+reversals, good-behaviour awards, manual adjustments, and adult redemptions, with
+their append-only history, are implemented.
 
 #### Properties
 - Accumulated total per Child
@@ -105,7 +118,10 @@ implemented.
   see every Child's, filterable by Child. Each entry names the Adult who
   recorded it, where one is recorded
 - Never negative: points are never taken below zero, and every removal for a
-  Child is serialized so concurrent removals can't overdraw a balance
+  Child (an adjustment, a redemption, or an approval reversal) is serialized so
+  concurrent removals can't overdraw a balance
+- Each approval of a Job awards its points once. A Job has at most one award
+  that hasn't been reversed
 - Manual adjustments by Adults are signed and need a reason; mistakes are
   corrected with a new opposite entry, never by editing history
 - Redemptions: an Adult spends a Child's points on a free-text reward; a

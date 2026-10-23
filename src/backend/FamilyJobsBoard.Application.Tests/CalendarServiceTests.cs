@@ -1,5 +1,6 @@
 using FamilyJobsBoard.Application.Calendar;
 using FamilyJobsBoard.Application.Clock;
+using FamilyJobsBoard.Application.Points;
 using FamilyJobsBoard.Application.Today;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Jobs;
@@ -44,6 +45,23 @@ public sealed class CalendarServiceTests
         var day = Assert.Single(board.Days);
         Assert.Equal(Today, day.Date);
         Assert.True(day.IsInFocusedPeriod);
+    }
+
+    [Fact]
+    public async Task Pending_count_is_household_wide_whatever_the_range_or_child_filter()
+    {
+        var repository = new FakeRepository([Adult, FirstChild, SecondChild]);
+        var outsideRange = new Job(Guid.NewGuid(), FirstChild.Id, "Last month", "", 1, Today.AddDays(-30));
+        outsideRange.MarkComplete(new DateTimeOffset(2026, 8, 23, 17, 0, 0, TimeSpan.Zero));
+        var otherChild = new Job(Guid.NewGuid(), SecondChild.Id, "Harrie's", "", 1, Today);
+        otherChild.MarkComplete(new DateTimeOffset(2026, 9, 22, 7, 0, 0, TimeSpan.Zero));
+        repository.Jobs.AddRange([outsideRange, otherChild]);
+        var service = new CalendarService(repository, new FixedClock());
+
+        var board = await service.GetAsync(Adult.Id, "day", Today, FirstChild.Id, CancellationToken.None);
+
+        Assert.Empty(Assert.Single(board.Days).Jobs);
+        Assert.Equal(2, board.PendingApprovalCount);
     }
 
     [Fact]
@@ -282,7 +300,7 @@ public sealed class CalendarServiceTests
         public DateTimeOffset UtcNow => new(2026, 9, 22, 8, 0, 0, TimeSpan.Zero);
     }
 
-    private sealed class FakeRepository : ITodayBoardRepository
+    internal sealed class FakeRepository : ITodayBoardRepository
     {
         private readonly IReadOnlyList<HouseholdMember> _members;
 
@@ -322,6 +340,23 @@ public sealed class CalendarServiceTests
                 .Where(job => childIds.Contains(job.ChildId)
                     && job.ScheduledDate >= startDate
                     && job.ScheduledDate <= endDate)
+                .ToArray());
+
+        public Task<int> CountPendingApprovalJobsAsync(
+            IReadOnlyCollection<Guid> childIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Jobs.Count(job => childIds.Contains(job.ChildId)
+                && job.Status == JobStatus.PendingApproval));
+
+        public Task<IReadOnlyList<Job>> GetPendingApprovalJobsAsync(
+            IReadOnlyCollection<Guid> childIds,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Job>>(Jobs
+                .Where(job => childIds.Contains(job.ChildId)
+                    && job.Status == JobStatus.PendingApproval)
+                .OrderBy(job => job.ScheduledDate)
+                .ThenBy(job => job.AgendaPeriod)
+                .ThenBy(job => job.Name)
                 .ToArray());
 
         public Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsInRangeAsync(
@@ -373,6 +408,19 @@ public sealed class CalendarServiceTests
 
         public Task AddReviewDecisionAsync(
             JobReviewDecision decision,
+            CancellationToken cancellationToken) => throw Unused();
+
+        public Task<Guid?> GetJobChildIdAsync(
+            Guid jobId,
+            CancellationToken cancellationToken) => throw Unused();
+
+        public Task<PointsLedgerEntry?> GetJobAwardAsync(
+            Guid jobId,
+            int approvalNumber,
+            CancellationToken cancellationToken) => throw Unused();
+
+        public Task<IChildPointsLock> LockChildPointsAsync(
+            Guid childId,
             CancellationToken cancellationToken) => throw Unused();
 
         public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;

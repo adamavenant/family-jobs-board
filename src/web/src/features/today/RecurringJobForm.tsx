@@ -4,6 +4,7 @@ import { useFetcher } from "react-router";
 import type { TodayActionResult } from "../../app/routes";
 import type { HouseholdMember } from "../../api/today";
 import { ChildAssignmentPicker } from "./ChildAssignmentPicker";
+import { OptionalDateInput } from "./OptionalDateInput";
 
 const weekdays = [
   ["monday", "Monday"],
@@ -54,6 +55,7 @@ export function RecurringJobForm({
     children[0] ? [children[0].id] : [],
   );
   const [firstTurnChildId, setFirstTurnChildId] = useState("");
+  const [endDate, setEndDate] = useState("");
   const result =
     fetcher.data?.intent === "addRecurring" ? fetcher.data : undefined;
   const isSubmitting = fetcher.state !== "idle";
@@ -90,6 +92,7 @@ export function RecurringJobForm({
             setAssignmentMode("eachChild");
             setSelectedChildIds(children[0] ? [children[0].id] : []);
             setFirstTurnChildId("");
+            setEndDate("");
           }}
         >
           <input type="hidden" name="intent" value="addRecurring" />
@@ -283,7 +286,14 @@ export function RecurringJobForm({
               <label htmlFor="endDate">
                 {frequencyLabel} job ends (optional)
               </label>
-              <input type="date" id="endDate" name="endDate" min={today} />
+              <OptionalDateInput
+                id="endDate"
+                name="endDate"
+                min={today}
+                value={endDate}
+                fieldName="end date"
+                onChange={setEndDate}
+              />
             </div>
           </div>
 

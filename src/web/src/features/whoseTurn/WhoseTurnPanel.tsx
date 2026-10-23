@@ -34,9 +34,7 @@ export function WhoseTurnPanel({
     rotationActions.find(
       (action) => action.formData.get("rotationId") === rotationId,
     )?.formData;
-  const rotations = (overview?.rotations ?? []).filter(
-    (rotation) => queuedFor(rotation.rotationId)?.get("intent") !== "end",
-  );
+  const rotations = overview?.rotations ?? [];
   const adding = rotationActions.filter(
     (action) =>
       action.formData.get("intent") === "save" &&
@@ -102,6 +100,9 @@ export function WhoseTurnPanel({
                     key={rotation.rotationId}
                     rotation={rotation}
                     queued={queuedFor(rotation.rotationId) !== undefined}
+                    ending={
+                      queuedFor(rotation.rotationId)?.get("intent") === "end"
+                    }
                     children={children}
                     currentDate={currentDate}
                   />
@@ -139,11 +140,13 @@ export function WhoseTurnPanel({
 function RotationItem({
   rotation,
   queued,
+  ending,
   children,
   currentDate,
 }: {
   rotation: TurnRotationSummary;
   queued: boolean;
+  ending: boolean;
   children: HouseholdMember[];
   currentDate: string;
 }) {
@@ -152,6 +155,14 @@ function RotationItem({
   const title = rotation.current?.question ?? "Scheduled rotation";
   // A queued change can still be undone; until it is saved the rotation is locked.
   const submitting = fetcher.state !== "idle" || queued;
+  // An ended rotation keeps today's answer, so it stays listed until tomorrow; a queued End
+  // already shows that.
+  const endsTomorrow =
+    ending ||
+    (rotation.current !== null &&
+      !rotation.upcomingTurns.some(
+        (turn) => turn.date === addDaysIso(currentDate, 1),
+      ));
   const endError =
     fetcher.data?.intent === "end" ? fetcher.data.error : undefined;
 
@@ -170,66 +181,72 @@ function RotationItem({
           <span>Moves on when a turn is ticked off</span>
         ) : null}
       </div>
-      <details className="family-member-edit">
-        <summary>Edit {title}</summary>
-        <WhoseTurnForm
-          children={children}
-          currentDate={currentDate}
-          rotation={rotation}
-          locked={queued}
-        />
-      </details>
-      {confirmingEnd ? (
-        <div
-          className="deactivate-confirmation"
-          role="group"
-          aria-label={`End ${title}`}
-        >
-          <p>
-            End “{title}”? It stops appearing on the board from tomorrow; past
-            answers stay as they were.
-          </p>
-          {endError ? (
-            <p className="error-message" role="alert">
-              {endError}
-            </p>
-          ) : null}
-          <div>
-            <fetcher.Form method="post" action="/whose-turn">
-              <input type="hidden" name="intent" value="end" />
-              <input
-                type="hidden"
-                name="rotationId"
-                value={rotation.rotationId}
-              />
-              <input type="hidden" name="rotationTitle" value={title} />
-              <button
-                type="submit"
-                className="button--danger"
-                disabled={submitting}
-              >
-                Yes, end it
-              </button>
-            </fetcher.Form>
+      {endsTomorrow ? (
+        <p role="status">Ends tomorrow. Today’s answer stays as it is.</p>
+      ) : (
+        <>
+          <details className="family-member-edit">
+            <summary>Edit {title}</summary>
+            <WhoseTurnForm
+              children={children}
+              currentDate={currentDate}
+              rotation={rotation}
+              locked={queued}
+            />
+          </details>
+          {confirmingEnd ? (
+            <div
+              className="deactivate-confirmation"
+              role="group"
+              aria-label={`End ${title}`}
+            >
+              <p>
+                End “{title}”? It stops appearing on the board from tomorrow;
+                past answers stay as they were.
+              </p>
+              {endError ? (
+                <p className="error-message" role="alert">
+                  {endError}
+                </p>
+              ) : null}
+              <div>
+                <fetcher.Form method="post" action="/whose-turn">
+                  <input type="hidden" name="intent" value="end" />
+                  <input
+                    type="hidden"
+                    name="rotationId"
+                    value={rotation.rotationId}
+                  />
+                  <input type="hidden" name="rotationTitle" value={title} />
+                  <button
+                    type="submit"
+                    className="button--danger"
+                    disabled={submitting}
+                  >
+                    Yes, end it
+                  </button>
+                </fetcher.Form>
+                <button
+                  type="button"
+                  className="button--quiet"
+                  onClick={() => setConfirmingEnd(false)}
+                  disabled={submitting}
+                >
+                  Keep it
+                </button>
+              </div>
+            </div>
+          ) : (
             <button
               type="button"
               className="button--quiet"
-              onClick={() => setConfirmingEnd(false)}
-              disabled={submitting}
+              onClick={() => setConfirmingEnd(true)}
+              disabled={queued}
             >
-              Keep it
+              End {title}
             </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          className="button--quiet"
-          onClick={() => setConfirmingEnd(true)}
-          disabled={queued}
-        >
-          End {title}
-        </button>
+          )}
+        </>
       )}
     </li>
   );
