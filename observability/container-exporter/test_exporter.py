@@ -2,12 +2,15 @@ import json
 import unittest
 import urllib.parse
 import urllib.request
+from types import SimpleNamespace
+from unittest.mock import call
 from unittest.mock import patch
 
 from exporter import (
     ALLOWED_SERVICES,
     Collector,
     DockerApi,
+    FilesystemUsage,
     Handler,
     _image_id,
     _image_tag,
@@ -306,58 +309,33 @@ class DockerApiTests(unittest.TestCase):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 docker._get_json(path)
 
-    @patch("urllib.request.urlopen")
-    def test_reports_only_exact_observability_volume_usage(self, urlopen):
-        response = {
-            "Volumes": [
-                {"Name": "obs-prometheus-data", "UsageData": {"Size": 1024}},
-                {"Name": "obs-loki-data", "UsageData": {"Size": 2048}},
-                {"Name": "other-private-data", "UsageData": {"Size": 999999}},
-            ]
-        }
-        urlopen.return_value = unittest.mock.MagicMock(
-            __enter__=lambda self: self,
-            __exit__=lambda *_: None,
-            read=lambda: json.dumps(response).encode(),
+    @patch("os.statvfs")
+    def test_reports_only_exact_telemetry_filesystem_usage(self, statvfs):
+        statvfs.side_effect = (
+            SimpleNamespace(f_blocks=100, f_bfree=75, f_frsize=4096),
+            SimpleNamespace(f_blocks=200, f_bfree=150, f_frsize=4096),
         )
 
-        usage = DockerApi(
-            "http://proxy:2375", "family-jobs-board", "obs"
-        ).telemetry_storage_usage()
+        usage = FilesystemUsage().telemetry_storage_usage()
 
-        self.assertEqual(usage, {"prometheus": 1024, "loki": 2048})
+        self.assertEqual(usage, {"prometheus": 102400, "loki": 204800})
         self.assertEqual(
-            urlopen.call_args.args[0].full_url,
-            "http://proxy:2375/v1.42/system/df?type=volume",
+            statvfs.call_args_list,
+            [call("/telemetry/prometheus"), call("/telemetry/loki")],
         )
 
-    @patch("urllib.request.urlopen")
-    def test_rejects_missing_or_invalid_observability_volume_usage(self, urlopen):
-        invalid_responses = (
-            {"Volumes": []},
-            {
-                "Volumes": [
-                    {"Name": "obs-prometheus-data", "UsageData": {"Size": 1024}}
-                ]
-            },
-            {
-                "Volumes": [
-                    {"Name": "obs-prometheus-data", "UsageData": {"Size": 1024}},
-                    {"Name": "obs-loki-data", "UsageData": {"Size": -1}},
-                ]
-            },
+    @patch("os.statvfs")
+    def test_rejects_invalid_telemetry_filesystem_usage(self, statvfs):
+        invalid_stats = (
+            SimpleNamespace(f_blocks=10, f_bfree=11, f_frsize=4096),
+            SimpleNamespace(f_blocks=10, f_bfree=5, f_frsize=0),
         )
 
-        for response in invalid_responses:
-            urlopen.return_value = unittest.mock.MagicMock(
-                __enter__=lambda self: self,
-                __exit__=lambda *_: None,
-                read=lambda response=response: json.dumps(response).encode(),
-            )
-            with self.subTest(response=response), self.assertRaises(ValueError):
-                DockerApi(
-                    "http://proxy:2375", "family-jobs-board", "obs"
-                ).telemetry_storage_usage()
+        for stats in invalid_stats:
+            statvfs.reset_mock()
+            statvfs.side_effect = (stats,)
+            with self.subTest(stats=stats), self.assertRaises(ValueError):
+                FilesystemUsage().telemetry_storage_usage()
 
     def test_image_label_is_reduced_to_bounded_tag(self):
         self.assertEqual(_image_tag("registry.example/app:" + "a" * 40), "a" * 40)

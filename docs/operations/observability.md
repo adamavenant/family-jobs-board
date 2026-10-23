@@ -11,9 +11,8 @@ runbook defines only the portable observability boundary.
 ## Prepare configuration
 
 Install Docker Engine 23.0 or newer with the Compose plugin. The bounded
-container collector uses Docker Engine API v1.42, the first API level whose
-`GET /system/df?type=volume` request limits disk-usage work to volumes. Copy the
-example outside the checkout and create a strong Grafana
+container collector uses Docker Engine API v1.42 only for allowlisted container
+list and inspect requests. Copy the example outside the checkout and create a strong Grafana
 operator password as a separate mode-0600 file:
 
 ```sh
@@ -188,9 +187,10 @@ dashboard. It intentionally contains only:
   bounded image tag and immutable Docker image content ID for the `api`, `db`,
   `proxy`, and `web` Compose services.
 
-It also shows Docker-reported bytes used by the exact Prometheus and Loki data
-volumes. This includes every file in each volume, while the capacity checks
-below remain authoritative for filesystem size and non-volume overhead.
+It also shows filesystem bytes used by the exact Prometheus and Loki data
+volumes. Production gives each volume its own bounded filesystem, so the values
+include filesystem metadata as well as every telemetry file. The capacity
+checks below remain authoritative for the hard limit.
 Per-container CPU and memory remain deliberately excluded: the approved scope
 is aggregate server capacity, and collecting per-container resources would
 require a broader Docker/cAdvisor boundary.
@@ -204,14 +204,13 @@ host access: the root mount exists only so the filesystem collector can call
 
 The container exporter is the only service that receives the read-only Docker
 socket bind. Its Docker client has a fixed `GET` allowlist for container list
-and inspect plus volume disk usage, sends exact Compose project/service label
-filters, rechecks returned labels, and emits only the fixed service name plus
-sanitized image tag and content ID. From the disk-usage response it retains
-only byte totals for the exact observability Prometheus and Loki volume names;
-unrelated volume names and sizes are discarded. Docker's host-wide disk-usage
-call is cached for five minutes rather than repeated by each health check and
-scrape, and separate success/last-success metrics make a failed refresh stale.
-Its network surface exposes
+and inspect, sends exact Compose project/service label filters, rechecks
+returned labels, and emits only the fixed service name plus sanitized image tag
+and content ID. It also receives the exact Prometheus and Loki data volumes at
+fixed read-only mount points and calls only `statvfs` on those roots; it does not
+walk filenames or expose paths. The aggregate filesystem results are cached for
+five minutes rather than recomputed by each health check and scrape, and
+separate success/last-success metrics make a failed refresh stale. Its network surface exposes
 only `/metrics` and a fail-closed `/health`; raw Docker endpoints are not
 proxied. Container names, IDs, arbitrary labels, environment, mounts, commands,
 logs, and unrelated volume inventory never become metrics.

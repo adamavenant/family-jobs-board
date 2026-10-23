@@ -110,6 +110,9 @@ assert_jq "$validation_dir/base.json" \
   '(.services["container-exporter"].volumes[] | select(.source == "/var/run/docker.sock") | .read_only) == true and .services["container-exporter"].environment.DOCKER_API_URL == "unix:///var/run/docker.sock"' \
   "the Docker socket bind mount is not read-only"
 assert_jq "$validation_dir/base.json" \
+  '([.services["container-exporter"].volumes[] | select(.target == "/telemetry/prometheus" or .target == "/telemetry/loki") | .read_only] == [true, true]) and .services["container-exporter"].depends_on["storage-init"].condition == "service_completed_successfully"' \
+  "the container exporter does not receive only initialized read-only telemetry filesystems"
+assert_jq "$validation_dir/base.json" \
   '(.services["node-exporter"].command | index("--collector.disable-defaults") != null) and (.services["node-exporter"].command | index("--collector.cpu") != null) and (.services["node-exporter"].command | index("--collector.filesystem") != null) and (.services["node-exporter"].command | index("--collector.loadavg") != null) and (.services["node-exporter"].command | index("--collector.meminfo") != null) and (.services["node-exporter"].command | index("--collector.stat") != null)' \
   "node-exporter does not use the approved collector allowlist"
 assert_jq "$validation_dir/base.json" \
