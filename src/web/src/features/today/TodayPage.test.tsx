@@ -772,6 +772,11 @@ describe("Today page", () => {
     ).toBe(true);
 
     await user.click(screen.getByRole("link", { name: "Today" }));
+    // Use today's board only once it shows: until then the previous day's page, and its
+    // links, are still on screen.
+    expect(
+      await screen.findByText("Today", { selector: ".hero__date span" }),
+    ).toBeVisible();
     expect(router.state.location.search).toBe(`?childId=${harrie.id}`);
     await user.click(screen.getByRole("link", { name: "All children" }));
     expect(
