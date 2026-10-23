@@ -14,14 +14,22 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "0"
     volumes:
       - ./tests/application-health-nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${APPLICATION_HEALTH_TEST_CERT_FILE:?APPLICATION_HEALTH_TEST_CERT_FILE must point to the test TLS certificate}:/etc/nginx/tls/server.crt:ro
+      - ${APPLICATION_HEALTH_TEST_KEY_FILE:?APPLICATION_HEALTH_TEST_KEY_FILE must point to the test TLS private key}:/etc/nginx/tls/server.key:ro
     tmpfs:
       - /tmp:size=8m,mode=1777
     networks:
       probes:
         aliases:
           - dashboard.home.arpa
+
+  blackbox:
+    volumes:
+      - ${APPLICATION_HEALTH_TEST_CERT_FILE:?APPLICATION_HEALTH_TEST_CERT_FILE must point to the test TLS certificate}:/etc/blackbox/caddy-root.crt:ro
 
   grafana:
     ports:

@@ -77,16 +77,12 @@ class DockerApi:
         self,
         base_url: str,
         project: str,
-        observability_prefix: str = "family-jobs-board-observability",
         timeout_seconds: float = 3.0,
     ):
-        if not VALID_PROJECT.fullmatch(project) or not VALID_PROJECT.fullmatch(
-            observability_prefix
-        ):
-            raise ValueError("Compose project/resource prefix has an invalid value")
+        if not VALID_PROJECT.fullmatch(project):
+            raise ValueError("Compose project has an invalid value")
         self._base_url = base_url.rstrip("/")
         self._project = project
-        self._observability_prefix = observability_prefix
         self._timeout_seconds = timeout_seconds
 
     def _get_json(self, path: str) -> Any:
@@ -101,11 +97,7 @@ class DockerApi:
         is_inspect = re.fullmatch(
             r"/containers/[a-f0-9]{64}/json", parsed_path.path
         ) and not parsed_path.query
-        is_volume_df = (
-            parsed_path.path == "/system/df"
-            and query_values == {"type": ["volume"]}
-        )
-        if not is_list and not is_inspect and not is_volume_df:
+        if not is_list and not is_inspect:
             raise ValueError("Docker API path is outside the fixed read allowlist")
 
         request_path = f"/{DOCKER_API_VERSION}{path}"
@@ -167,34 +159,28 @@ class DockerApi:
             raise ValueError("Docker inspect labels did not match the requested service")
         return inspected
 
+
+class FilesystemUsage:
+    _PATHS = {
+        "prometheus": "/telemetry/prometheus",
+        "loki": "/telemetry/loki",
+    }
+
     def telemetry_storage_usage(self) -> dict[str, int]:
-        response = self._get_json("/system/df?type=volume")
-        if not isinstance(response, dict):
-            raise ValueError("Docker disk-usage response is not an object")
-        expected = {
-            f"{self._observability_prefix}-prometheus-data": "prometheus",
-            f"{self._observability_prefix}-loki-data": "loki",
-        }
         usage: dict[str, int] = {}
-        volumes = response.get("Volumes") or []
-        if not isinstance(volumes, list):
-            raise ValueError("Docker volume disk usage is not a list")
-        for volume in volumes:
-            if not isinstance(volume, dict) or volume.get("Name") not in expected:
-                continue
-            size = (volume.get("UsageData") or {}).get("Size")
-            if isinstance(size, int) and size >= 0:
-                usage[expected[volume["Name"]]] = size
-        if set(usage) != {"prometheus", "loki"}:
-            raise ValueError(
-                "Docker disk usage omitted an expected telemetry volume size"
-            )
+        for store, path in self._PATHS.items():
+            stats = os.statvfs(path)
+            used_blocks = stats.f_blocks - stats.f_bfree
+            if used_blocks < 0 or stats.f_frsize <= 0:
+                raise ValueError("Telemetry filesystem statistics are invalid")
+            usage[store] = used_blocks * stats.f_frsize
         return usage
 
 
 class Collector:
-    def __init__(self, docker: DockerApi, clock=time.time):
+    def __init__(self, docker: DockerApi, storage=None, clock=time.time):
         self._docker = docker
+        self._storage = storage or docker
         self._clock = clock
         self._lock = threading.Lock()
         self._last_success: float | None = None
@@ -239,7 +225,7 @@ class Collector:
         if should_refresh:
             self._storage_last_attempt = now
             try:
-                self._storage_usage = self._docker.telemetry_storage_usage()
+                self._storage_usage = self._storage.telemetry_storage_usage()
                 self._storage_last_success = now
                 self._storage_collection_success = True
                 cache_age = 0.0
@@ -276,7 +262,8 @@ class Collector:
         lines.extend(
             _metric_help(
                 "family_jobs_board_telemetry_storage_collector_success",
-                "Whether the most recent allowlisted Docker volume-usage collection succeeded.",
+                "Whether the most recent allowlisted telemetry-filesystem "
+                "usage collection succeeded.",
             )
         )
         lines.append(
@@ -286,7 +273,8 @@ class Collector:
         lines.extend(
             _metric_help(
                 "family_jobs_board_telemetry_storage_collector_last_success_timestamp_seconds",
-                "Unix timestamp of the most recent successful allowlisted Docker volume-usage collection.",
+                "Unix timestamp of the most recent successful allowlisted "
+                "telemetry-filesystem usage collection.",
             )
         )
         if self._storage_last_success is not None:
@@ -318,7 +306,11 @@ class Collector:
             ("family_jobs_board_container_state", "Current Docker state for the container."),
             ("family_jobs_board_container_health", "Current Docker health-check status for the container."),
             ("family_jobs_board_container_info", "Bounded deployment tag and immutable image content ID for the container."),
-            ("family_jobs_board_telemetry_storage_used_bytes", "Docker-reported bytes used by each allowlisted telemetry volume."),
+            (
+                "family_jobs_board_telemetry_storage_used_bytes",
+                "Filesystem blocks used by each dedicated allowlisted "
+                "telemetry filesystem, including metadata.",
+            ),
         )
         lines: list[str] = []
         for name, description in definitions:
@@ -437,12 +429,9 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     project = os.environ.get("FJB_COMPOSE_PROJECT_NAME", "family-jobs-board")
-    observability_prefix = os.environ.get(
-        "OBSERVABILITY_RESOURCE_PREFIX", "family-jobs-board-observability"
-    )
     docker_url = os.environ.get("DOCKER_API_URL", "unix:///var/run/docker.sock")
     port = int(os.environ.get("PORT", "9400"))
-    Handler.collector = Collector(DockerApi(docker_url, project, observability_prefix))
+    Handler.collector = Collector(DockerApi(docker_url, project), FilesystemUsage())
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
 
 
