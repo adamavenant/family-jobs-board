@@ -2149,7 +2149,7 @@
           "Whose turn"
         ],
         "summary": "List the household's whose-turn rotations.",
-        "description": "Adult-only. Returns every active rotation with the revision effective today, if any, and a short preview of upcoming turns.",
+        "description": "Adult-only. Returns every active rotation with the revision effective today, if any, a short preview of upcoming turns, and whether it has been ended so that it stops appearing from tomorrow.",
         "operationId": "ListTurnRotations",
         "responses": {
           "200": {
@@ -4956,7 +4956,8 @@
           "rotationId",
           "current",
           "upcomingTurns",
-          "upNext"
+          "upNext",
+          "endsTomorrow"
         ],
         "type": "object",
         "properties": {
@@ -4985,6 +4986,9 @@
             "items": {
               "$ref": "#/components/schemas/TurnRotationChildResponse"
             }
+          },
+          "endsTomorrow": {
+            "type": "boolean"
           }
         }
       },

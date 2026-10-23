@@ -493,7 +493,10 @@ public sealed class TurnRotationService
                 upcomingTurns,
                 basis is { AdvanceMode: TurnAdvanceMode.WhenTicked, IsCleared: false }
                     ? UpNext(basis, today, takenTurns, names)
-                    : []));
+                    : [],
+                // Said outright rather than left to the preview: a rotation that moves on when
+                // ticked previews no future dates whether or not it has been ended.
+                ResolveRevision(group, today.AddDays(1)) is { IsCleared: true }));
         }
 
         return new TurnRotationOverview(summaries);

@@ -429,6 +429,8 @@ test("an adult runs several whose-turn rotations side by side", async ({
           ? ["2026-09-21"]
           : ["2026-09-21", "2026-09-22"]
         ).map((date) => ({ ...turnFor(rotation, date), date })),
+        upNext: [],
+        endsTomorrow: Boolean(rotation.ended),
       })),
     };
   }

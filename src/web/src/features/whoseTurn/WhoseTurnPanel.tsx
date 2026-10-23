@@ -156,13 +156,9 @@ function RotationItem({
   // A queued change can still be undone; until it is saved the rotation is locked.
   const submitting = fetcher.state !== "idle" || queued;
   // An ended rotation keeps today's answer, so it stays listed until tomorrow; a queued End
-  // already shows that.
-  const endsTomorrow =
-    ending ||
-    (rotation.current !== null &&
-      !rotation.upcomingTurns.some(
-        (turn) => turn.date === addDaysIso(currentDate, 1),
-      ));
+  // already shows that. The server says so outright: a rotation that moves on when ticked
+  // previews no future dates whether or not it has been ended.
+  const endsTomorrow = ending || rotation.endsTomorrow;
   const endError =
     fetcher.data?.intent === "end" ? fetcher.data.error : undefined;
 

@@ -593,6 +593,31 @@ public sealed class TurnRotationServiceTests
     }
 
     [Fact]
+    public async Task Overview_says_whether_each_kind_of_rotation_ends_tomorrow()
+    {
+        var repository = new FakeRepository();
+        repository.Add(Pink, Today.AddDays(-2), [ChildA, ChildB], ChildA, created: Created);
+        var ticked = repository.Add(
+            NextToMum, Today.AddDays(-2), [ChildA, ChildB, ChildC], ChildA, created: Created.AddMinutes(1),
+            advanceMode: TurnAdvanceMode.WhenTicked);
+        repository.Tick(ticked, Today.AddDays(-1), ChildA);
+        var service = CreateService(repository);
+
+        var before = (await service.GetOverviewAsync(CancellationToken.None)).Rotations;
+        await service.EndAsync(Adult.Id, Pink, CancellationToken.None);
+        var ended = await service.EndAsync(Adult.Id, NextToMum, CancellationToken.None);
+
+        Assert.Equal([false, false], before.Select(rotation => rotation.EndsTomorrow));
+        // The tick-based rotation previews only today either way, so the flag is what tells
+        // an ended one apart.
+        Assert.Single(before[1].UpcomingTurns);
+        Assert.Equal([true, true], ended.Rotations.Select(rotation => rotation.EndsTomorrow));
+        Assert.Equal(
+            [Pink, NextToMum],
+            (await service.GetOverviewAsync(CancellationToken.None)).Rotations.Select(rotation => rotation.RotationId));
+    }
+
+    [Fact]
     public async Task Overview_lists_the_order_from_whoever_takes_the_next_turn()
     {
         var repository = new FakeRepository();

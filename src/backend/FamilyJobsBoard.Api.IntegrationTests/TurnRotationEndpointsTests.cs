@@ -475,6 +475,27 @@ public sealed class TurnRotationEndpointsTests : IAsyncLifetime
                 .Select(turn => turn.TurnNumber).ToListAsync());
     }
 
+    [Fact]
+    public async Task Overview_says_when_daily_and_tick_based_rotations_end_tomorrow()
+    {
+        await CreateAsync([DemoDataIds.Fredster, DemoDataIds.Harrie], DemoDataIds.Fredster, _today, "Who is Pink today?");
+        var created = await CreateAsync(
+            [DemoDataIds.Fredster, DemoDataIds.Harrie], DemoDataIds.Harrie, _today, "Who is first in the shower?", "whenTicked");
+        var ids = created.Rotations.Select(rotation => rotation.RotationId).ToArray();
+
+        var before = await GetOverviewAsync(DemoDataIds.Addie);
+        foreach (var id in ids)
+        {
+            using var end = await SendAsync(HttpMethod.Delete, $"/api/turn-rotations/{id}", DemoDataIds.Addie);
+            Assert.Equal(HttpStatusCode.OK, end.StatusCode);
+        }
+
+        var after = await GetOverviewAsync(DemoDataIds.Addie);
+        Assert.Equal([false, false], before.Rotations.Select(rotation => rotation.EndsTomorrow));
+        Assert.Equal(ids, after.Rotations.Select(rotation => rotation.RotationId));
+        Assert.Equal([true, true], after.Rotations.Select(rotation => rotation.EndsTomorrow));
+    }
+
     private async Task<BoardResponse> GetTodayAsync(Guid memberId, DateOnly? date = null)
     {
         var url = date is null ? "/api/today" : $"/api/today?date={date:yyyy-MM-dd}";
@@ -608,7 +629,8 @@ public sealed class TurnRotationEndpointsTests : IAsyncLifetime
         Guid RotationId,
         ConfigurationResponse? Current,
         IReadOnlyList<TurnResponse> UpcomingTurns,
-        IReadOnlyList<ChildResponse> UpNext);
+        IReadOnlyList<ChildResponse> UpNext,
+        bool EndsTomorrow);
 
     private sealed record TickRequest(Guid RequestId, Guid RevisionId, int TurnNumber, Guid ChildId);
 
