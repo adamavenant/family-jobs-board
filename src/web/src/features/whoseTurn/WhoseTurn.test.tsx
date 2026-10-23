@@ -759,12 +759,15 @@ describe("Whose Turn Is It?", () => {
       screen.getByRole("checkbox", { name: "Fredster has had their turn" }),
     );
     await saveQueuedAction(user);
-    const next = await screen.findByRole("checkbox", {
-      name: "Harrie has had their turn",
-    });
     // The checkbox stays locked until the first tick's own submission settles.
-    await waitFor(() => expect(next).toBeEnabled());
-    await user.click(next);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("checkbox", { name: "Harrie has had their turn" }),
+      ).toBeEnabled(),
+    );
+    await user.click(
+      screen.getByRole("checkbox", { name: "Harrie has had their turn" }),
+    );
     await saveQueuedAction(user);
     await screen.findByRole("checkbox", {
       name: "Fredster has had their turn",
