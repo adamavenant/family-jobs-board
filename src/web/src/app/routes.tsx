@@ -1,10 +1,4 @@
-import {
-  startTransition,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect } from "react";
 import { Outlet, useLoaderData, useRevalidator } from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import type { RouteObject } from "react-router";
@@ -70,6 +64,7 @@ import {
   undoQueue,
 } from "./undoQueue";
 import { UndoToasts } from "./UndoToasts";
+import { useAfterPendingTransitions } from "./pendingTransitions";
 import {
   formText,
   pointsText,
@@ -1455,37 +1450,6 @@ function AppShell() {
       <Outlet />
       <UndoToasts />
     </>
-  );
-}
-
-/**
- * Waits until React has rendered every transition started so far, such as the router's
- * state updates. React renders pending transitions together, so a transition started
- * now can't render before them.
- */
-function useAfterPendingTransitions(): () => Promise<void> {
-  const waiting = useRef(new Map<number, () => void>());
-  const lastStarted = useRef(0);
-  const [rendered, setRendered] = useState(0);
-
-  useEffect(() => {
-    for (const [started, resolve] of waiting.current) {
-      if (started <= rendered) {
-        waiting.current.delete(started);
-        resolve();
-      }
-    }
-  }, [rendered]);
-
-  return useCallback(
-    () =>
-      new Promise<void>((resolve) => {
-        lastStarted.current += 1;
-        const started = lastStarted.current;
-        waiting.current.set(started, resolve);
-        startTransition(() => setRendered(started));
-      }),
-    [],
   );
 }
 
