@@ -1416,11 +1416,16 @@ function AppShell() {
   useEffect(
     () =>
       undoQueue.connect({
-        // The router renders reloaded data a moment after revalidate() resolves. Until it
-        // has, removing a saved action would show it undone.
-        revalidate: async () => {
+        // The router renders reloaded data a moment after revalidate() resolves. The saved
+        // action leaves the page as that render happens, so it never shows undone or twice.
+        revalidate: async (shown) => {
           await revalidate();
-          await afterPendingTransitions();
+          await new Promise<void>((resolve) =>
+            afterPendingTransitions(() => {
+              shown();
+              resolve();
+            }),
+          );
         },
         keepAlive: keepSessionActiveFor,
       }),

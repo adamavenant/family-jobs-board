@@ -7,7 +7,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { routes } from "../../app/routes";
 import { acceptSession, clearIdentity } from "../../api/auth";
 import type { FamilyMember } from "../../api/members";
-import { expectAnnounced, saveQueuedAction } from "../../test/undo";
+import {
+  expectAnnounced,
+  recordChanges,
+  saveQueuedAction,
+} from "../../test/undo";
 
 const addie = {
   id: "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c",
@@ -838,6 +842,11 @@ describe("Today page", () => {
         name: "Make the beds for Harrie, being added",
       }),
     ).toBeInTheDocument();
+    // The placeholders give way to the saved jobs without either showing twice or
+    // leaving a gap, even for one render.
+    const stopRecording = recordChanges(() => [
+      `${screen.queryAllByRole("heading", { name: "Make the beds" }).length} shown`,
+    ]);
     await saveQueuedAction(user);
 
     expect(
@@ -852,6 +861,7 @@ describe("Today page", () => {
     expect(
       screen.getAllByRole("button", { name: "Mark as done for Harrie" }),
     ).toHaveLength(1);
+    expect(stopRecording()).toEqual(["2 shown"]);
   });
 
   it.each(["native", "fallback"])(
@@ -1402,11 +1412,14 @@ describe("Today page", () => {
     expect(screen.getByLabelText("0 jobs awaiting review")).toBeInTheDocument();
     await saveQueuedAction(user);
 
-    expect(
-      await within(card as HTMLElement).findByRole("button", {
-        name: "Mark as done for Fredster",
-      }),
-    ).toBeEnabled();
+    // The job unlocks once the rejection is saved and the board has reloaded.
+    await waitFor(() =>
+      expect(
+        within(card as HTMLElement).getByRole("button", {
+          name: "Mark as done for Fredster",
+        }),
+      ).toBeEnabled(),
+    );
   });
 
   it("reports a rejection the server refuses after the undo time", async () => {
@@ -2127,6 +2140,15 @@ describe("Today page", () => {
       surname: "Avenant",
       nickname: "Freddie",
     });
+    // The profile unlocks once its edit is saved and the page has reloaded.
+    await waitFor(() =>
+      expect(
+        within(fredsterProfile).getByRole("button", {
+          name: "Save profile",
+          hidden: true,
+        }),
+      ).toBeEnabled(),
+    );
 
     const updatedProfile = screen.getByText("Freddie").closest("li");
     expect(updatedProfile).not.toBeNull();
@@ -2173,6 +2195,14 @@ describe("Today page", () => {
           return request?.method === "DELETE";
         }),
       ).toBe(true),
+    );
+    // The profile unlocks once its deactivation is saved and the page has reloaded.
+    await waitFor(() =>
+      expect(
+        within(
+          screen.getByRole("list", { name: "Inactive family members" }),
+        ).getByRole("button", { name: "Restore profile" }),
+      ).toBeEnabled(),
     );
     const inactiveList = screen.getByRole("list", {
       name: "Inactive family members",
