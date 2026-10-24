@@ -417,12 +417,14 @@ describe("Whose Turn Is It?", () => {
 
     await user.click(screen.getByRole("button", { name: "Undo" }));
 
-    expect(
-      screen.getByRole("checkbox", { name: "Fredster has had their turn" }),
-    ).not.toBeChecked();
-    expect(
-      screen.getByRole("checkbox", { name: "Fredster has had their turn" }),
-    ).toBeEnabled();
+    // The checkbox shows the tick's own submission until it settles.
+    await waitFor(() => {
+      const undone = screen.getByRole("checkbox", {
+        name: "Fredster has had their turn",
+      });
+      expect(undone).not.toBeChecked();
+      expect(undone).toBeEnabled();
+    });
     expect(api.requests).toEqual([]);
   });
 
@@ -757,10 +759,14 @@ describe("Whose Turn Is It?", () => {
       screen.getByRole("checkbox", { name: "Fredster has had their turn" }),
     );
     await saveQueuedAction(user);
+    // The checkbox stays locked until the first tick's own submission settles.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("checkbox", { name: "Harrie has had their turn" }),
+      ).toBeEnabled(),
+    );
     await user.click(
-      await screen.findByRole("checkbox", {
-        name: "Harrie has had their turn",
-      }),
+      screen.getByRole("checkbox", { name: "Harrie has had their turn" }),
     );
     await saveQueuedAction(user);
     await screen.findByRole("checkbox", {

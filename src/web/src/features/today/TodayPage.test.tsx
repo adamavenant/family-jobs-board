@@ -772,6 +772,11 @@ describe("Today page", () => {
     ).toBe(true);
 
     await user.click(screen.getByRole("link", { name: "Today" }));
+    // Use today's board only once its date navigation marks today as current: until then
+    // the previous day's page, and its links, are still on screen.
+    expect(
+      await screen.findByText("Today", { selector: "[aria-current=date]" }),
+    ).toBeVisible();
     expect(router.state.location.search).toBe(`?childId=${harrie.id}`);
     await user.click(screen.getByRole("link", { name: "All children" }));
     expect(
@@ -1443,9 +1448,12 @@ describe("Today page", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Not saved: Sent “Clear the table” back to Fredster. This job is no longer pending approval.",
     );
-    expect(
-      await screen.findByRole("button", { name: "Approve +5 points" }),
-    ).toBeEnabled();
+    // Controls stay locked until the queued action's own result settles.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Approve +5 points" }),
+      ).toBeEnabled(),
+    );
   });
 
   it("persists an explicit dark theme selection", async () => {

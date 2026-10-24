@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
@@ -113,7 +113,12 @@ describe("Reversing an approval", () => {
     expect(
       await screen.findByRole("button", { name: "Approve +5 points" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Feed the dog" })).toHaveFocus();
+    // Focus moves once the queued reversal's result settles, a moment after the card changes.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Feed the dog" }),
+      ).toHaveFocus(),
+    );
     expect(
       screen.queryByText("Approved — 5 points awarded"),
     ).not.toBeInTheDocument();
@@ -129,7 +134,7 @@ describe("Reversing an approval", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
 
     await saveQueuedAction(user);
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
     const request = fetch.mock.calls[1]?.[0] as Request;
     expect(request.method).toBe("POST");
     const url = new URL(request.url);
@@ -170,13 +175,16 @@ describe("Reversing an approval", () => {
     await saveQueuedAction(user);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
     expect(
       await within(card).findByText("Approved — 5 points awarded"),
     ).toBeInTheDocument();
-    expect(
-      within(card).getByRole("button", { name: "Reverse approval" }),
-    ).toBeEnabled();
+    // Controls stay locked until the queued action's own result settles.
+    await waitFor(() =>
+      expect(
+        within(card).getByRole("button", { name: "Reverse approval" }),
+      ).toBeEnabled(),
+    );
   });
 
   it("shows the job as it is now when another grown-up already reversed it", async () => {
@@ -212,10 +220,13 @@ describe("Reversing an approval", () => {
     await saveQueuedAction(user);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
-    expect(
-      await within(card).findByRole("button", { name: "Approve +5 points" }),
-    ).toBeEnabled();
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+    // Controls stay locked until the queued action's own result settles.
+    await waitFor(() =>
+      expect(
+        within(card).getByRole("button", { name: "Approve +5 points" }),
+      ).toBeEnabled(),
+    );
     expect(card).not.toHaveTextContent("Approved — 5 points awarded");
   });
 

@@ -180,6 +180,11 @@ describe("Point adjustments", () => {
     );
     await user.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(api.requests).toHaveLength(2));
+    // The form resets and unlocks once the first adjustment's own submission settles.
+    await waitFor(() => {
+      expect(within(form).getByLabelText("Reason")).toHaveValue("");
+      expect(submit).toBeEnabled();
+    });
     await user.type(within(form).getByLabelText("Number of points"), "2");
     await user.type(within(form).getByLabelText("Reason"), "More chores");
     await user.click(submit);
