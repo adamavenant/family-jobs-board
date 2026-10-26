@@ -1,15 +1,19 @@
 # Observability stack operations
 
 This runbook operates the separate Grafana/Prometheus/Loki/Alloy/Blackbox/query
-gateway Compose project. It does not deploy the Family Jobs Board application,
-change DNS or reverse-proxy configuration, or expose Grafana to the LAN.
+gateway Compose project. The portable base publishes no host ports. The
+production ingress overlay connects Grafana to Caddy's private monitor network
+so the application proxy can expose it at `https://monitor.home.arpa`.
+
+The host-specific storage mechanism, DNS/proxy changes, deployment evidence,
+and rollback record belong in the private deployment repository. This public
+runbook defines only the portable observability boundary.
 
 ## Prepare configuration
 
 Install Docker Engine 23.0 or newer with the Compose plugin. The bounded
-container collector uses Docker Engine API v1.42, the first API level whose
-`GET /system/df?type=volume` request limits disk-usage work to volumes. Copy the
-example outside the checkout and create a strong Grafana
+container collector uses Docker Engine API v1.42 only for allowlisted container
+list and inspect requests. Copy the example outside the checkout and create a strong Grafana
 operator password as a separate mode-0600 file:
 
 ```sh
@@ -44,6 +48,25 @@ an internal local bridge. Both Compose projects treat the network as external,
 so stopping either project cannot remove it. The application must use its
 optional telemetry override; its base Compose project does not depend on this
 network or collector.
+
+Production ingress also needs its dedicated private bridge:
+
+```sh
+sudo sh -c 'set -eu; set -a; . /etc/family-jobs-board-observability/observability.env; set +a; exec ./scripts/ensure-monitor-network.sh'
+```
+
+The application proxy must be started with `compose.monitor.yaml`; that overlay
+installs the monitor Caddy site and is the only application service allowed on
+this bridge. Export Caddy's public root certificate as described in the LAN
+deployment runbook and install it at `CADDY_ROOT_CERT_FILE`. The observability
+ingress overlay mounts only that public certificate read-only into Blackbox so
+probes validate the actual internal-CA certificate; it never exposes the CA
+private key.
+
+```sh
+sudo install -o root -g root -m 644 ./family-jobs-board-root.crt \
+  /etc/family-jobs-board-observability/family-jobs-board-root.crt
+```
 
 ## Provision bounded production storage
 
@@ -80,6 +103,33 @@ change:
 ./scripts/check-observability-config.sh
 ```
 
+### Docker Snap compatibility exception
+
+The baseline requires `no-new-privileges:true` on every service. A confined
+Docker Snap installation can reject the container's first exec before its
+entry point runs. Prove that exact host limitation before using the narrowly
+scoped compatibility overlay:
+
+```sh
+docker run --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  busybox:1.37.0-uclibc /bin/sh -c true
+```
+
+Use `observability/compose.snap-docker-compat.yaml` only when that command fails
+with exit 255 and `exec /bin/sh: operation not permitted`, while the same probe
+without the single `--security-opt` argument succeeds. The overlay resets only
+`security_opt`; read-only filesystems, dropped capabilities, storage/query
+bounds, service identities, and network isolation remain inherited and are
+checked across the base and compatibility renders. It must be applied after
+`compose.storage-bounds.yaml` because it also resets the storage preflight
+service defined there. Record the probe and exception in the private deployment
+repository. Because removing `no-new-privileges` increases the residual risk,
+especially for the LAN-reachable Grafana service and the Docker-socket-holding
+container exporter, migrate the host to the supported Docker Engine packages
+rather than treating this overlay as a
+permanent baseline. Never use it on a host where the baseline probe succeeds.
+
 Pull the directly used images and rebuild the four health-check wrapper images
 plus the privacy-bounded container exporter from their pinned bases:
 
@@ -99,11 +149,13 @@ Production startup must include the bounded-storage overlay:
 
 ```sh
 sudo sh -c 'set -eu; set -a; . /etc/family-jobs-board-observability/observability.env; set +a; exec ./scripts/ensure-observability-network.sh'
+sudo sh -c 'set -eu; set -a; . /etc/family-jobs-board-observability/observability.env; set +a; exec ./scripts/ensure-monitor-network.sh'
 
 docker compose \
   --env-file /etc/family-jobs-board-observability/observability.env \
   -f observability/compose.yaml \
   -f observability/compose.storage-bounds.yaml \
+  -f observability/compose.ingress.yaml \
   up --detach --wait
 ```
 
@@ -116,12 +168,15 @@ docker compose \
   --env-file /etc/family-jobs-board-observability/observability.env \
   -f observability/compose.yaml \
   -f observability/compose.storage-bounds.yaml \
+  -f observability/compose.ingress.yaml \
   ps --all
 ```
 
-No service is reachable from the host in this issue. The
-`compose.test-ingress.yaml` file publishes Grafana only on loopback for the
-automated verification harness; never include it in a LAN deployment.
+Only Grafana is reachable from the LAN, through Caddy at
+`https://monitor.home.arpa`; the observability project itself still publishes
+no host ports. The `compose.test-ingress.yaml` file publishes Grafana only on
+loopback for the automated verification harness; never include it in a LAN
+deployment.
 Grafana has no route to the backend network. Its data sources use the internal
 query gateway, whose deny-by-default path-and-method allowlist exposes only
 reviewed Prometheus/Loki query APIs. OTLP ingest and backend administration stay
@@ -160,9 +215,10 @@ dashboard. It intentionally contains only:
   bounded image tag and immutable Docker image content ID for the `api`, `db`,
   `proxy`, and `web` Compose services.
 
-It also shows Docker-reported bytes used by the exact Prometheus and Loki data
-volumes. This includes every file in each volume, while the capacity checks
-below remain authoritative for filesystem size and non-volume overhead.
+It also shows filesystem bytes used by the exact Prometheus and Loki data
+volumes. Production gives each volume its own bounded filesystem, so the values
+include filesystem metadata as well as every telemetry file. The capacity
+checks below remain authoritative for the hard limit.
 Per-container CPU and memory remain deliberately excluded: the approved scope
 is aggregate server capacity, and collecting per-container resources would
 require a broader Docker/cAdvisor boundary.
@@ -176,14 +232,13 @@ host access: the root mount exists only so the filesystem collector can call
 
 The container exporter is the only service that receives the read-only Docker
 socket bind. Its Docker client has a fixed `GET` allowlist for container list
-and inspect plus volume disk usage, sends exact Compose project/service label
-filters, rechecks returned labels, and emits only the fixed service name plus
-sanitized image tag and content ID. From the disk-usage response it retains
-only byte totals for the exact observability Prometheus and Loki volume names;
-unrelated volume names and sizes are discarded. Docker's host-wide disk-usage
-call is cached for five minutes rather than repeated by each health check and
-scrape, and separate success/last-success metrics make a failed refresh stale.
-Its network surface exposes
+and inspect, sends exact Compose project/service label filters, rechecks
+returned labels, and emits only the fixed service name plus sanitized image tag
+and content ID. It also receives the exact Prometheus and Loki data volumes at
+fixed read-only mount points and calls only `statvfs` on those roots; it does not
+walk filenames or expose paths. The aggregate filesystem results are cached for
+five minutes rather than recomputed by each health check and scrape, and
+separate success/last-success metrics make a failed refresh stale. Its network surface exposes
 only `/metrics` and a fail-closed `/health`; raw Docker endpoints are not
 proxied. Container names, IDs, arbitrary labels, environment, mounts, commands,
 logs, and unrelated volume inventory never become metrics.
@@ -197,10 +252,18 @@ sanitized output, and private backend network reduce but do not remove that
 residual risk. Never attach the Docker socket to Grafana, Prometheus, Loki,
 Blackbox, or Alloy.
 
-Blackbox alone has an egress-capable probe network so it can resolve and reach
-`dashboard.home.arpa`; it has no host port. If all three application checks go
-down together, verify that Docker's configured DNS can resolve the LAN-only
-name before treating the result as an application failure.
+Blackbox alone has an egress-capable probe network so it can reach
+`dashboard.home.arpa`; it has no host port. Production ingress maps that fixed
+hostname to `APP_PROBE_ADDRESS`, which must be the LAN address served by Caddy.
+The production ingress model is deliberately limited to this issue's
+`dashboard.home.arpa` deployment. Do not apply it when the application's
+`APP_HOSTNAME` is customized; parameterizing Prometheus's static target belongs
+in a separate change.
+It probes HTTPS through Caddy and nginx, validates Caddy's root from the
+read-only exported certificate, and exercises the public web and API health
+routes. If all three application checks go down together, verify that the
+configured address and root-certificate file are current before treating the
+result as an application failure.
 
 ## Stop, restart, and remove non-destructively
 
@@ -211,6 +274,7 @@ docker compose \
   --env-file /etc/family-jobs-board-observability/observability.env \
   -f observability/compose.yaml \
   -f observability/compose.storage-bounds.yaml \
+  -f observability/compose.ingress.yaml \
   stop
 ```
 
@@ -223,6 +287,7 @@ docker compose \
   --env-file /etc/family-jobs-board-observability/observability.env \
   -f observability/compose.yaml \
   -f observability/compose.storage-bounds.yaml \
+  -f observability/compose.ingress.yaml \
   down --remove-orphans
 ```
 
@@ -244,9 +309,9 @@ docker run --rm --network none --read-only --cap-drop ALL \
 ```
 
 The `1M-blocks` column must be no greater than 2048 for Prometheus and 4096
-for Loki. Grafana's volume-use panels do not replace checking the host
-filesystem and its alerts because filesystem metadata and unrelated overhead
-sit outside Docker's per-volume byte totals.
+for Loki. Grafana's storage panels use the same filesystem-block accounting,
+including metadata and every file on each dedicated telemetry filesystem. They
+do not replace checking the host filesystem and its alerts.
 
 ## Upgrade
 

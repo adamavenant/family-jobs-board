@@ -1,0 +1,21 @@
+services:
+  blackbox:
+    extra_hosts:
+      - "dashboard.home.arpa:${APP_PROBE_ADDRESS:?APP_PROBE_ADDRESS must be set to the LAN address used for application probes}"
+    volumes:
+      - ${CADDY_ROOT_CERT_FILE:?CADDY_ROOT_CERT_FILE must point to an exported Caddy root certificate}:/etc/blackbox/caddy-root.crt:ro
+
+  grafana:
+    environment:
+      GF_SERVER_ROOT_URL: https://${MONITOR_HOSTNAME:-monitor.home.arpa}/
+      GF_SECURITY_COOKIE_SECURE: "true"
+    networks:
+      query:
+      monitor-ingress:
+        aliases:
+          - observability-grafana
+
+networks:
+  monitor-ingress:
+    name: ${MONITOR_INGRESS_NETWORK_NAME:-family-jobs-board-monitor-ingress}
+    external: true

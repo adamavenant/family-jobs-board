@@ -1,7 +1,14 @@
 http://{$APP_HOSTNAME:dashboard.home.arpa} {
+	redir https://{$APP_HOSTNAME:dashboard.home.arpa}{uri} 302
+}
+
+{$APP_HOSTNAME:dashboard.home.arpa} {
+	tls internal
 	reverse_proxy web:3000
 }
 
 :80 {
 	respond "Not found" 404
 }
+
+import /etc/caddy/sites/*.caddy

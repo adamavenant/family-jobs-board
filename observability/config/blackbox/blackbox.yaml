@@ -9,6 +9,18 @@ modules:
       valid_http_versions:
         - HTTP/1.1
         - HTTP/2.0
+  https_2xx_internal_ca:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      follow_redirects: false
+      preferred_ip_protocol: ip4
+      valid_http_versions:
+        - HTTP/1.1
+        - HTTP/2.0
+      tls_config:
+        ca_file: /etc/blackbox/caddy-root.crt
   tcp_connect:
     prober: tcp
     timeout: 5s

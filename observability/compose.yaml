@@ -188,11 +188,15 @@ services:
     environment:
       DOCKER_API_URL: unix:///var/run/docker.sock
       FJB_COMPOSE_PROJECT_NAME: ${FJB_COMPOSE_PROJECT_NAME:-family-jobs-board}
-      OBSERVABILITY_RESOURCE_PREFIX: ${OBSERVABILITY_RESOURCE_PREFIX:-family-jobs-board-observability}
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
     expose:
       - "9400"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - prometheus-data:/telemetry/prometheus:ro
+      - loki-data:/telemetry/loki:ro
     tmpfs:
       - /tmp:size=8m,mode=1777
     networks:
