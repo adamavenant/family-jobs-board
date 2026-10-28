@@ -2,10 +2,10 @@
 
 ## Status
 
-Implemented by issue #139. Like `080-whose-turn-rotation.md`, this is a
-cross-cutting feature outside the `PLAN.md` phase arc, so its spec is written
-alongside the implementation. The design decision is recorded in
-`docs/adr/0004-undo-by-delaying-saves.md`.
+Implemented by issue #139; issue #164 folds older queued actions into one
+row. Like `080-whose-turn-rotation.md`, this is a cross-cutting feature outside
+the `PLAN.md` phase arc, so its spec is written alongside the implementation.
+The design decision is recorded in `docs/adr/0004-undo-by-delaying-saves.md`.
 
 ## Outcome and user value
 
@@ -52,7 +52,8 @@ previewing a recurring change, and saving the undo time itself.
   device, shown as already done, and sent only when its toast expires or is
   dismissed. Undo drops it without a request. No reversal endpoints exist.
 - Each queued action is sent at most once. Several queued actions are
-  independent: each has its own toast, countdown, and request. Pressing Undo
+  independent: each has its own countdown, request, and Undo, and keeps
+  counting down while it is folded away in the toast stack. Pressing Undo
   after the countdown has already sent an action says it is too late rather
   than appearing to undo it.
 - Queued actions are sent straight away when the page is hidden
@@ -106,6 +107,12 @@ points" leaves the setting alone.
   "Being added"; balances in the redeem form count queued spends. Controls on a
   queued item are disabled so it can't be acted on twice, and an approval that
   is still queued is undone with Undo rather than reversed.
+- **Several queued:** only the newest queued action shows as a full toast.
+  The older ones fold into one compact row above it ("2 more waiting · Show").
+  Pressing the row shows every queued action as a full toast, newest nearest
+  the row, and pressing it again ("… · Hide") folds them back; the stack folds
+  again by itself once only one action is waiting. Error toasts and success
+  messages are never folded.
 - **Undone:** the toast closes and the item returns to its previous state.
 - **Saved:** the toast closes, the request is sent once, and the page
   revalidates to the server's state.
@@ -124,13 +131,17 @@ points" leaves the setting alone.
   control are native buttons described by the toast's text. The countdown is
   hidden from screen readers so it isn't announced every second, and it pauses
   (showing "Paused") while a toast has keyboard focus or the pointer moves over
-  it — a toast that appears under a resting cursor doesn't pause itself. When
-  a focused toast closes, focus moves to the next toast, else back to where it
-  came from, else the main content. The newest toast is first in keyboard
-  order and drawn at the bottom of the stack, in view. Toasts stack inside the
-  screen at phone widths, scroll when there are many, and the page reserves
-  space below so content behind them can be scrolled into view. The progress
-  bar respects reduced motion.
+  it — a toast that appears under a resting cursor doesn't pause itself. The
+  folded row is a native button with `aria-expanded`; it pauses every action
+  it stands for in the same way, so they can't save, and the row can't vanish,
+  while someone is about to open it. When a focused toast closes, focus moves
+  to the next toast (the newest one left, even if it was folded away until
+  then), else back to where it came from, else the main content. The newest
+  toast is first in keyboard order and drawn at the bottom of the stack, in
+  view, followed by the folded row and then, when shown, the older toasts.
+  Toasts stack inside the screen at phone widths, scroll when there are many,
+  and the page reserves space below so content behind them can be scrolled
+  into view. The progress bar respects reduced motion.
 
 ## Audit and security
 
@@ -157,6 +168,9 @@ are held only in the page's memory and are never persisted in browser storage.
   children can't change the setting (`403`).
 - Keyboard and screen-reader users can reach Undo, and the countdown pauses
   while the toast is focused or hovered.
+- Given several queued actions, then only the newest shows as a full toast and
+  the rest fold into one row; showing the row reveals every Undo, each folded
+  action still saves on its own timer, and error toasts stay fully visible.
 
 ## Automated tests
 
@@ -165,9 +179,11 @@ concurrent first save. PostgreSQL integration tests cover the endpoints,
 authorization, validation, the board field, simultaneous first saves, the
 database constraints, and reset. Vitest (fake timers) covers the queue,
 the toast, every undoable panel, flushing on hide/close and before sign-out,
-`keepalive`, and the settings panel. Playwright covers queueing, Undo, expiry,
-dismissal, refused saves, sending on hide/close and before sign-out, keyboard
-pausing, and stacked toasts at phone width.
+`keepalive`, and the settings panel. Vitest also covers folding older actions,
+showing and hiding them, their independent timers, pausing from the folded row,
+and focus moving to a toast that was folded away. Playwright covers queueing,
+Undo, expiry, dismissal, refused saves, sending on hide/close and before
+sign-out, keyboard pausing, and the folded stack at phone width.
 
 ## Compose demonstration
 
