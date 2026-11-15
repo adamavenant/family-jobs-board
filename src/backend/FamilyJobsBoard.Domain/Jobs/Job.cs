@@ -107,6 +107,18 @@ public sealed class Job
 
     public DateTimeOffset? ApprovedAtUtc { get; private set; }
 
+    /// <summary>
+    /// How many times the job has been approved, counting approvals that were later reversed.
+    /// Each approval's points award carries its number, so a job awards once per approval.
+    /// </summary>
+    public int ApprovalCount { get; private set; }
+
+    /// <summary>
+    /// Whether the current approval came from an adult marking the job done for the child,
+    /// rather than approving the child's submission. Reversing it then reopens the job.
+    /// </summary>
+    public bool CompletedByAdult { get; private set; }
+
     public Guid? CancelledByMemberId { get; private set; }
 
     public DateTimeOffset? CancelledAtUtc { get; private set; }
@@ -133,6 +145,43 @@ public sealed class Job
 
         Status = JobStatus.Approved;
         ApprovedAtUtc = approvedAtUtc.ToUniversalTime();
+        ApprovalCount++;
+    }
+
+    /// <summary>
+    /// An adult marks an open job done on the child's behalf, which approves it in the same
+    /// step.
+    /// </summary>
+    public void CompleteForChild(DateTimeOffset completedAtUtc)
+    {
+        MarkComplete(completedAtUtc);
+        Approve(completedAtUtc);
+        CompletedByAdult = true;
+    }
+
+    /// <summary>
+    /// Undoes the current approval and restores the job to how it was before it: waiting for
+    /// approval with its completion time if the child submitted it, or open with no completion
+    /// if an adult marked it done for the child.
+    /// </summary>
+    public void ReverseApproval()
+    {
+        if (Status != JobStatus.Approved)
+        {
+            throw new JobApprovalReversalRejectedException(Id);
+        }
+
+        ApprovedAtUtc = null;
+        if (CompletedByAdult)
+        {
+            Status = JobStatus.Open;
+            CompletedAtUtc = null;
+            CompletedByAdult = false;
+        }
+        else
+        {
+            Status = JobStatus.PendingApproval;
+        }
     }
 
     public void Reject()

@@ -38,11 +38,15 @@ public sealed record TurnRotationConfiguration(
 
 public sealed record TurnRotationChild(Guid ChildId, string ChildDisplayName);
 
+/// <param name="EndsTomorrow">
+/// The rotation has been ended: it still answers today but stops appearing from tomorrow.
+/// </param>
 public sealed record TurnRotationSummary(
     Guid RotationId,
     TurnRotationConfiguration? Current,
     IReadOnlyList<TurnRotationAnswer> UpcomingTurns,
-    IReadOnlyList<TurnRotationChild> UpNext);
+    IReadOnlyList<TurnRotationChild> UpNext,
+    bool EndsTomorrow);
 
 public sealed record TurnRotationOverview(IReadOnlyList<TurnRotationSummary> Rotations);
 

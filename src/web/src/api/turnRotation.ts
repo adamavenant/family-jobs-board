@@ -75,13 +75,15 @@ export async function saveTurnRotation(
 export async function endTurnRotation(
   rotationId: string,
 ): Promise<TurnRotationOverview> {
-  const { data, error } = await apiClient().DELETE(
+  const { data, error, response } = await apiClient().DELETE(
     "/api/turn-rotations/{rotationId}",
     { params: { path: { rotationId } } },
   );
   if (!data) {
     throw new TurnRotationApiError(
-      problemMessage(error, "That rotation couldn't be ended."),
+      response.status === 404
+        ? "That rotation is no longer available. Refresh the rotation list and try again."
+        : problemMessage(error, "That rotation couldn't be ended."),
     );
   }
 

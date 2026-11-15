@@ -181,6 +181,11 @@ function LedgerEntries({
               </span>
               <span className="earning-list__detail">
                 <strong>{entry.name}</strong>
+                {entry.isApprovalReversal ? (
+                  <span className="earning-list__reversal">
+                    Approval reversed
+                  </span>
+                ) : null}
                 {showsChildNames ? (
                   <span className="earning-list__child">
                     {entry.childDisplayName}

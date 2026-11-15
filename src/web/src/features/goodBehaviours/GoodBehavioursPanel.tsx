@@ -1,38 +1,31 @@
 import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 
-import type {
-  GoodBehaviourType,
-  LoggedGoodBehaviour,
-} from "../../api/goodBehaviours";
+import type { GoodBehaviourType } from "../../api/goodBehaviours";
 import type { HouseholdMember } from "../../api/today";
+import { formText } from "../../app/actionDescriptions";
 import { createRequestId } from "../../app/requestId";
-import { useSuccessToast } from "../../app/SuccessToast";
+import { useUndoQueue } from "../../app/undoQueue";
+import type { QueuedAction } from "../../app/undoQueue";
 import { ChildAssignmentPicker } from "../today/ChildAssignmentPicker";
-import type { GoodBehavioursActionResult } from "./goodBehavioursRoute";
-
-type BehaviourFetcher = ReturnType<
-  typeof useFetcher<GoodBehavioursActionResult>
->;
+import type {
+  GoodBehavioursActionResult,
+  GoodBehavioursLoaderData,
+} from "./goodBehavioursRoute";
 
 export function GoodBehavioursPanel({
   children,
 }: {
   children: HouseholdMember[];
 }) {
-  const fetcher = useFetcher<GoodBehavioursActionResult>();
-  const { showSuccess } = useSuccessToast();
-  const types = fetcher.data?.types ?? [];
+  const fetcher = useFetcher<GoodBehavioursLoaderData>();
+  const { actions } = useUndoQueue();
+  const loadedTypes = fetcher.data?.types ?? [];
+  const types = showQueuedTypeChanges(loadedTypes, actions);
   const hasLoadedTypes = fetcher.data?.types !== undefined;
-  const message = fetcher.data?.error
-    ? undefined
-    : (fetcher.data?.message ?? loggedMessage(fetcher.data?.logged, children));
-
-  useEffect(() => {
-    if (fetcher.state === "idle" && message) {
-      showSuccess(message);
-    }
-  }, [fetcher.state, message, showSuccess]);
+  const adding = actions.filter(
+    (action) => action.formData.get("intent") === "createType",
+  );
 
   return (
     <details
@@ -64,9 +57,8 @@ export function GoodBehavioursPanel({
           </div>
           {hasLoadedTypes ? (
             <LogBehaviourForm
-              fetcher={fetcher}
               childMembers={children}
-              types={types}
+              types={types.map(({ type }) => type)}
             />
           ) : null}
         </div>
@@ -88,18 +80,31 @@ export function GoodBehavioursPanel({
         ) : (
           <section aria-labelledby="behaviour-types-heading">
             <h3 id="behaviour-types-heading">Behaviour types</h3>
-            {types.length === 0 ? (
+            {types.length === 0 && adding.length === 0 ? (
               <p className="inactive-family-members__empty">
                 No good behaviours yet. Add the first one below.
               </p>
             ) : (
               <ul className="good-behaviour-list" aria-label="Good behaviours">
-                {types.map((type) => (
-                  <TypeCard key={type.id} type={type} fetcher={fetcher} />
+                {types.map(({ type, queued }) => (
+                  <TypeCard key={type.id} type={type} queued={queued} />
+                ))}
+                {adding.map((action) => (
+                  <li key={action.id} className="good-behaviour--queued">
+                    <div className="family-member-list__identity">
+                      <strong>
+                        {formText(action.formData, "name").trim()}
+                      </strong>
+                      <span>Being added</span>
+                    </div>
+                    <span className="good-behaviour-list__points">
+                      {formText(action.formData, "points")} points
+                    </span>
+                  </li>
                 ))}
               </ul>
             )}
-            <CreateTypeForm fetcher={fetcher} />
+            <CreateTypeForm />
           </section>
         )}
       </div>
@@ -107,20 +112,40 @@ export function GoodBehavioursPanel({
   );
 }
 
-function loggedMessage(
-  logged: LoggedGoodBehaviour | undefined,
-  children: HouseholdMember[],
-): string | undefined {
-  if (!logged) {
-    return undefined;
-  }
+/** Types as they will be once queued edits and deletions are saved. */
+function showQueuedTypeChanges(
+  types: GoodBehaviourType[],
+  actions: readonly QueuedAction[],
+): { type: GoodBehaviourType; queued: boolean }[] {
+  return types.flatMap(
+    (type): { type: GoodBehaviourType; queued: boolean }[] => {
+      const form = actions.find(
+        (action) =>
+          action.formData.get("typeId") === type.id &&
+          (action.formData.get("intent") === "updateType" ||
+            action.formData.get("intent") === "deleteType"),
+      )?.formData;
+      if (!form) {
+        return [{ type, queued: false }];
+      }
+      if (form.get("intent") === "deleteType") {
+        return [];
+      }
 
-  const names = children
-    .filter((child) => logged.childIds.includes(child.id))
-    .map((child) => child.displayName);
-  const who = names.length > 0 ? ` for ${names.join(" and ")}` : "";
-  const each = logged.childIds.length > 1 ? " each" : "";
-  return `Logged ${logged.typeName}${who}: +${logged.points} points${each}.`;
+      const points = Number(formText(form, "points"));
+      return [
+        {
+          type: {
+            ...type,
+            name: formText(form, "name").trim() || type.name,
+            description: formText(form, "description").trim(),
+            points: Number.isInteger(points) ? points : type.points,
+          },
+          queued: true,
+        },
+      ];
+    },
+  );
 }
 
 function safeRequestId(): string | null {
@@ -132,14 +157,13 @@ function safeRequestId(): string | null {
 }
 
 function LogBehaviourForm({
-  fetcher,
   childMembers,
   types,
 }: {
-  fetcher: BehaviourFetcher;
   childMembers: HouseholdMember[];
   types: GoodBehaviourType[];
 }) {
+  const fetcher = useFetcher<GoodBehavioursActionResult>();
   const [typeId, setTypeId] = useState("");
   const [pointsOverride, setPointsOverride] = useState<string | null>(null);
   const [requestId, setRequestId] = useState(safeRequestId);
@@ -150,13 +174,8 @@ function LogBehaviourForm({
   const submitting = fetcher.state !== "idle";
 
   // A retry after an error reuses the request ID so the server can award once;
-  // only a successful log starts a fresh request.
-  if (
-    fetcher.state === "idle" &&
-    result &&
-    !result.error &&
-    result !== handledResult
-  ) {
+  // only a queued log starts a fresh request.
+  if (fetcher.state === "idle" && result?.queued && result !== handledResult) {
     setHandledResult(result);
     setRequestId(safeRequestId());
     setPointsOverride(null);
@@ -171,6 +190,8 @@ function LogBehaviourForm({
     >
       <input type="hidden" name="intent" value="logBehaviour" />
       <input type="hidden" name="requestId" value={requestId ?? ""} />
+      <input type="hidden" name="typeName" value={selected?.name ?? ""} />
+      <input type="hidden" name="typePoints" value={selected?.points ?? 0} />
       <ChildAssignmentPicker children={childMembers} legend="Log for" />
       <div className="form-group">
         <label htmlFor="behaviour-type">Good behaviour</label>
@@ -218,17 +239,17 @@ function LogBehaviourForm({
   );
 }
 
-function CreateTypeForm({ fetcher }: { fetcher: BehaviourFetcher }) {
+function CreateTypeForm() {
+  const fetcher = useFetcher<GoodBehavioursActionResult>();
   const formRef = useRef<HTMLFormElement>(null);
   const result =
     fetcher.data?.intent === "createType" ? fetcher.data : undefined;
-  const created = result && !result.error ? result.affectedTypeId : undefined;
 
   useEffect(() => {
-    if (fetcher.state === "idle" && created) {
+    if (fetcher.state === "idle" && result?.queued) {
       formRef.current?.reset();
     }
-  }, [created, fetcher.state]);
+  }, [fetcher.state, result]);
 
   return (
     <fetcher.Form
@@ -300,26 +321,24 @@ function TypeFields({
 
 function TypeCard({
   type,
-  fetcher,
+  queued,
 }: {
   type: GoodBehaviourType;
-  fetcher: BehaviourFetcher;
+  queued: boolean;
 }) {
+  const fetcher = useFetcher<GoodBehavioursActionResult>();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const editRef = useRef<HTMLDetailsElement>(null);
-  const action =
-    fetcher.data?.affectedTypeId === type.id ? fetcher.data : undefined;
-  const error =
-    action?.intent === "updateType" || action?.intent === "deleteType"
-      ? action.error
-      : undefined;
-  const submitting = fetcher.state !== "idle";
+  const action = fetcher.data;
+  const error = action?.error;
+  // A queued edit can still be undone; until it is saved the type is locked.
+  const submitting = fetcher.state !== "idle" || queued;
 
   useEffect(() => {
     if (
       fetcher.state === "idle" &&
       action?.intent === "updateType" &&
-      !action.error &&
+      action.queued &&
       editRef.current
     ) {
       editRef.current.open = false;
@@ -370,6 +389,7 @@ function TypeCard({
             <fetcher.Form method="post" action="/good-behaviours">
               <input type="hidden" name="intent" value="deleteType" />
               <input type="hidden" name="typeId" value={type.id} />
+              <input type="hidden" name="typeName" value={type.name} />
               <button
                 type="submit"
                 className="button--danger"
@@ -393,6 +413,7 @@ function TypeCard({
           type="button"
           className="button--quiet"
           onClick={() => setConfirmingDelete(true)}
+          disabled={queued}
         >
           Delete {type.name}
         </button>

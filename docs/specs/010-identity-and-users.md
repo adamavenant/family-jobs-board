@@ -431,7 +431,10 @@ The root route loader calls `/api/auth/start`, then renders exactly one of:
 - authenticated Today board.
 
 Forms cover loading, validation, submitting, success, server error, expiry, and
-retry. Incorrect PIN returns focus to the chooser with a generic message.
+retry. Creating, updating, deactivating, and restoring family members wait
+behind the undo toast (`100-undo-and-household-settings.md`); sign-in, sign-out,
+bootstrap, and PIN setup and reset are saved at once, and queued actions are
+sent before any of them changes who is signed in. Incorrect PIN returns focus to the chooser with a generic message.
 Expired sessions clear in-memory identity and return there too.
 
 Use one native labelled input with numeric input mode, appropriate one-time PIN

@@ -110,9 +110,13 @@ drops both tables.
   (empty when none do). This reuses the existing board endpoint so the
   browsed date and the answers always agree.
 - `GET /api/turn-rotations` — adult-only. Returns `{ rotations }`; each item
-  is `{ rotationId, current, upcomingTurns }`, where `current` is the revision
-  applicable today (or `null` if it has not started) and `upcomingTurns` is a
-  14-day preview of `{ date, question, childId, childDisplayName }`.
+  is `{ rotationId, current, upcomingTurns, endsTomorrow }`, where `current`
+  is the revision applicable today (or `null` if it has not started),
+  `upcomingTurns` is a 14-day preview of `{ date, question, childId,
+  childDisplayName }`, and `endsTomorrow` is `true` once the rotation has been
+  ended: it still answers today but stops appearing from tomorrow. The
+  configuration screen then shows “Ends tomorrow. Today’s answer stays as it
+  is.” in place of the rotation's edit and end controls.
 - `POST /api/turn-rotations` — adult-only. Body: `{ participantChildIds,
   firstChildId, effectiveFrom, question }`. Starts a new rotation (effective
   today or later); returns the refreshed `{ rotations }`.
@@ -149,7 +153,8 @@ drops both tables.
   a "first turn" picker restricted to the selected children, an effective
   date input (its minimum enforced client-side and re-validated
   server-side), an optional question field, and — once configured — a
-  14-day upcoming-turns preview.
+  14-day upcoming-turns preview. Starting, changing, and ending a rotation
+  wait behind the undo toast (`100-undo-and-household-settings.md`).
 
 ## Audit and security
 
@@ -283,6 +288,10 @@ board.
 - The most recent tick can be unticked on the day it was made, by any adult or
   by the child whose turn was ticked, restoring the previous answer. Older
   ticks, and ticks from earlier days, cannot be unticked.
+- On the board, a tick or untick first waits behind the undo toast
+  (`100-undo-and-household-settings.md`): the card shows it done and locked,
+  and Undo drops it without a request. Unticking remains the way to reverse a
+  tick once it has been saved.
 - Deactivating a participant still creates a replacement revision from
   tomorrow. It keeps the rotation's mode and starts from the child projected
   to be next once ticks are counted.
@@ -312,7 +321,10 @@ drops the table and the column.
   tick-to-advance rotation, the participants in turn order starting with
   whoever takes the next turn (empty for a daily rotation).
   `upcomingTurns` leaves out future dates governed by a tick-to-advance
-  revision, since they can't be predicted.
+  revision, since they can't be predicted. That is also why the screen relies
+  on `endsTomorrow` rather than the preview to show a rotation as ending: a
+  tick-to-advance rotation previews no future dates whether or not it has
+  been ended (#158).
 - Each `whoseTurns[]` item in `GET /api/today` gains `revisionId` and
   `turnNumber` (identifying the turn shown), `advanceMode`, `turnTaken`,
   `canTakeTurn` (whether this viewer may tick it today), and `undoableTurn`

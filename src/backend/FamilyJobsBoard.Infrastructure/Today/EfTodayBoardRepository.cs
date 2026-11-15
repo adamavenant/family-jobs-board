@@ -1,8 +1,10 @@
+using FamilyJobsBoard.Application.Points;
 using FamilyJobsBoard.Application.Today;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Jobs;
 using FamilyJobsBoard.Domain.Points;
 using FamilyJobsBoard.Infrastructure.Data;
+using FamilyJobsBoard.Infrastructure.Points;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -60,6 +62,15 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
     public Task<Job?> GetJobAsync(Guid jobId, CancellationToken cancellationToken)
     {
         return _database.Jobs.SingleOrDefaultAsync(job => job.Id == jobId, cancellationToken);
+    }
+
+    public Task<Guid?> GetJobChildIdAsync(Guid jobId, CancellationToken cancellationToken)
+    {
+        return _database.Jobs
+            .AsNoTracking()
+            .Where(job => job.Id == jobId)
+            .Select(job => (Guid?)job.ChildId)
+            .SingleOrDefaultAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<TodayJobRejection>> GetLatestRejectionsAsync(
@@ -178,10 +189,19 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
             when (exception.InnerException is PostgresException
             {
                 SqlState: PostgresErrorCodes.UniqueViolation,
-                ConstraintName: "ux_points_ledger_entries_job_id",
+                ConstraintName: PointsLedgerEntryConfiguration.JobApprovalIndexName,
             })
         {
             throw new DuplicateJobPointsAwardException();
+        }
+        catch (DbUpdateException exception)
+            when (exception.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation,
+                ConstraintName: PointsLedgerEntryConfiguration.ReversedEntryIndexName,
+            })
+        {
+            throw new DuplicateJobApprovalReversalException();
         }
         catch (DbUpdateConcurrencyException exception)
         {
@@ -288,6 +308,25 @@ public sealed class EfTodayBoardRepository : ITodayBoardRepository
         CancellationToken cancellationToken)
     {
         await _database.PointsLedgerEntries.AddAsync(entry, cancellationToken);
+    }
+
+    public Task<PointsLedgerEntry?> GetJobAwardAsync(
+        Guid jobId,
+        int approvalNumber,
+        CancellationToken cancellationToken)
+    {
+        return _database.PointsLedgerEntries
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                entry => entry.JobId == jobId && entry.JobApprovalNumber == approvalNumber,
+                cancellationToken);
+    }
+
+    public Task<IChildPointsLock> LockChildPointsAsync(
+        Guid childId,
+        CancellationToken cancellationToken)
+    {
+        return EfChildPointsLock.AcquireAsync(_database, childId, cancellationToken);
     }
 
     public async Task AddReviewDecisionAsync(

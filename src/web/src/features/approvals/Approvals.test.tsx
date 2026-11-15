@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { acceptSession, clearIdentity } from "../../api/auth";
 import { routes } from "../../app/routes";
+import { expectAnnounced, saveQueuedAction } from "../../test/undo";
 
 const addie = {
   id: "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c",
@@ -68,11 +69,20 @@ describe("Approvals panel", () => {
       }),
     );
 
-    await waitFor(() =>
-      expect(within(panel).queryByText("Feed the dog")).not.toBeInTheDocument(),
-    );
-    expect(server.requests).toContainEqual(
+    // The decision shows as made at once and waits behind its undo toast.
+    expect(within(panel).queryByText("Feed the dog")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "1 jobs awaiting review" }),
+    ).toBeInTheDocument();
+    expect(server.requests).not.toContainEqual(
       "POST /api/jobs/old/approve?expectedPoints=5",
+    );
+
+    await saveQueuedAction(user);
+    await waitFor(() =>
+      expect(server.requests).toContainEqual(
+        "POST /api/jobs/old/approve?expectedPoints=5",
+      ),
     );
     expect(
       await screen.findByRole("button", { name: "1 jobs awaiting review" }),
@@ -81,7 +91,7 @@ describe("Approvals panel", () => {
     expect(within(panel).getByText("Pack school bag")).toBeInTheDocument();
   });
 
-  it("rejects with feedback and keeps the reason when the rejection fails", async () => {
+  it("rejects with feedback and resends the same reason when the rejection fails", async () => {
     const server = stubServer([job({ id: "old", name: "Feed the dog" })]);
     server.failRejections = true;
     const user = userEvent.setup();
@@ -103,25 +113,17 @@ describe("Approvals panel", () => {
         name: "Reject job Feed the dog for Fredster",
       }),
     );
+    expect(within(panel).queryByText("Feed the dog")).not.toBeInTheDocument();
+    await saveQueuedAction(user);
 
-    expect(await within(panel).findByRole("alert")).toHaveTextContent(
+    // The refusal is explained in an error toast, and the panel shows the job waiting again.
+    expect(await screen.findByRole("alert")).toHaveTextContent(
       "Job cannot be rejected",
     );
-    expect(
-      within(panel).getByRole("button", {
-        name: "Reject job Feed the dog for Fredster",
-      }),
-    ).toHaveFocus();
-    expect(within(panel).getByLabelText(/Rejection reason/)).toHaveValue(
-      "The bowl is still empty",
-    );
+    expect(await within(panel).findByText("Feed the dog")).toBeInTheDocument();
 
     server.failRejections = false;
-    await user.click(
-      within(panel).getByRole("button", {
-        name: "Reject job Feed the dog for Fredster",
-      }),
-    );
+    await user.click(screen.getByRole("button", { name: /Try again/ }));
     expect(
       await within(panel).findByText(/Nothing is waiting for review/),
     ).toBeInTheDocument();
@@ -162,16 +164,27 @@ describe("Approvals panel", () => {
       }),
     );
 
+    // The row shows the job approved at once, and keyboard users stay on it.
     expect(
-      await screen.findByRole("button", { name: "0 jobs awaiting review" }),
+      screen.getByRole("button", { name: "0 jobs awaiting review" }),
     ).toBeInTheDocument();
-    expect(server.requests).toContainEqual(
-      "POST /api/jobs/new/approve?expectedPoints=5",
-    );
     expect(
       within(row).queryByRole("button", { name: /Approve/ }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Pack school bag/ })).toHaveFocus();
+    expect(server.requests).not.toContainEqual(
+      "POST /api/jobs/new/approve?expectedPoints=5",
+    );
+
+    await saveQueuedAction(user);
+    await waitFor(() =>
+      expect(server.requests).toContainEqual(
+        "POST /api/jobs/new/approve?expectedPoints=5",
+      ),
+    );
+    expect(
+      await screen.findByRole("button", { name: "0 jobs awaiting review" }),
+    ).toBeInTheDocument();
   });
 
   it("keeps a half-typed rejection reason when Escape is pressed in it", async () => {
@@ -223,6 +236,12 @@ describe("Approvals panel", () => {
         name: "Approve +5 Pack school bag for Fredster",
       }),
     );
+    await saveQueuedAction(user);
+    await waitFor(() =>
+      expect(server.requests).toContainEqual(
+        "POST /api/jobs/new/approve?expectedPoints=5",
+      ),
+    );
     await screen.findByRole("button", { name: "0 jobs awaiting review" });
     expect(queueLoads(server.requests)).toBe(loadsBefore);
 
@@ -257,6 +276,17 @@ describe("Approvals panel", () => {
       name: "Awaiting review",
     });
     expect(await within(panel).findByText("Feed the dog")).toBeInTheDocument();
+
+    // The board doesn't hold yesterday's job, but the decision still counts at once.
+    await user.click(
+      within(panel).getByRole("button", {
+        name: "Approve +5 Feed the dog for Fredster",
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "0 jobs awaiting review" }),
+    ).toBeInTheDocument();
+    expectAnnounced("Approved “Feed the dog” for Fredster: +5 points");
   });
 
   it("shows children their points instead of the review badge", async () => {

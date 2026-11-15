@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   createMemoryRouter,
@@ -75,8 +75,7 @@ it("previews all scopes after an edit and applies the selected future scope", as
                 intent: "applyRecurringJobChange",
                 jobId: job.id,
                 operation: "edit",
-                success: true,
-                impact: impacts.allFuture,
+                queued: true,
               };
         },
       },
@@ -104,10 +103,7 @@ it("previews all scopes after an edit and applies the selected future scope", as
     within(scopeGroup).getByRole("button", { name: "Confirm changes" }),
   );
 
-  expect(
-    await screen.findByText(/Saved\. 12 updated · 4 cancelled/),
-  ).toBeInTheDocument();
-  expect(submissions).toHaveLength(2);
+  await waitFor(() => expect(submissions).toHaveLength(2));
   expect(submissions[1]?.get("scope")).toBe("allFuture");
   expect(submissions[1]?.getAll("weekdays")).toEqual([
     "monday",

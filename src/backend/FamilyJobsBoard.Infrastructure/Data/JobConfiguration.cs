@@ -9,10 +9,19 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
 {
     public void Configure(EntityTypeBuilder<Job> builder)
     {
-        builder.ToTable("jobs", table => table.HasCheckConstraint(
-            "ck_jobs_cancellation_details",
-            "(status = 'Cancelled' AND cancelled_by_member_id IS NOT NULL AND cancelled_at_utc IS NOT NULL) OR " +
-            "(status <> 'Cancelled' AND cancelled_by_member_id IS NULL AND cancelled_at_utc IS NULL AND cancellation_reason IS NULL)"));
+        builder.ToTable("jobs", table =>
+        {
+            table.HasCheckConstraint(
+                "ck_jobs_cancellation_details",
+                "(status = 'Cancelled' AND cancelled_by_member_id IS NOT NULL AND cancelled_at_utc IS NOT NULL) OR " +
+                "(status <> 'Cancelled' AND cancelled_by_member_id IS NULL AND cancelled_at_utc IS NULL AND cancellation_reason IS NULL)");
+            // An approved job has been approved at least once, and only an approved job can
+            // owe its approval to an adult marking it done for the child.
+            table.HasCheckConstraint(
+                "ck_jobs_approval_tracking",
+                "approval_count >= 0 AND (status <> 'Approved' OR approval_count >= 1) " +
+                "AND (NOT completed_by_adult OR status = 'Approved')");
+        });
         builder.HasKey(job => job.Id);
         builder.Property<uint>("xmin")
             .HasColumnName("xmin")
@@ -40,6 +49,8 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
             .HasMaxLength(32);
         builder.Property(job => job.CompletedAtUtc).HasColumnName("completed_at_utc");
         builder.Property(job => job.ApprovedAtUtc).HasColumnName("approved_at_utc");
+        builder.Property(job => job.ApprovalCount).HasColumnName("approval_count");
+        builder.Property(job => job.CompletedByAdult).HasColumnName("completed_by_adult");
         builder.Property(job => job.CancelledByMemberId).HasColumnName("cancelled_by_member_id");
         builder.Property(job => job.CancelledAtUtc).HasColumnName("cancelled_at_utc");
         builder.Property(job => job.CancellationReason)

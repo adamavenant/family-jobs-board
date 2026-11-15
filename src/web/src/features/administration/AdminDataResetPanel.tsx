@@ -2,13 +2,12 @@ import { useEffect, useState } from "react";
 import { useFetcher } from "react-router";
 
 import type { TodayActionResult } from "../../app/routes";
-import { useSuccessToast } from "../../app/SuccessToast";
+import { undoQueue } from "../../app/undoQueue";
 
 const requiredConfirmation = "RESET TASKS AND POINTS";
 
 export function AdminDataResetPanel() {
   const fetcher = useFetcher<TodayActionResult>();
-  const { showSuccess } = useSuccessToast();
   const [confirming, setConfirming] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const result =
@@ -19,11 +18,13 @@ export function AdminDataResetPanel() {
     ? `Task and points data was reset. ${formatCount(result.deletedJobCount, "job")} and ${formatCount(result.deletedPointsEntryCount, "point entry")} were removed.`
     : undefined;
 
+  // Resetting already needs a typed confirmation, so it saves straight away
+  // rather than waiting behind an undo toast.
   useEffect(() => {
     if (fetcher.state === "idle" && successMessage) {
-      showSuccess(successMessage);
+      undoQueue.notify(successMessage);
     }
-  }, [fetcher.state, showSuccess, successMessage]);
+  }, [fetcher.state, successMessage]);
 
   return (
     <details className="grown-up-tools admin-data-reset">

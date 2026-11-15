@@ -4,11 +4,14 @@ import {
   PointAdjustmentApiError,
   recordPointAdjustment,
 } from "../../api/pointAdjustments";
+import { childName, pointsText } from "../../app/actionDescriptions";
 import { createRequestId } from "../../app/requestId";
+import { queueUndoableAction } from "../../app/undoQueue";
 
 export interface PointAdjustmentActionResult {
   intent: "recordAdjustment";
-  recorded?: { childId: string; amount: number; pointsBalance: number };
+  /** Set when the adjustment passed validation and waits behind an undo toast. */
+  queued?: true;
   error?: string;
 }
 
@@ -47,28 +50,28 @@ export async function pointAdjustmentsAction({
     );
   }
 
-  try {
-    const result = await recordPointAdjustment({
-      requestId,
-      childId,
-      amount: direction === "remove" ? -magnitude : magnitude,
-      reason,
-    });
-    return {
-      intent: "recordAdjustment",
-      recorded: {
-        childId,
-        amount: result.amount,
-        pointsBalance: result.pointsBalance,
-      },
-    };
-  } catch (error) {
-    return fail(
-      error instanceof PointAdjustmentApiError
-        ? error.message
-        : "That points adjustment couldn't be saved.",
-    );
-  }
+  const name = childName(form, childId);
+  return queueUndoableAction(
+    { intent: "recordAdjustment" },
+    {
+      form,
+      description:
+        direction === "remove"
+          ? `Removed ${pointsText(magnitude)} from ${name}: ${reason}`
+          : `Added ${pointsText(magnitude)} for ${name}: ${reason}`,
+      commit: () =>
+        recordPointAdjustment({
+          requestId,
+          childId,
+          amount: direction === "remove" ? -magnitude : magnitude,
+          reason,
+        }),
+      failure: (error) =>
+        error instanceof PointAdjustmentApiError
+          ? error.message
+          : "That points adjustment couldn't be saved.",
+    },
+  );
 }
 
 function fail(error: string): PointAdjustmentActionResult {

@@ -232,6 +232,43 @@ describe("Points ledger", () => {
     ]);
   });
 
+  it("marks a reversed approval while keeping the award it takes back", async () => {
+    fakeApi({
+      ledgers: [
+        ledger({
+          selectedChildId: fredster.id,
+          children: [child(fredster, 0)],
+          entries: [
+            entry(
+              fredster,
+              "Feed the dog",
+              -5,
+              0,
+              "2026-09-21T09:00:00Z",
+              null,
+              true,
+            ),
+            entry(fredster, "Feed the dog", 5, 5, "2026-09-21T08:00:00Z"),
+          ],
+        }),
+      ],
+    });
+    renderApp(fredster, "/points");
+
+    const list = await screen.findByRole("list", {
+      name: "How Fredster earned them",
+    });
+    const [reversal, award] = within(list).getAllByRole("listitem");
+    expect(reversal).toHaveTextContent("−5");
+    expect(reversal).toHaveTextContent("Feed the dog");
+    expect(reversal).toHaveTextContent("Approval reversed");
+    expect(reversal).toHaveTextContent("Balance 0");
+    expect(award).toHaveTextContent("+5");
+    expect(award).toHaveTextContent("Feed the dog");
+    expect(award).not.toHaveTextContent("Approval reversed");
+    expect(award).toHaveTextContent("Balance 5");
+  });
+
   it("explains when there are no points yet", async () => {
     fakeApi({
       ledgers: [
@@ -310,6 +347,7 @@ function entry(
   balanceAfter: number,
   awardedAtUtc: string,
   recordedByDisplayName: string | null = null,
+  isApprovalReversal = false,
 ) {
   return {
     id: crypto.randomUUID(),
@@ -320,6 +358,7 @@ function entry(
     balanceAfter,
     awardedAtUtc,
     recordedByDisplayName,
+    isApprovalReversal,
   };
 }
 

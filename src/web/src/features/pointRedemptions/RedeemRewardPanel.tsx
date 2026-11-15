@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 
 import type { HouseholdMember } from "../../api/today";
+import { formText } from "../../app/actionDescriptions";
 import { createRequestId } from "../../app/requestId";
-import { useSuccessToast } from "../../app/SuccessToast";
+import { useUndoQueue } from "../../app/undoQueue";
+import type { QueuedAction } from "../../app/undoQueue";
 import { maximumRewardLength } from "./pointRedemptionsRoute";
 import type {
   PointRedemptionActionResult,
@@ -28,18 +30,38 @@ function balanceText(name: string, balance: number): string {
     : `${name} doesn't have any points to spend yet.`;
 }
 
-function redeemedMessage(
-  redeemed: PointRedemptionActionResult["redeemed"],
-  children: HouseholdMember[],
-): string | undefined {
-  if (!redeemed) {
-    return undefined;
-  }
+/**
+ * How much queued redemptions, adjustments, and good-behaviour logs will
+ * change a child's points once they are saved.
+ */
+function queuedPointsChange(
+  actions: readonly QueuedAction[],
+  childId: string,
+): number {
+  return actions.reduce((total, { formData: form }) => {
+    if (form.get("intent") === "logBehaviour") {
+      const points = Number(
+        formText(form, "points") || formText(form, "typePoints"),
+      );
+      return form.getAll("childIds").includes(childId) &&
+        Number.isInteger(points)
+        ? total + points
+        : total;
+    }
+    if (form.get("childId") !== childId) {
+      return total;
+    }
+    if (form.has("reward")) {
+      const points = Number(formText(form, "points"));
+      return Number.isInteger(points) ? total - points : total;
+    }
 
-  const name =
-    children.find((child) => child.id === redeemed.childId)?.displayName ??
-    "The child";
-  return `${name} spent ${pointsText(redeemed.points)} on ${redeemed.reward}. Balance is now ${redeemed.pointsBalance}.`;
+    const amount = Number(formText(form, "amount"));
+    if (!Number.isInteger(amount)) {
+      return total;
+    }
+    return form.get("direction") === "remove" ? total - amount : total + amount;
+  }, 0);
 }
 
 export function RedeemRewardPanel({
@@ -49,35 +71,33 @@ export function RedeemRewardPanel({
 }) {
   const balances = useFetcher<PointRedemptionsLoaderData>();
   const fetcher = useFetcher<PointRedemptionActionResult>();
-  const { showSuccess } = useSuccessToast();
+  const { actions } = useUndoQueue();
   const formRef = useRef<HTMLFormElement>(null);
   const [requestId, setRequestId] = useState(safeRequestId);
   const [handledResult, setHandledResult] = useState<unknown>(null);
   const [childId, setChildId] = useState("");
   const result = fetcher.data;
   const submitting = fetcher.state !== "idle";
-  const message = redeemedMessage(result?.redeemed, children);
   const child = children.find((candidate) => candidate.id === childId);
-  const balance = child ? balances.data?.balances?.[child.id] : undefined;
+  const savedBalance = child ? balances.data?.balances?.[child.id] : undefined;
+  const balance =
+    child && savedBalance !== undefined
+      ? Math.max(0, savedBalance + queuedPointsChange(actions, child.id))
+      : undefined;
 
   // A retry after an error reuses the request ID so the server can record it once;
-  // only a recorded redemption starts a fresh request.
-  if (
-    fetcher.state === "idle" &&
-    result?.redeemed &&
-    result !== handledResult
-  ) {
+  // only a queued redemption starts a fresh request.
+  if (fetcher.state === "idle" && result?.queued && result !== handledResult) {
     setHandledResult(result);
     setRequestId(safeRequestId());
     setChildId("");
   }
 
   useEffect(() => {
-    if (fetcher.state === "idle" && message) {
+    if (fetcher.state === "idle" && result?.queued) {
       formRef.current?.reset();
-      showSuccess(message);
     }
-  }, [fetcher.state, message, showSuccess]);
+  }, [fetcher.state, result]);
 
   return (
     <details
@@ -114,6 +134,11 @@ export function RedeemRewardPanel({
             ref={formRef}
           >
             <input type="hidden" name="requestId" value={requestId ?? ""} />
+            <input
+              type="hidden"
+              name={`childName.${childId}`}
+              value={child?.displayName ?? ""}
+            />
             <div className="form-group">
               <label htmlFor="redemption-child">Child</label>
               <select

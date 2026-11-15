@@ -3,12 +3,14 @@ import { Link, useFetcher } from "react-router";
 
 import type { HouseholdMember, TodayBoard, TodayJob } from "../../api/today";
 import type { AppActionResult, TodayActionResult } from "../../app/routes";
+import { useUndoQueue } from "../../app/undoQueue";
 import { AddJobForm } from "./AddJobForm";
 import { FloatingDateBar } from "./FloatingDateBar";
 import { RecurringJobForm } from "./RecurringJobForm";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { FamilyMembersPanel } from "../identity/FamilyMembersPanel";
 import { AdminDataResetPanel } from "../administration/AdminDataResetPanel";
+import { HouseholdSettingsPanel } from "../settings/HouseholdSettingsPanel";
 import { ApprovalsReview, ApprovalsTrigger } from "../approvals/ApprovalsPanel";
 import {
   addDays,
@@ -29,6 +31,10 @@ import {
   ScopedRecurringJobCancelForm,
   ScopedRecurringJobEditForm,
 } from "./ScopedRecurringJobForms";
+import { JobNameFields } from "./JobNameFields";
+import { ReverseApprovalControl } from "./ReverseApprovalControl";
+import { showQueuedJobChanges } from "./queuedJobChanges";
+import type { ShownJob } from "./queuedJobChanges";
 
 export function TodayPage({ board }: { board: TodayBoard }) {
   const children = board.members.filter((member) => !member.isAdult);
@@ -38,6 +44,9 @@ export function TodayPage({ board }: { board: TodayBoard }) {
   );
   const isToday = board.date === currentDate;
   const dateLineRef = useRef<HTMLParagraphElement>(null);
+  // Queued actions already show as done; they are saved after the undo time.
+  const { actions } = useUndoQueue();
+  const { jobs, pendingApprovalCount } = showQueuedJobChanges(board, actions);
   const formattedDate = new Intl.DateTimeFormat("en", {
     weekday: "long",
     day: "numeric",
@@ -64,7 +73,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
           previousHref={previousDayHref}
           nextHref={nextDayHref}
           pendingApprovalCount={
-            board.viewer.isAdult ? board.pendingApprovalCount : null
+            board.viewer.isAdult ? pendingApprovalCount : null
           }
         />
         <header className="hero">
@@ -95,7 +104,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
             </div>
             <div className="hero__stats">
               {board.viewer.isAdult ? (
-                <ApprovalsTrigger count={board.pendingApprovalCount} />
+                <ApprovalsTrigger count={pendingApprovalCount} />
               ) : (
                 <Link
                   className="hero__balance"
@@ -108,9 +117,9 @@ export function TodayPage({ board }: { board: TodayBoard }) {
               )}
               <div
                 className="hero__count"
-                aria-label={`${board.jobs.length} jobs on this day`}
+                aria-label={`${jobs.length} jobs on this day`}
               >
-                <strong>{board.jobs.length}</strong>
+                <strong>{jobs.length}</strong>
                 <span>jobs this day</span>
               </div>
             </div>
@@ -132,6 +141,7 @@ export function TodayPage({ board }: { board: TodayBoard }) {
             <PointAdjustmentsPanel children={children} />
             <RedeemRewardPanel children={children} />
             <WhoseTurnPanel children={children} currentDate={currentDate} />
+            <HouseholdSettingsPanel />
             <AdminDataResetPanel />
           </div>
         ) : null}
@@ -215,14 +225,14 @@ export function TodayPage({ board }: { board: TodayBoard }) {
             </p>
           ) : null}
 
-          {board.jobs.length === 0 ? (
+          {jobs.length === 0 ? (
             <p className="board__empty">
               {selectedChild
                 ? `No jobs are scheduled for ${selectedChild.displayName} on this day.`
                 : "No jobs are scheduled for this day."}
             </p>
           ) : (
-            <Agenda jobs={board.jobs} isAdult={board.viewer.isAdult} />
+            <Agenda jobs={jobs} isAdult={board.viewer.isAdult} />
           )}
         </section>
 
@@ -243,11 +253,13 @@ const agendaPeriods = [
   ["unscheduled", "Any time"],
 ] as const;
 
-function Agenda({ jobs, isAdult }: { jobs: TodayJob[]; isAdult: boolean }) {
+function Agenda({ jobs, isAdult }: { jobs: ShownJob[]; isAdult: boolean }) {
   return (
     <div className="agenda">
       {agendaPeriods.map(([period, label]) => {
-        const periodJobs = jobs.filter((job) => job.agendaPeriod === period);
+        const periodJobs = jobs.filter(
+          (shown) => shown.job.agendaPeriod === period,
+        );
         if (periodJobs.length === 0) {
           return null;
         }
@@ -256,13 +268,20 @@ function Agenda({ jobs, isAdult }: { jobs: TodayJob[]; isAdult: boolean }) {
           <section className="agenda-period" key={period}>
             <h3>{label}</h3>
             <div className="job-grid">
-              {periodJobs.map((job) => {
-                return (
+              {periodJobs.map((shown) => {
+                return shown.adding ? (
+                  <AddingJobCard
+                    key={shown.job.id}
+                    job={shown.job}
+                    index={jobs.indexOf(shown)}
+                  />
+                ) : (
                   <JobCard
-                    key={job.id}
-                    job={job}
-                    index={jobs.indexOf(job)}
+                    key={shown.job.id}
+                    job={shown.job}
+                    index={jobs.indexOf(shown)}
                     isAdult={isAdult}
+                    queued={shown.queued}
                   />
                 );
               })}
@@ -271,6 +290,30 @@ function Agenda({ jobs, isAdult }: { jobs: TodayJob[]; isAdult: boolean }) {
         );
       })}
     </div>
+  );
+}
+
+/** A job that waits behind an undo toast before the server creates it. */
+function AddingJobCard({ job, index }: { job: TodayJob; index: number }) {
+  return (
+    <article
+      className={`job-card job-card--${(index % 3) + 1} job-card--queued`}
+      aria-label={`${job.name} for ${job.childDisplayName}, being added`}
+    >
+      <div className="job-card__topline">
+        <span className="status status--open">Being added</span>
+        <span className="points">{job.points} pts</span>
+      </div>
+      <div>
+        <p className="job-card__assignee">For {job.childDisplayName}</p>
+        <h3>{job.name}</h3>
+        <p className="job-card__schedule">
+          {formatAgendaPeriod(job.agendaPeriod)}
+          {job.scheduledTime ? ` · ${job.scheduledTime.slice(0, 5)}` : ""}
+        </p>
+        <p>{job.description}</p>
+      </div>
+    </article>
   );
 }
 
@@ -310,10 +353,12 @@ function JobCard({
   job,
   index,
   isAdult,
+  queued,
 }: {
   job: TodayJob;
   index: number;
   isAdult: boolean;
+  queued: boolean;
 }) {
   const fetcher = useFetcher<TodayActionResult>();
   const [confirmingAdultCompletion, setConfirmingAdultCompletion] =
@@ -333,14 +378,33 @@ function JobCard({
       restoreCompletionFocus.current = false;
     }
   }, [confirmingAdultCompletion]);
-  const isSubmitting = fetcher.state !== "idle";
+  // A reversal swaps the card's controls, so keep the reader on the card they acted on.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const focusedReversal = useRef<TodayActionResult | null>(null);
+  useEffect(() => {
+    const result = fetcher.data;
+    if (
+      fetcher.state === "idle" &&
+      result?.intent === "reverseApproval" &&
+      result.jobId === job.id &&
+      !result.error &&
+      job.status !== "approved" &&
+      focusedReversal.current !== result
+    ) {
+      focusedReversal.current = result;
+      headingRef.current?.focus();
+    }
+  }, [fetcher.state, fetcher.data, job.id, job.status]);
+  // While a queued action waits to be saved, the job can't be acted on again.
+  const isSubmitting = fetcher.state !== "idle" || queued;
   const submittingIntent = fetcher.formData?.get("intent");
   const error =
     (fetcher.data?.intent === "complete" ||
       fetcher.data?.intent === "approve" ||
       fetcher.data?.intent === "reject" ||
       fetcher.data?.intent === "editJob" ||
-      fetcher.data?.intent === "cancelJob") &&
+      fetcher.data?.intent === "cancelJob" ||
+      fetcher.data?.intent === "reverseApproval") &&
     fetcher.data.jobId === job.id
       ? fetcher.data.error
       : undefined;
@@ -348,7 +412,9 @@ function JobCard({
   const isApproved = job.status === "approved";
 
   return (
-    <article className={`job-card job-card--${(index % 3) + 1}`}>
+    <article
+      className={`job-card job-card--${(index % 3) + 1}${queued ? " job-card--queued" : ""}`}
+    >
       <div className="job-card__topline">
         <span className={jobStatusClassName(job.status)}>
           {jobStatusLabel(job.status)}
@@ -359,7 +425,9 @@ function JobCard({
         {isAdult ? (
           <p className="job-card__assignee">For {job.childDisplayName}</p>
         ) : null}
-        <h3>{job.name}</h3>
+        <h3 ref={headingRef} tabIndex={-1}>
+          {job.name}
+        </h3>
         <p className="job-card__schedule">
           {job.recurringJobSeriesId
             ? `${formatRecurrenceFrequency(job.recurrenceFrequency)} · `
@@ -370,7 +438,7 @@ function JobCard({
         <p>{job.description}</p>
       </div>
 
-      {isAdult && !isApproved ? (
+      {isAdult && !isApproved && !queued ? (
         <div className="job-management">
           {job.recurringJobSeriesId ? (
             <ScopedRecurringJobEditForm job={job} />
@@ -463,6 +531,7 @@ function JobCard({
               <fetcher.Form method="post" className="job-management__form">
                 <input type="hidden" name="intent" value="cancelJob" />
                 <input type="hidden" name="jobId" value={job.id} />
+                <JobNameFields job={job} />
                 <label htmlFor={`cancel-reason-${job.id}`}>
                   Cancellation reason <span>(optional)</span>
                 </label>
@@ -489,14 +558,23 @@ function JobCard({
       ) : null}
 
       {isApproved ? (
-        <div className="complete-state complete-state--approved" role="status">
-          <span aria-hidden="true">★</span>
-          Approved — {job.points} points awarded
-        </div>
+        <>
+          <div
+            className="complete-state complete-state--approved"
+            role="status"
+          >
+            <span aria-hidden="true">★</span>
+            Approved — {job.points} points awarded
+          </div>
+          {isAdult && !queued ? (
+            <ReverseApprovalControl job={job} fetcher={fetcher} />
+          ) : null}
+        </>
       ) : isPending && isAdult ? (
         <fetcher.Form method="post" className="approval-form">
           <input type="hidden" name="jobId" value={job.id} />
           <input type="hidden" name="expectedPoints" value={job.points} />
+          <JobNameFields job={job} />
           <p>Nice work — ready for a grown-up.</p>
           <label htmlFor={`rejection-reason-${job.id}`}>
             Rejection reason <span>(optional)</span>
@@ -557,6 +635,7 @@ function JobCard({
                     name="expectedPoints"
                     value={job.points}
                   />
+                  <JobNameFields job={job} />
                   <button type="submit" disabled={isSubmitting}>
                     {isSubmitting && submittingIntent === "complete"
                       ? "Awarding…"
@@ -582,6 +661,7 @@ function JobCard({
               ref={completionTriggerRef}
               type="button"
               onClick={() => setConfirmingAdultCompletion(true)}
+              disabled={queued}
             >
               Mark as done for {job.childDisplayName}
             </button>
@@ -601,6 +681,7 @@ function JobCard({
           <fetcher.Form method="post">
             <input type="hidden" name="intent" value="complete" />
             <input type="hidden" name="jobId" value={job.id} />
+            <JobNameFields job={job} />
             <button type="submit" disabled={isSubmitting}>
               {isSubmitting ? "Sending…" : "Mark as done"}
             </button>

@@ -222,7 +222,7 @@ export interface paths {
         };
         /**
          * Get the authenticated family member's daily board.
-         * @description Returns the child-owned or adult household view for the optional household-local date and adult-only child filter.
+         * @description Returns the child-owned or adult household view for the optional household-local date and adult-only child filter. undoGracePeriodSeconds is the household's undo time, so every device delays saving actions by the same amount.
          */
         get: operations["GetToday"];
         put?: never;
@@ -344,9 +344,29 @@ export interface paths {
         put?: never;
         /**
          * Approve a pending job and award its points.
-         * @description The adult must supply expectedPoints from the pending job shown to them. A missing confirmation returns 400. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.
+         * @description The adult must supply expectedPoints from the pending job shown to them. A missing confirmation returns 400. Each approval awards once; a job approved again after its approval was reversed awards its points again. Returns 404 when the job or its active child is unavailable, and 409 unless the job is pending approval, when its points or state changed, or when its points were already awarded.
          */
         post: operations["ApproveJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{id}/reverse-approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reverse a job's approval and take back its points.
+         * @description Adult-only; children get 403. The adult must supply expectedPoints, the points the approval awarded, as shown to them; a missing confirmation returns 400. A job the child submitted returns to pending approval with its completion time; a job an adult marked done for the child returns to open with no completion. A new negative ledger entry for the job takes back its award, which stays in the ledger, and the job can then be approved again, rejected, or cancelled. Returns the job and the child's new balance. Returns 404 when the job or its active child is unavailable, and 409 when the job isn't approved, its approval was already reversed, its points or state changed, or the child no longer has the points: then the code is 'insufficientPoints' with the current balance, and nothing changes.
+         */
+        post: operations["ReverseJobApproval"];
         delete?: never;
         options?: never;
         head?: never;
@@ -570,7 +590,7 @@ export interface paths {
         };
         /**
          * Get the points ledger, newest first.
-         * @description Children always receive their own ledger; any other childId returns 403. Adults receive every child's ledger, or one child's with childId; an unknown or adult ID returns 400. Each page holds up to 20 entries with the name, signed points, award time, the child's balance after the entry, and recordedByDisplayName: the adult who logged the behaviour, made the adjustment, or redeemed the points (null for job awards). Pass nextCursor as 'before' to read older entries.
+         * @description Children always receive their own ledger; any other childId returns 403. Adults receive every child's ledger, or one child's with childId; an unknown or adult ID returns 400. Each page holds up to 20 entries with the name, signed points, award time, the child's balance after the entry, and recordedByDisplayName: the adult who logged the behaviour, made the adjustment, or redeemed the points (null for job awards and their reversals). isApprovalReversal marks the negative entry that takes back a job's award when its approval is reversed; it carries the job's name, and the award stays in the ledger. Pass nextCursor as 'before' to read older entries.
          */
         get: operations["GetPointsLedger"];
         put?: never;
@@ -630,7 +650,7 @@ export interface paths {
         };
         /**
          * List the household's whose-turn rotations.
-         * @description Adult-only. Returns every active rotation with the revision effective today, if any, and a short preview of upcoming turns.
+         * @description Adult-only. Returns every active rotation with the revision effective today, if any, a short preview of upcoming turns, and whether it has been ended so that it stops appearing from tomorrow.
          */
         get: operations["ListTurnRotations"];
         put?: never;
@@ -661,7 +681,7 @@ export interface paths {
         post?: never;
         /**
          * End a rotation from tomorrow.
-         * @description Adult-only. The rotation stops appearing on the board from tomorrow; earlier dates keep their answers.
+         * @description Adult-only. The rotation stops appearing on the board from tomorrow, including any scheduled configurations; earlier dates keep their answers. Repeating End for a known rotation succeeds without adding duplicate revisions.
          */
         delete: operations["EndTurnRotation"];
         options?: never;
@@ -704,6 +724,30 @@ export interface paths {
          * @description Any adult, or the child whose turn was ticked. Only the rotation's most recent tick can be unticked, on the household-local day it was made; the tick is kept with who unticked it and when.
          */
         delete: operations["UndoTurn"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/household-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the household's shared settings.
+         * @description Any signed-in family member may read the settings every device in the household uses. undoGracePeriodSeconds is how long an action waits with an Undo toast before it is saved; a household that has never changed it uses 30 seconds.
+         */
+        get: operations["GetHouseholdSettings"];
+        /**
+         * Change the household's shared settings.
+         * @description Adult-only; children receive 403. undoGracePeriodSeconds must be whole seconds from 5 to 120, otherwise 400 with validation errors. The change applies to later actions on every device.
+         */
+        put: operations["UpdateHouseholdSettings"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -888,6 +932,14 @@ export interface components {
         GoodBehaviourTypesResponse: {
             types: components["schemas"]["GoodBehaviourTypeResponse"][];
         };
+        HouseholdSettingsResponse: {
+            /** Format: int32 */
+            undoGracePeriodSeconds: number | string;
+            /** Format: int32 */
+            minimumUndoGracePeriodSeconds: number | string;
+            /** Format: int32 */
+            maximumUndoGracePeriodSeconds: number | string;
+        };
         HttpValidationProblemDetails: {
             type?: null | string;
             title?: null | string;
@@ -900,6 +952,11 @@ export interface components {
             };
         };
         JobApprovalResponse: {
+            job: components["schemas"]["JobResponse"];
+            /** Format: int32 */
+            pointsBalance: number | string;
+        };
+        JobApprovalReversalResponse: {
             job: components["schemas"]["JobResponse"];
             /** Format: int32 */
             pointsBalance: number | string;
@@ -1015,6 +1072,7 @@ export interface components {
             /** Format: date-time */
             awardedAtUtc: string;
             recordedByDisplayName: null | string;
+            isApprovalReversal: boolean;
         };
         PointsLedgerResponse: {
             /** Format: uuid */
@@ -1251,6 +1309,8 @@ export interface components {
             /** Format: int32 */
             pendingApprovalCount: number | string;
             whoseTurns: components["schemas"]["WhoseTurnResponse"][];
+            /** Format: int32 */
+            undoGracePeriodSeconds: number | string;
         };
         TurnRotationChildResponse: {
             /** Format: uuid */
@@ -1281,6 +1341,7 @@ export interface components {
             current: null | components["schemas"]["TurnRotationConfigurationResponse"];
             upcomingTurns: components["schemas"]["TurnRotationTurnResponse"][];
             upNext: components["schemas"]["TurnRotationChildResponse"][];
+            endsTomorrow: boolean;
         };
         TurnRotationTurnResponse: {
             /** Format: date */
@@ -1294,6 +1355,10 @@ export interface components {
             firstName: null | string;
             surname: null | string;
             nickname: null | string;
+        };
+        UpdateHouseholdSettingsRequest: {
+            /** Format: int32 */
+            undoGracePeriodSeconds: null | number | string;
         };
         UpdateJobRequest: {
             name: null | string;
@@ -2126,6 +2191,64 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    ReverseJobApproval: {
+        parameters: {
+            query?: {
+                expectedPoints?: number | string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobApprovalReversalResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Not Found */
             404: {
@@ -3029,6 +3152,80 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProblemDetails"];
                 };
+            };
+        };
+    };
+    GetHouseholdSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HouseholdSettingsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    UpdateHouseholdSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateHouseholdSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HouseholdSettingsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

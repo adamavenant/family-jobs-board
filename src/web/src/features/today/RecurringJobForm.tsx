@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 
 import type { TodayActionResult } from "../../app/routes";
-import { useSuccessToast } from "../../app/SuccessToast";
 import type { HouseholdMember } from "../../api/today";
 import { ChildAssignmentPicker } from "./ChildAssignmentPicker";
 import { OptionalDateInput } from "./OptionalDateInput";
@@ -49,7 +48,6 @@ export function RecurringJobForm({
 }) {
   const fetcher = useFetcher<TodayActionResult>();
   const formRef = useRef<HTMLFormElement>(null);
-  const { showSuccess } = useSuccessToast();
   const [frequency, setFrequency] = useState<RecurrenceFrequency>("daily");
   const [assignmentMode, setAssignmentMode] =
     useState<AssignmentMode>("eachChild");
@@ -64,23 +62,10 @@ export function RecurringJobForm({
   const frequencyLabel = frequencyName(frequency);
 
   useEffect(() => {
-    if (fetcher.state === "idle" && result?.success) {
+    if (fetcher.state === "idle" && result?.queued) {
       formRef.current?.reset();
-      const frequencyText = frequencyName(result.frequency ?? "daily");
-      showSuccess(
-        result.takesTurns
-          ? `Take-turns ${frequencyText.toLowerCase()} job created through ${result.generatedThrough}.`
-          : `${frequencyText} job created through ${result.generatedThrough}.`,
-      );
     }
-  }, [
-    fetcher.state,
-    result?.frequency,
-    result?.generatedThrough,
-    result?.success,
-    result?.takesTurns,
-    showSuccess,
-  ]);
+  }, [fetcher.state, result]);
 
   return (
     <details className="grown-up-tools grown-up-tools--recurring">

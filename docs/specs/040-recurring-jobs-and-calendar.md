@@ -132,9 +132,10 @@ Adult tools provide frequency-specific forms, labelled multi-child selection,
 date fields, weekday controls, and monthly-day input. With two or more
 children in the household, adults choose "Each child does it" or "Take turns";
 taking turns reveals a "First turn" choice, and the other selected children
-follow in household order. Successful creation
-refreshes the selected daily board. Validation and server errors preserve the
-entered form. Generated occurrences carry a recurrence label.
+follow in household order. Validation errors preserve the entered form. A
+valid job waits behind the undo toast (`100-undo-and-household-settings.md`):
+the form clears, and the board refreshes once it is saved. Scoped recurring
+changes also wait behind the toast after their preview. Generated occurrences carry a recurrence label.
 
 A separate, bookmarkable `/calendar` page (linked from the daily board's header
 for adults only) offers day/week/month views with the same child filter as the

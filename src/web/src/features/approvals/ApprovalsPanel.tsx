@@ -10,11 +10,13 @@ import type { ReactNode } from "react";
 import { useFetcher } from "react-router";
 
 import type { TodayJob } from "../../api/today";
+import { useUndoQueue } from "../../app/undoQueue";
 import {
   addDays,
   formatAgendaPeriod,
   formatShortDate,
 } from "../today/jobFormatting";
+import { showQueuedJob } from "../today/queuedJobChanges";
 import { ApprovalControls, focusIsLost } from "./ApprovalControls";
 import type { ApprovalsLoaderData } from "./approvalsRoute";
 
@@ -49,8 +51,15 @@ export function ApprovalsReview({
   const fetcher = useFetcher<ApprovalsLoaderData>({
     key: `approvals-review-${panelId}-${opening}`,
   });
+  const { actions } = useUndoQueue();
+  // A job decided (or cancelled) behind an undo toast is no longer awaiting review.
   const jobs =
-    fetcher.data && "jobs" in fetcher.data ? fetcher.data.jobs : undefined;
+    fetcher.data && "jobs" in fetcher.data
+      ? fetcher.data.jobs.filter(
+          (job) =>
+            showQueuedJob(job, actions).job?.status === "pendingApproval",
+        )
+      : undefined;
   const loadError =
     fetcher.data && "error" in fetcher.data ? fetcher.data.error : undefined;
   const jobCount = jobs?.length;

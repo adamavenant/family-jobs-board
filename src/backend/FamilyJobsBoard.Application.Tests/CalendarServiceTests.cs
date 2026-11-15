@@ -1,5 +1,6 @@
 using FamilyJobsBoard.Application.Calendar;
 using FamilyJobsBoard.Application.Clock;
+using FamilyJobsBoard.Application.Points;
 using FamilyJobsBoard.Application.Today;
 using FamilyJobsBoard.Domain.Households;
 using FamilyJobsBoard.Domain.Jobs;
@@ -407,6 +408,19 @@ public sealed class CalendarServiceTests
 
         public Task AddReviewDecisionAsync(
             JobReviewDecision decision,
+            CancellationToken cancellationToken) => throw Unused();
+
+        public Task<Guid?> GetJobChildIdAsync(
+            Guid jobId,
+            CancellationToken cancellationToken) => throw Unused();
+
+        public Task<PointsLedgerEntry?> GetJobAwardAsync(
+            Guid jobId,
+            int approvalNumber,
+            CancellationToken cancellationToken) => throw Unused();
+
+        public Task<IChildPointsLock> LockChildPointsAsync(
+            Guid childId,
             CancellationToken cancellationToken) => throw Unused();
 
         public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;

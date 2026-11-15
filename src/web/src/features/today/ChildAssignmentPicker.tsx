@@ -42,6 +42,12 @@ export function ChildAssignmentPicker({
                   })}
             />
             <span>{child.displayName}</span>
+            {/* Lets the undo toast name the children without a lookup. */}
+            <input
+              type="hidden"
+              name={`childName.${child.id}`}
+              value={child.displayName}
+            />
           </label>
         ))}
       </div>

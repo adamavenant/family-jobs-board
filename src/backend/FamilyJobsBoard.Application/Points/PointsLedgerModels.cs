@@ -16,7 +16,10 @@ public sealed record PointsLedgerChild(
 
 /// <param name="RecordedByDisplayName">
 /// The adult who logged the behaviour, made the adjustment, or redeemed the points; null for
-/// job awards, whose approvals don't record the deciding adult.
+/// job awards and their reversals, whose decisions don't record the deciding adult.
+/// </param>
+/// <param name="IsApprovalReversal">
+/// Whether the entry takes back a job's award because its approval was reversed.
 /// </param>
 public sealed record PointsLedgerLine(
     Guid Id,
@@ -26,7 +29,8 @@ public sealed record PointsLedgerLine(
     int Points,
     int BalanceAfter,
     DateTimeOffset AwardedAtUtc,
-    string? RecordedByDisplayName);
+    string? RecordedByDisplayName,
+    bool IsApprovalReversal);
 
 /// <summary>
 /// A stored ledger entry with the name of its source (job, behaviour as logged, adjustment
@@ -38,7 +42,8 @@ public sealed record PointsLedgerRecord(
     string Name,
     int Amount,
     DateTimeOffset AwardedAtUtc,
-    string? RecordedByDisplayName);
+    string? RecordedByDisplayName,
+    bool IsApprovalReversal);
 
 /// <summary>
 /// A position in the newest-first ledger order: award time, then entry ID as a tie-break.

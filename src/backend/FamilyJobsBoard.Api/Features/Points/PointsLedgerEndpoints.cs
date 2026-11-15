@@ -16,7 +16,7 @@ internal static class PointsLedgerEndpoints
             .Produces(StatusCodes.Status403Forbidden)
             .WithSummary("Get the points ledger, newest first.")
             .WithDescription(
-                $"Children always receive their own ledger; any other childId returns 403. Adults receive every child's ledger, or one child's with childId; an unknown or adult ID returns 400. Each page holds up to {PointsLedgerService.PageSize} entries with the name, signed points, award time, the child's balance after the entry, and recordedByDisplayName: the adult who logged the behaviour, made the adjustment, or redeemed the points (null for job awards). Pass nextCursor as 'before' to read older entries.");
+                $"Children always receive their own ledger; any other childId returns 403. Adults receive every child's ledger, or one child's with childId; an unknown or adult ID returns 400. Each page holds up to {PointsLedgerService.PageSize} entries with the name, signed points, award time, the child's balance after the entry, and recordedByDisplayName: the adult who logged the behaviour, made the adjustment, or redeemed the points (null for job awards and their reversals). isApprovalReversal marks the negative entry that takes back a job's award when its approval is reversed; it carries the job's name, and the award stays in the ledger. Pass nextCursor as 'before' to read older entries.");
 
         return endpoints;
     }
@@ -88,7 +88,8 @@ internal static class PointsLedgerEndpoints
                     entry.Points,
                     entry.BalanceAfter,
                     entry.AwardedAtUtc,
-                    entry.RecordedByDisplayName))
+                    entry.RecordedByDisplayName,
+                    entry.IsApprovalReversal))
                 .ToArray(),
             ledger.NextCursor);
     }

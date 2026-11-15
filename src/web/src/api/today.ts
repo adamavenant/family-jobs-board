@@ -97,6 +97,7 @@ export interface TodayBoard {
   pointsBalance: number | null;
   pendingApprovalCount: number;
   whoseTurns: WhoseTurn[];
+  undoGracePeriodSeconds: number;
 }
 
 export type WhoseTurn = components["schemas"]["WhoseTurnResponse"];
@@ -110,6 +111,11 @@ export interface HouseholdMember {
 }
 
 export interface JobApproval {
+  job: TodayJob;
+  pointsBalance: number;
+}
+
+export interface JobApprovalReversal {
   job: TodayJob;
   pointsBalance: number;
 }
@@ -166,6 +172,7 @@ export async function getToday(
       data.pointsBalance === null ? null : Number(data.pointsBalance),
     pendingApprovalCount: Number(data.pendingApprovalCount),
     whoseTurns: data.whoseTurns ?? [],
+    undoGracePeriodSeconds: Number(data.undoGracePeriodSeconds),
   };
 }
 
@@ -279,6 +286,26 @@ export async function approveJob(
   });
   if (!data) {
     throw new ApiError(problemMessage(error, "That job couldn't be approved."));
+  }
+
+  return {
+    job: mapJob(data.job),
+    pointsBalance: Number(data.pointsBalance),
+  };
+}
+
+export async function reverseJobApproval(
+  id: string,
+  expectedPoints: number,
+): Promise<JobApprovalReversal> {
+  const client = apiClient();
+  const { data, error } = await client.POST("/api/jobs/{id}/reverse-approval", {
+    params: { path: { id }, query: { expectedPoints } },
+  });
+  if (!data) {
+    throw new ApiError(
+      problemMessage(error, "That approval couldn't be reversed."),
+    );
   }
 
   return {

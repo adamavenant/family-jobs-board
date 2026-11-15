@@ -3,6 +3,8 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
 
+import { undoQueue } from "../app/undoQueue";
+
 configure({ asyncUtilTimeout: 3_000 });
 
 const values = new Map<string, string>();
@@ -22,4 +24,8 @@ Object.defineProperty(window, "localStorage", {
   value: localStorage,
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  // Queued actions and messages belong to one test; drop them unsent.
+  undoQueue.reset();
+});

@@ -8,6 +8,7 @@ using FamilyJobsBoard.Api.Features.PointAdjustments;
 using FamilyJobsBoard.Api.Features.PointRedemptions;
 using FamilyJobsBoard.Api.Features.Points;
 using FamilyJobsBoard.Api.Features.GoodBehaviours;
+using FamilyJobsBoard.Api.Features.Settings;
 using FamilyJobsBoard.Api.Features.Today;
 using FamilyJobsBoard.Api.Features.Telemetry;
 using FamilyJobsBoard.Api.Features.TurnRotations;
@@ -58,6 +59,7 @@ app.MapPointsLedgerEndpoints();
 app.MapCalendarEndpoints();
 app.MapApprovalEndpoints();
 app.MapTurnRotationEndpoints();
+app.MapHouseholdSettingsEndpoints();
 
 app.Run();
 

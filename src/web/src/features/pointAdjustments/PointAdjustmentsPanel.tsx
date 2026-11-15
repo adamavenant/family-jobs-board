@@ -3,7 +3,6 @@ import { useFetcher } from "react-router";
 
 import type { HouseholdMember } from "../../api/today";
 import { createRequestId } from "../../app/requestId";
-import { useSuccessToast } from "../../app/SuccessToast";
 import type { PointAdjustmentActionResult } from "./pointAdjustmentsRoute";
 
 function safeRequestId(): string | null {
@@ -14,57 +13,30 @@ function safeRequestId(): string | null {
   }
 }
 
-function recordedMessage(
-  recorded: PointAdjustmentActionResult["recorded"],
-  children: HouseholdMember[],
-): string | undefined {
-  if (!recorded) {
-    return undefined;
-  }
-
-  const name =
-    children.find((child) => child.id === recorded.childId)?.displayName ??
-    "the child";
-  const points = Math.abs(recorded.amount);
-  const unit = points === 1 ? "point" : "points";
-  const change =
-    recorded.amount < 0
-      ? `Removed ${points} ${unit} from ${name}.`
-      : `Added ${points} ${unit} for ${name}.`;
-  return `${change} Balance is now ${recorded.pointsBalance}.`;
-}
-
 export function PointAdjustmentsPanel({
   children,
 }: {
   children: HouseholdMember[];
 }) {
   const fetcher = useFetcher<PointAdjustmentActionResult>();
-  const { showSuccess } = useSuccessToast();
   const formRef = useRef<HTMLFormElement>(null);
   const [requestId, setRequestId] = useState(safeRequestId);
   const [handledResult, setHandledResult] = useState<unknown>(null);
   const result = fetcher.data;
   const submitting = fetcher.state !== "idle";
-  const message = recordedMessage(result?.recorded, children);
 
   // A retry after an error reuses the request ID so the server can record it once;
-  // only a recorded adjustment starts a fresh request.
-  if (
-    fetcher.state === "idle" &&
-    result?.recorded &&
-    result !== handledResult
-  ) {
+  // only a queued adjustment starts a fresh request.
+  if (fetcher.state === "idle" && result?.queued && result !== handledResult) {
     setHandledResult(result);
     setRequestId(safeRequestId());
   }
 
   useEffect(() => {
-    if (fetcher.state === "idle" && message) {
+    if (fetcher.state === "idle" && result?.queued) {
       formRef.current?.reset();
-      showSuccess(message);
     }
-  }, [fetcher.state, message, showSuccess]);
+  }, [fetcher.state, result]);
 
   return (
     <details className="grown-up-tools point-adjustments">
@@ -92,6 +64,14 @@ export function PointAdjustmentsPanel({
             ref={formRef}
           >
             <input type="hidden" name="requestId" value={requestId ?? ""} />
+            {children.map((child) => (
+              <input
+                key={child.id}
+                type="hidden"
+                name={`childName.${child.id}`}
+                value={child.displayName}
+              />
+            ))}
             <div className="form-group">
               <label htmlFor="adjustment-child">Child</label>
               <select id="adjustment-child" name="childId" required>

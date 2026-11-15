@@ -6,6 +6,8 @@ type MemberResponse = components["schemas"]["MemberResponse"];
 type TodayResponse = components["schemas"]["TodayResponse"];
 type WhoseTurnResponse = components["schemas"]["WhoseTurnResponse"];
 
+import { saveQueuedAction } from "./undo";
+
 const addieId = "22eb0cc1-058e-4b2e-bb18-d7aaad564a6c";
 const albaId = "c8318644-906d-420c-89f4-d5672e2c9b71";
 const benId = "38692edf-3474-45a5-b979-5fb206f34c59";
@@ -85,6 +87,12 @@ for (const viewport of [
     await shower
       .getByRole("checkbox", { name: "Alba has had their turn" })
       .click();
+    // The tick waits behind the undo toast, shown as done, until it is saved.
+    await expect(
+      shower.getByRole("checkbox", { name: "Alba has had their turn" }),
+    ).toBeChecked();
+    expect(showerTickBodies).toEqual([]);
+    await saveQueuedAction(page);
     await expect(shower.locator(".whose-turn-card__child")).toHaveText(/Ben/);
     expect(showerTickBodies).toEqual([
       {
@@ -99,6 +107,7 @@ for (const viewport of [
     await expectNoSidewaysScroll(page);
 
     await shower.getByRole("button", { name: "Undo Alba’s turn" }).click();
+    await saveQueuedAction(page);
     await expect(shower.locator(".whose-turn-card__child")).toHaveText(/Alba/);
     await expect(
       shower.getByRole("checkbox", { name: "Alba has had their turn" }),
@@ -191,8 +200,10 @@ test("an adult runs several whose-turn rotations side by side", async ({
     question: string;
     order: string[];
     first: string;
+    ended?: boolean;
   }
   const saved: Saved[] = [];
+  let signedIn = false;
   const names: Record<string, string> = { [albaId]: "Alba", [benId]: "Ben" };
 
   await page.route("**/api/**", async (route) => {
@@ -203,7 +214,9 @@ test("an adult runs several whose-turn rotations side by side", async ({
     }
 
     if (path === "/api/auth/refresh") {
-      return problem(route, 401);
+      return signedIn
+        ? json(route, auth(addieId, "Addie", "adult"))
+        : problem(route, 401);
     }
     if (path === "/api/auth/start") {
       return json(route, {
@@ -212,6 +225,7 @@ test("an adult runs several whose-turn rotations side by side", async ({
       });
     }
     if (path === "/api/auth/sign-in") {
+      signedIn = true;
       return json(route, auth(addieId, "Addie", "adult"));
     }
     if (path === "/api/turn-rotations" && request.method() === "GET") {
@@ -225,6 +239,17 @@ test("an adult runs several whose-turn rotations side by side", async ({
         order: body.participantChildIds,
         first: body.firstChildId,
       });
+      return json(route, overview());
+    }
+    if (
+      path.startsWith("/api/turn-rotations/") &&
+      request.method() === "DELETE"
+    ) {
+      const rotation = saved.find(
+        (item) => item.rotationId === path.split("/")[3],
+      );
+      if (!rotation) return problem(route, 404);
+      rotation.ended = true;
       return json(route, overview());
     }
     if (path === "/api/today") {
@@ -256,8 +281,11 @@ test("an adult runs several whose-turn rotations side by side", async ({
   await first.getByLabel("First turn").selectOption(albaId);
   await first.getByRole("button", { name: "Add rotation" }).click();
   await expect(
-    page.getByText("Whose Turn Is It? rotation saved."),
+    page
+      .locator(".toast-stack")
+      .getByText("Started “Who is Pink today?” from 2026-09-21"),
   ).toBeVisible();
+  await saveQueuedAction(page);
 
   const second = page.getByRole("form", { name: "Add a rotation" });
   await second.getByLabel("Alba").check();
@@ -265,6 +293,7 @@ test("an adult runs several whose-turn rotations side by side", async ({
   await second.getByLabel("First turn").selectOption(benId);
   await second.getByLabel("Question (optional)").fill("Who sits next to Mum?");
   await second.getByRole("button", { name: "Add rotation" }).click();
+  await saveQueuedAction(page);
 
   const pink = page.locator(".whose-turn-card").filter({
     hasText: "Who is Pink today?",
@@ -289,6 +318,43 @@ test("an adult runs several whose-turn rotations side by side", async ({
   await expect(mumTomorrow.locator(".whose-turn-card__child")).toContainText(
     "Alba",
   );
+
+  await page.goto("/");
+  await page.getByText("Manage rotations").click();
+  await page
+    .getByRole("button", { name: "End Who is Pink today?", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Yes, end it" }).click();
+  await expect(
+    page.getByText("Ends tomorrow. Today’s answer stays as it is."),
+  ).toBeVisible();
+  await expect(page.locator(".whose-turn-card")).toHaveCount(2);
+  await expect(
+    page.getByRole("button", { name: "End Who is Pink today?", exact: true }),
+  ).toHaveCount(0);
+  // Save the queued End before reloading, so the reloaded page reads it back.
+  await saveQueuedAction(page);
+  await expect(
+    page.getByText("Ends tomorrow. Today’s answer stays as it is."),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByText("Manage rotations").click();
+  await expect(
+    page.getByText("Ends tomorrow. Today’s answer stays as it is."),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Next day →" }).click();
+  await expect(page.locator(".whose-turn-card")).toHaveCount(1);
+  await expect(page.locator(".whose-turn-card")).toContainText(
+    "Who sits next to Mum?",
+  );
+  for (const width of [768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+  }
 
   function turnFor(rotation: Saved, date: string) {
     const offset = date === "2026-09-22" ? 1 : 0;
@@ -340,7 +406,9 @@ test("an adult runs several whose-turn rotations side by side", async ({
       jobs: [],
       pointsBalance: null,
       pendingApprovalCount: 0,
-      whoseTurns: saved.map((rotation) => turnFor(rotation, date)),
+      whoseTurns: saved
+        .filter((rotation) => !rotation.ended || date === "2026-09-21")
+        .map((rotation) => turnFor(rotation, date)),
     };
   }
 
@@ -357,12 +425,12 @@ test("an adult runs several whose-turn rotations side by side", async ({
           createdByMemberId: addieId,
           createdAtUtc: "2026-09-21T08:00:00Z",
         },
-        upcomingTurns: [
-          {
-            ...turnFor(rotation, "2026-09-21"),
-            date: "2026-09-21",
-          },
-        ],
+        upcomingTurns: (rotation.ended
+          ? ["2026-09-21"]
+          : ["2026-09-21", "2026-09-22"]
+        ).map((date) => ({ ...turnFor(rotation, date), date })),
+        upNext: [],
+        endsTomorrow: Boolean(rotation.ended),
       })),
     };
   }
