@@ -257,6 +257,30 @@ jq -e \
   '.uid == "telemetry-stack-health" and .editable == false and (.panels | length >= 6) and all(.panels[]; .datasource.uid != null)' \
   observability/config/grafana/dashboards/telemetry-stack-health.json >/dev/null \
   || fail "Grafana health dashboard is incomplete or editable"
+jq -e \
+  '(.panels[] | select(.title == "Private service endpoint health")) as $panel
+   | $panel.fieldConfig.defaults.custom.cellOptions.type == "auto"
+   and ($panel.fieldConfig.defaults | has("color") | not)
+   and ($panel.fieldConfig.defaults | has("mappings") | not)
+   and ($panel.fieldConfig.defaults | has("thresholds") | not)
+   and ($panel.fieldConfig.overrides | length) == 1
+   and any($panel.fieldConfig.overrides[]?;
+     .matcher.id == "byName"
+     and .matcher.options == "Health"
+     and any(.properties[]?;
+       .id == "color"
+       and .value.mode == "thresholds")
+     and any(.properties[]?;
+       .id == "custom.cellOptions"
+       and .value.type == "color-background")
+     and any(.properties[]?;
+       .id == "mappings"
+       and .value == [{"options":{"0":{"color":"red","text":"DOWN"},"1":{"color":"green","text":"UP"}},"type":"value"}])
+     and any(.properties[]?;
+       .id == "thresholds"
+       and .value == {"mode":"absolute","steps":[{"color":"red","value":null},{"color":"green","value":1}]}))' \
+  observability/config/grafana/dashboards/telemetry-stack-health.json >/dev/null \
+  || fail "Grafana private endpoint labels inherit health status colouring"
 jq -e . observability/config/grafana/dashboards/server-and-service-health.json >/dev/null \
   || fail "Grafana server and service health dashboard is not valid JSON"
 jq -e \
