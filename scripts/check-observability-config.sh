@@ -23,6 +23,14 @@ export GRAFANA_ADMIN_PASSWORD_FILE="$validation_dir/grafana-admin-password"
 export PROMETHEUS_DATA_DIR="$validation_dir/prometheus"
 export LOKI_DATA_DIR="$validation_dir/loki"
 export DOCKER_GID=0
+export APP_PROBE_ADDRESS=192.0.2.10
+export CADDY_ROOT_CERT_FILE="$validation_dir/caddy-root.crt"
+touch "$CADDY_ROOT_CERT_FILE"
+chmod 0644 "$CADDY_ROOT_CERT_FILE"
+export APPLICATION_HEALTH_TEST_CERT_FILE="$validation_dir/application-health.crt"
+export APPLICATION_HEALTH_TEST_KEY_FILE="$validation_dir/application-health.key"
+touch "$APPLICATION_HEALTH_TEST_CERT_FILE" "$APPLICATION_HEALTH_TEST_KEY_FILE"
+chmod 0644 "$APPLICATION_HEALTH_TEST_CERT_FILE" "$APPLICATION_HEALTH_TEST_KEY_FILE"
 
 docker compose \
   -f observability/compose.yaml \
@@ -32,6 +40,18 @@ docker compose \
   -f observability/compose.yaml \
   -f observability/compose.storage-bounds.yaml \
   config --format json > "$validation_dir/storage.json"
+
+docker compose \
+  -f observability/compose.yaml \
+  -f observability/compose.ingress.yaml \
+  config --format json > "$validation_dir/ingress.json"
+
+docker compose \
+  -f observability/compose.yaml \
+  -f observability/compose.storage-bounds.yaml \
+  -f observability/compose.ingress.yaml \
+  -f observability/compose.snap-docker-compat.yaml \
+  config --format json > "$validation_dir/snap-docker-compat.json"
 
 GRAFANA_TEST_PORT=33000 docker compose \
   -f observability/compose.yaml \
@@ -97,6 +117,9 @@ assert_jq "$validation_dir/base.json" \
   '(.services["container-exporter"].volumes[] | select(.source == "/var/run/docker.sock") | .read_only) == true and .services["container-exporter"].environment.DOCKER_API_URL == "unix:///var/run/docker.sock"' \
   "the Docker socket bind mount is not read-only"
 assert_jq "$validation_dir/base.json" \
+  '([.services["container-exporter"].volumes[] | select(.target == "/telemetry/prometheus" or .target == "/telemetry/loki") | .read_only] == [true, true]) and .services["container-exporter"].depends_on["storage-init"].condition == "service_completed_successfully"' \
+  "the container exporter does not receive only initialized read-only telemetry filesystems"
+assert_jq "$validation_dir/base.json" \
   '(.services["node-exporter"].command | index("--collector.disable-defaults") != null) and (.services["node-exporter"].command | index("--collector.cpu") != null) and (.services["node-exporter"].command | index("--collector.filesystem") != null) and (.services["node-exporter"].command | index("--collector.loadavg") != null) and (.services["node-exporter"].command | index("--collector.meminfo") != null) and (.services["node-exporter"].command | index("--collector.stat") != null)' \
   "node-exporter does not use the approved collector allowlist"
 assert_jq "$validation_dir/base.json" \
@@ -158,6 +181,65 @@ assert_jq "$validation_dir/storage.json" \
 assert_jq "$validation_dir/storage.json" \
   '.volumes["prometheus-data"].driver_opts.device != null and .volumes["loki-data"].driver_opts.device != null' \
   "production telemetry volumes are not explicit bind-backed filesystems"
+
+assert_jq "$validation_dir/ingress.json" \
+  '[.services[] | (.ports // []) | length] | all(. == 0)' \
+  "production observability ingress publishes a host port"
+assert_jq "$validation_dir/ingress.json" \
+  '(.services.grafana.networks | keys | sort) == ["monitor-ingress", "query"] and .services.grafana.networks["monitor-ingress"].aliases == ["observability-grafana"] and .networks["monitor-ingress"].external == true' \
+  "production Grafana ingress is not limited to the dedicated external network"
+assert_jq "$validation_dir/ingress.json" \
+  '([.services | to_entries[] | select(.key != "grafana") | select(.value.networks["monitor-ingress"] != null)] | length) == 0' \
+  "an observability backend other than Grafana joins the monitor ingress network"
+assert_jq "$validation_dir/ingress.json" \
+  '.services.blackbox.extra_hosts == ["dashboard.home.arpa=192.0.2.10"]' \
+  "production Blackbox does not use the explicit LAN application probe address"
+assert_jq "$validation_dir/ingress.json" \
+  '(.services.blackbox.volumes[] | select(.target == "/etc/blackbox/caddy-root.crt") | .read_only) == true' \
+  "production Blackbox does not receive only the exported Caddy root certificate read-only"
+assert_jq "$validation_dir/ingress.json" \
+  '.services.grafana.environment.GF_SERVER_ROOT_URL == "https://monitor.home.arpa/" and .services.grafana.environment.GF_SECURITY_COOKIE_SECURE == "true"' \
+  "production Grafana HTTPS origin or secure cookie is missing"
+
+for service_name in alloy blackbox container-exporter grafana loki node-exporter prometheus query-gateway storage-init storage-preflight; do
+  assert_jq "$validation_dir/snap-docker-compat.json" \
+    ".services[\"$service_name\"].read_only == true" \
+    "$service_name is not read-only in the Docker Snap compatibility model"
+  assert_jq "$validation_dir/snap-docker-compat.json" \
+    ".services[\"$service_name\"].cap_drop | index(\"ALL\") != null" \
+    "$service_name does not drop all capabilities in the Docker Snap compatibility model"
+  assert_jq "$validation_dir/snap-docker-compat.json" \
+    "((.services[\"$service_name\"].security_opt // []) | length) == 0" \
+    "$service_name retains a security option that the Docker Snap compatibility model must reset"
+done
+assert_jq "$validation_dir/snap-docker-compat.json" \
+  '[.services[] | (.ports // []) | length] | all(. == 0)' \
+  "Docker Snap compatibility configuration publishes a host port"
+assert_jq "$validation_dir/snap-docker-compat.json" \
+  '(.services.grafana.networks | keys | sort) == ["monitor-ingress", "query"] and .services.grafana.networks["monitor-ingress"].aliases == ["observability-grafana"]' \
+  "Docker Snap compatibility configuration changes the production ingress boundary"
+assert_jq "$validation_dir/snap-docker-compat.json" \
+  '.services.alloy.user == "473:473"
+   and .services.blackbox.user == "65534:65534"
+   and .services["container-exporter"].user == "65534:0"
+   and .services.grafana.user == "0:0"
+   and .services.loki.user == null
+   and .services["node-exporter"].user == "65534:65534"
+   and .services.prometheus.user == null
+   and .services["query-gateway"].user == "101:101"
+   and .services["storage-init"].user == "0:0"
+   and .services["storage-preflight"].user == "0:0"
+   and (.services.alloy.networks | keys | sort) == ["backend", "telemetry"]
+   and (.services.blackbox.networks | keys | sort) == ["backend", "probes"]
+   and (.services["container-exporter"].networks | keys) == ["backend"]
+   and (.services.grafana.networks | keys | sort) == ["monitor-ingress", "query"]
+   and (.services.loki.networks | keys) == ["backend"]
+   and (.services["node-exporter"].networks | keys) == ["backend"]
+   and (.services.prometheus.networks | keys) == ["backend"]
+   and (.services["query-gateway"].networks | keys | sort) == ["backend", "query"]
+   and ((.services["storage-init"].networks // {}) | length) == 0
+   and ((.services["storage-preflight"].networks // {}) | length) == 0' \
+  "Docker Snap compatibility configuration changes an inherited service identity or network boundary"
 
 assert_jq "$validation_dir/test-ingress.json" \
   '[.services | to_entries[] | select(((.value.ports // []) | length) > 0) | .key] == ["grafana"]' \
@@ -247,6 +329,14 @@ grep -q 'size: 1600MB' observability/config/prometheus/prometheus.yaml \
   || fail "Prometheus size retention is missing"
 grep -q 'retention_period: 720h' observability/config/loki/loki.yaml \
   || fail "Loki 720-hour retention is missing"
+grep -Fq 'module:' observability/config/prometheus/prometheus.yaml \
+  || fail "application HTTPS probe module is missing"
+grep -Fq 'https_2xx_internal_ca' observability/config/prometheus/prometheus.yaml \
+  || fail "application probes do not use the internal-CA HTTPS module"
+grep -Fq 'https://dashboard.home.arpa/api/health/ready' observability/config/prometheus/prometheus.yaml \
+  || fail "application probes do not exercise the public HTTPS readiness route"
+grep -Fq 'ca_file: /etc/blackbox/caddy-root.crt' observability/config/blackbox/blackbox.yaml \
+  || fail "Blackbox does not validate the application Caddy root CA"
 grep -q 'working_directory: /loki/compactor' observability/config/loki/loki.yaml \
   || fail "Loki Compactor state is not on persistent storage"
 grep -Fq "sudo sh -c 'cd -- \"\$1\" && sha256sum -- *.tgz > SHA256SUMS' sh \"\$backup_dir\"" \

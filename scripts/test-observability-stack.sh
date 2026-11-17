@@ -12,9 +12,12 @@ fail() {
 command -v curl >/dev/null 2>&1 || fail "curl is required"
 command -v docker >/dev/null 2>&1 || fail "docker is required"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
+command -v openssl >/dev/null 2>&1 || fail "openssl is required"
 
 test_token="$$-$(date +%s)"
 test_root=$(mktemp -d "${TMPDIR:-/tmp}/fjb-observability-stack.XXXXXX")
+trap 'rm -rf "$test_root"' EXIT
+trap 'rm -rf "$test_root"; exit 1' HUP INT TERM
 test_project="fjb-observability-it-$test_token"
 test_prefix="$test_project"
 test_network="$test_project-telemetry"
@@ -33,6 +36,16 @@ chmod 0700 "$test_root/secret"
 chmod 0755 "$test_root/fixtures" "$test_root/oversize-prometheus" "$test_root/oversize-loki"
 umask 077
 printf '%s\n' "integration-test-password-$test_token" > "$test_root/secret/grafana-admin-password"
+openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 1 \
+  -subj '/CN=dashboard.home.arpa' \
+  -addext 'subjectAltName=DNS:dashboard.home.arpa' \
+  -addext 'basicConstraints=critical,CA:TRUE' \
+  -keyout "$test_root/secret/application-health.key" \
+  -out "$test_root/fixtures/application-health.crt" \
+  >/dev/null 2>&1
+chmod 0444 \
+  "$test_root/secret/application-health.key" \
+  "$test_root/fixtures/application-health.crt"
 
 export OBSERVABILITY_PROJECT_NAME="$test_project"
 export OBSERVABILITY_RESOURCE_PREFIX="$test_prefix"
@@ -40,6 +53,8 @@ export TELEMETRY_NETWORK_NAME="$test_network"
 export GRAFANA_ADMIN_PASSWORD_FILE="$test_root/secret/grafana-admin-password"
 export GRAFANA_TEST_PORT=0
 export FJB_COMPOSE_PROJECT_NAME="$test_project-application"
+export APPLICATION_HEALTH_TEST_CERT_FILE="$test_root/fixtures/application-health.crt"
+export APPLICATION_HEALTH_TEST_KEY_FILE="$test_root/secret/application-health.key"
 
 DOCKER_GID=$(docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \

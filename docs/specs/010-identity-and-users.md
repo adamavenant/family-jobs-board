@@ -527,7 +527,7 @@ not EF InMemory.
 6. Render production Compose and prove auth secrets are required but absent
    from Git, image history, and logs.
 
-Production remains `http://dashboard.home.arpa`; API/database stay private and
+Production uses `https://dashboard.home.arpa`; API/database stay private and
 no router port forwarding is added.
 
 ## Resolved decisions

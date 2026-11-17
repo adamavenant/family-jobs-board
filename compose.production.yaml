@@ -31,8 +31,12 @@ services:
       APP_HOSTNAME: ${APP_HOSTNAME:-dashboard.home.arpa}
     ports:
       - "${WEB_BIND_ADDRESS:-0.0.0.0}:${WEB_PORT:-80}:80"
+      - "${WEB_BIND_ADDRESS:-0.0.0.0}:443:443"
+      - "${WEB_BIND_ADDRESS:-0.0.0.0}:443:443/udp"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
     depends_on:
       web:
         condition: service_healthy
@@ -52,6 +56,10 @@ services:
       - -c
       - |
         echo "Family Jobs Board is ready"
-        echo "Web: http://${APP_HOSTNAME:-dashboard.home.arpa}"
+        echo "Web: https://${APP_HOSTNAME:-dashboard.home.arpa}"
         echo "The API and database are private to the Compose network"
         exec tail -f /dev/null
+
+volumes:
+  caddy-data:
+  caddy-config:

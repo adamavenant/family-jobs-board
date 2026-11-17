@@ -1,0 +1,8 @@
+http://{$MONITOR_HOSTNAME:monitor.home.arpa} {
+	redir https://{$MONITOR_HOSTNAME:monitor.home.arpa}{uri} 302
+}
+
+{$MONITOR_HOSTNAME:monitor.home.arpa} {
+	tls internal
+	reverse_proxy observability-grafana:3000
+}
