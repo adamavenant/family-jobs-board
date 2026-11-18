@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
@@ -63,9 +63,9 @@ describe("Floating date bar", () => {
     expect(
       screen.queryByRole("navigation", { name: "Pinned day" }),
     ).not.toBeInTheDocument();
-    expect(observed[0]?.target).toHaveClass("hero__date");
+    await waitFor(() => expect(observed[0]?.target).toHaveClass("hero__date"));
 
-    scrollDateLine({ isIntersecting: false, top: -40 });
+    await scrollDateLine({ isIntersecting: false, top: -40 });
 
     const bar = screen.getByRole("navigation", { name: "Pinned day" });
     expect(within(bar).getByText("Wed, Sep 23")).toHaveAttribute(
@@ -87,7 +87,7 @@ describe("Floating date bar", () => {
     ).toBeInTheDocument();
     expect(bar.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
 
-    scrollDateLine({ isIntersecting: true, top: 120 });
+    await scrollDateLine({ isIntersecting: true, top: 120 });
 
     expect(
       screen.queryByRole("navigation", { name: "Pinned day" }),
@@ -99,7 +99,7 @@ describe("Floating date bar", () => {
     renderBoard(addie, "/");
     await screen.findByRole("heading", { name: "Good day, Addie!" });
 
-    scrollDateLine({ isIntersecting: false, top: 900 });
+    await scrollDateLine({ isIntersecting: false, top: 900 });
 
     expect(
       screen.queryByRole("navigation", { name: "Pinned day" }),
@@ -111,7 +111,7 @@ describe("Floating date bar", () => {
     const user = userEvent.setup();
     renderBoard(addie, "/");
     await screen.findByRole("heading", { name: "Good day, Addie!" });
-    scrollDateLine({ isIntersecting: false, top: -40 });
+    await scrollDateLine({ isIntersecting: false, top: -40 });
 
     await user.click(
       within(screen.getByRole("navigation", { name: "Pinned day" })).getByRole(
@@ -128,7 +128,7 @@ describe("Floating date bar", () => {
       expect(trigger).toHaveAttribute("aria-expanded", "true");
     }
 
-    scrollDateLine({ isIntersecting: true, top: 120 });
+    await scrollDateLine({ isIntersecting: true, top: 120 });
     expect(
       screen.getByRole("complementary", { name: "Awaiting review" }),
     ).toBeInTheDocument();
@@ -144,7 +144,7 @@ describe("Floating date bar", () => {
     renderBoard(fredster, "/");
     await screen.findByRole("heading", { name: "Good day, Fredster!" });
 
-    scrollDateLine({ isIntersecting: false, top: -40 });
+    await scrollDateLine({ isIntersecting: false, top: -40 });
 
     const bar = screen.getByRole("navigation", { name: "Pinned day" });
     expect(within(bar).getByText("Tue, Sep 22")).toBeInTheDocument();
@@ -153,13 +153,16 @@ describe("Floating date bar", () => {
   });
 });
 
-function scrollDateLine({
+async function scrollDateLine({
   isIntersecting,
   top,
 }: {
   isIntersecting: boolean;
   top: number;
 }) {
+  // The bar starts observing in a passive effect, which can run after the board's heading is
+  // already on screen, so wait for the observer before simulating a scroll.
+  await waitFor(() => expect(observed[0]?.target).toHaveClass("hero__date"));
   act(() => {
     for (const { callback } of observed) {
       callback([
