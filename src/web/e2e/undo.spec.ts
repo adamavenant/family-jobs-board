@@ -325,7 +325,9 @@ test("keyboard users reach Undo and the countdown pauses while it has keyboard f
   ).toBeVisible();
 });
 
-test("several queued actions stack inside a phone screen", async ({ page }) => {
+test("several queued actions fold into one row inside a phone screen", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 360, height: 640 });
   const api = await household(page);
 
@@ -333,19 +335,43 @@ test("several queued actions stack inside a phone screen", async ({ page }) => {
   await approve(page, "Feed the dog");
   await approve(page, "Water the plants");
 
+  // Only the newest shows in full; the older two fold into one row.
   const toasts = page.locator(".undo-toast");
-  await expect(toasts).toHaveCount(3);
-  for (const box of await Promise.all(
-    (await toasts.all()).map((toast) => toast.boundingBox()),
-  )) {
-    expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
-    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(360);
+  await expect(toasts).toHaveCount(1);
+  await expect(toasts).toContainText("Water the plants");
+  const row = page.getByRole("button", { name: "2 more waiting Show" });
+  await expect(row).toHaveAttribute("aria-expanded", "false");
+  await expect(row).toHaveText("2 more waiting · Show");
+  // Measure once the web fonts have swapped in, as they change text heights.
+  await page.evaluate(() => document.fonts.ready);
+  const folded = await stackLayout(page);
+  // The stack is just the newest toast and the row.
+  expect(folded.items).toHaveLength(2);
+  expect(folded.height).toBeLessThanOrEqual(
+    folded.items[0]!.height + folded.items[1]!.height + 8 + 1,
+  );
+  expect(folded.scrolls).toBe(false);
+  for (const item of folded.items) {
+    expect(item.left).toBeGreaterThanOrEqual(0);
+    expect(item.right).toBeLessThanOrEqual(360);
   }
-  const stack = await page.locator(".toast-stack").evaluate((element) => ({
-    height: element.getBoundingClientRect().height,
-    scrolls: element.scrollHeight > element.clientHeight,
-  }));
-  expect(stack.height).toBeLessThanOrEqual(640 * 0.6 + 1);
+  // The page still keeps room below the stack.
+  await expect.poll(() => reservesStackHeight(page)).toBe(true);
+
+  await row.click();
+  await expect(toasts).toHaveCount(3);
+  await expect(
+    page.getByRole("button", { name: "2 more waiting Hide" }),
+  ).toHaveAttribute("aria-expanded", "true");
+  const shown = await stackLayout(page);
+  expect(shown.items).toHaveLength(4);
+  for (const item of shown.items) {
+    expect(item.left).toBeGreaterThanOrEqual(0);
+    expect(item.right).toBeLessThanOrEqual(360);
+  }
+  expect(shown.height).toBeGreaterThan(folded.height);
+  expect(shown.height).toBeLessThanOrEqual(640 * 0.6 + 1);
+  await expect.poll(() => reservesStackHeight(page)).toBe(true);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -366,6 +392,76 @@ test("several queued actions stack inside a phone screen", async ({ page }) => {
       "/api/jobs/00000000-0000-4000-8000-000000000003/approve",
     ]);
 });
+
+test("keyboard users open folded actions, and focus moves on to one when the newest closes", async ({
+  page,
+}) => {
+  const api = await household(page);
+
+  await approve(page, "Clear the table");
+  await approve(page, "Feed the dog");
+  const newest = page
+    .locator(".undo-toast")
+    .filter({ hasText: "Feed the dog" });
+  const older = page
+    .locator(".undo-toast")
+    .filter({ hasText: "Clear the table" });
+  // Arrive on the folded row by keyboard, as a keyboard user would.
+  await newest.getByRole("button", { name: "Dismiss and save now" }).focus();
+  await page.keyboard.press("Tab");
+  const row = page.getByRole("button", { name: /^1 more waiting/ });
+  await expect(row).toBeFocused();
+  await expect(row).toHaveAccessibleName("1 more waiting Show");
+
+  await page.keyboard.press("Enter");
+  await expect(row).toHaveAccessibleName("1 more waiting Hide");
+  await expect(row).toHaveAttribute("aria-expanded", "true");
+  // The row holds the action it stood for while it has keyboard focus.
+  await expect(older.getByText("Paused")).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(older.getByRole("button", { name: "Undo" })).toBeFocused();
+
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Shift+Tab");
+  await expect(newest.getByRole("button", { name: "Undo" })).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  await expect(newest).toHaveCount(0);
+  await expect(older.getByRole("button", { name: "Undo" })).toBeFocused();
+  await expect(older.getByText("Paused")).toBeVisible();
+  await page.clock.runFor(60_000);
+  expect(api.sent).toEqual([]);
+  await expect(
+    card(page, "Feed the dog").getByRole("button", {
+      name: "Approve +5 points",
+    }),
+  ).toBeEnabled();
+});
+
+/** The stack and everything in it, measured in one go. */
+async function stackLayout(page: Page) {
+  return page.locator(".toast-stack").evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    scrolls: element.scrollHeight > element.clientHeight,
+    items: [...element.children].map((item) => {
+      const box = item.getBoundingClientRect();
+      return { height: box.height, left: box.left, right: box.right };
+    }),
+  }));
+}
+
+/** The page keeps room below the stack for its current height. */
+async function reservesStackHeight(page: Page) {
+  return page.locator(".toast-stack").evaluate((element) => {
+    const needed = `${Math.ceil(element.getBoundingClientRect().height) + 24}px`;
+    return (
+      document.documentElement.style.getPropertyValue(
+        "--toast-stack-height",
+      ) === needed && getComputedStyle(document.body).paddingBottom === needed
+    );
+  });
+}
 
 async function json(route: Route, body: unknown, status = 200) {
   await route.fulfill({

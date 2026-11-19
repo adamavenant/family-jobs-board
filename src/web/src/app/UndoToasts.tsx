@@ -1,5 +1,12 @@
-import { useEffect, useId, useRef, useState } from "react";
-import type { RefObject } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { FocusEvent, RefObject } from "react";
 
 import { undoQueue, useUndoQueue } from "./undoQueue";
 import type { QueuedAction, ToastNotice } from "./undoQueue";
@@ -65,6 +72,13 @@ function order(id: string): number {
   return Number(id.slice(id.lastIndexOf("-") + 1)) || 0;
 }
 
+/** What every toast in the stack shares. */
+interface StackControls {
+  /** Set when a focused toast goes, so the stack moves focus on after. */
+  handOff: RefObject<boolean>;
+  holds: Holds;
+}
+
 function ToastStack({
   waiting,
   notices,
@@ -74,6 +88,18 @@ function ToastStack({
 }) {
   const stack = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
+  const handOff = useRef(false);
+  const [holds] = useState(createHolds);
+  const [showOlder, setShowOlder] = useState(false);
+  const controls = { handOff, holds };
+
+  // Newest first, so Tab reaches the latest toast first; the stack is drawn
+  // bottom-up, keeping the newest in view and errors at the top.
+  const [newest, ...older] = [...waiting].reverse();
+  // Fold the next batch again once only one action is left waiting.
+  if (showOlder && older.length === 0) {
+    setShowOlder(false);
+  }
 
   // Leave room below the page so content under the stack can scroll into view.
   useEffect(() => {
@@ -97,8 +123,30 @@ function ToastStack({
     };
   }, []);
 
-  // Newest first, so Tab reaches the latest toast first; the stack is drawn
-  // bottom-up, keeping the newest in view and errors at the top.
+  // When a focused toast goes (undone, saved, or folded away) or the folded
+  // row does, focus the newest toast left rather than the top of the page.
+  // It may have been folded away until now.
+  useLayoutEffect(() => {
+    if (!handOff.current) {
+      return;
+    }
+
+    handOff.current = false;
+    if (!stack.current?.contains(document.activeElement)) {
+      stack.current?.querySelector<HTMLElement>("button")?.focus();
+    }
+  });
+
+  // When the last toast goes with focus, return focus to where it came from.
+  useLayoutEffect(() => {
+    const element = stack.current;
+    return () => {
+      if (element?.contains(document.activeElement)) {
+        restoreFocus(returnFocus);
+      }
+    };
+  }, []);
+
   return (
     <section
       className="toast-stack"
@@ -115,49 +163,90 @@ function ToastStack({
         }
       }}
     >
-      {[...waiting].reverse().map((action) => (
-        <UndoToast
-          key={action.id}
-          action={action}
-          stack={stack}
-          returnFocus={returnFocus}
+      {newest ? (
+        <UndoToast key={newest.id} action={newest} controls={controls} />
+      ) : null}
+      {older.length > 0 ? (
+        <FoldedActions
+          older={older}
+          shown={showOlder}
+          onToggle={() => setShowOlder(!showOlder)}
+          controls={controls}
         />
-      ))}
+      ) : null}
+      {showOlder
+        ? older.map((action) => (
+            <UndoToast key={action.id} action={action} controls={controls} />
+          ))
+        : null}
       {[...notices].reverse().map((notice) => (
-        <NoticeToast
-          key={notice.id}
-          notice={notice}
-          stack={stack}
-          returnFocus={returnFocus}
-        />
+        <NoticeToast key={notice.id} notice={notice} controls={controls} />
       ))}
     </section>
   );
 }
 
 /**
- * Before a toast that holds focus closes, move focus somewhere useful rather
- * than letting it fall to the top of the page: the next toast, else where focus
- * came from, else the page's main content.
+ * One compact row in place of every queued action but the newest, so the
+ * stack stays short. It holds their countdowns like a toast does, so they
+ * can't save (and the row can't vanish) while someone is about to open it.
  */
-function handOffFocus(
-  toast: HTMLElement | null,
-  stack: RefObject<HTMLElement | null>,
-  returnFocus: RefObject<HTMLElement | null>,
-) {
-  if (!toast || !toast.contains(document.activeElement)) {
-    return;
-  }
+function FoldedActions({
+  older,
+  shown,
+  onToggle,
+  controls,
+}: {
+  older: QueuedAction[];
+  shown: boolean;
+  onToggle: () => void;
+  controls: StackControls;
+}) {
+  const row = useRef<HTMLButtonElement>(null);
+  const hold = useHold(
+    controls.holds,
+    older.map((action) => action.id),
+  );
+  useHandOffWhenGone(row, controls);
 
-  const next = [
-    ...(stack.current?.querySelectorAll<HTMLElement>(".status-toast") ?? []),
-  ]
-    .find((candidate) => candidate !== toast)
-    ?.querySelector<HTMLElement>("button");
-  if (next) {
-    next.focus();
-    return;
-  }
+  return (
+    <button
+      ref={row}
+      type="button"
+      className="toast-stack__more"
+      aria-expanded={shown}
+      onClick={onToggle}
+      {...hold}
+    >
+      <span>{older.length} more waiting</span> <span aria-hidden="true">·</span>{" "}
+      <span className="toast-stack__more-toggle">
+        {shown ? "Hide" : "Show"}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Asks the stack to move focus on if the element goes while it has focus.
+ * A layout cleanup runs before React removes the element, so focus is still
+ * there to find.
+ */
+function useHandOffWhenGone(
+  element: RefObject<HTMLElement | null>,
+  { handOff }: StackControls,
+) {
+  useLayoutEffect(() => {
+    const node = element.current;
+    return () => {
+      if (node?.contains(document.activeElement)) {
+        handOff.current = true;
+      }
+    };
+  }, [element, handOff]);
+}
+
+/** Focus where it was before it entered the stack, else the main content. */
+function restoreFocus(returnFocus: RefObject<HTMLElement | null>) {
   if (returnFocus.current?.isConnected) {
     returnFocus.current.focus();
     return;
@@ -170,63 +259,107 @@ function handOffFocus(
   }
 }
 
+/**
+ * Which countdowns are held, and by what: an action's own toast, or the row
+ * that folds it away. A countdown resumes only once nothing holds it.
+ */
+interface Holds {
+  set(holder: object, ids: readonly string[]): void;
+}
+
+function createHolds(): Holds {
+  const held = new Map<object, readonly string[]>();
+  return {
+    set(holder, ids) {
+      const before = held.get(holder) ?? [];
+      if (ids.length > 0) {
+        held.set(holder, ids);
+      } else {
+        held.delete(holder);
+      }
+
+      ids
+        .filter((id) => !before.includes(id))
+        .forEach((id) => undoQueue.pause(id));
+      before
+        .filter(
+          (id) =>
+            !ids.includes(id) &&
+            ![...held.values()].some((others) => others.includes(id)),
+        )
+        .forEach((id) => undoQueue.resume(id));
+    },
+  };
+}
+
+/**
+ * The countdowns wait while someone is reading or about to press a control:
+ * while the pointer moves over the element, or it has keyboard focus.
+ */
+function useHold(holds: Holds, ids: readonly string[]) {
+  const [holder] = useState(() => ({}));
+  const pointerInside = useRef(false);
+  const focusInside = useRef(false);
+
+  // Hold actions that join while the element is held, such as one folded
+  // into the row, and let go when the element goes.
+  useEffect(() => {
+    if (pointerInside.current || focusInside.current) {
+      holds.set(holder, ids);
+    }
+  }, [holds, holder, ids]);
+  useEffect(() => () => holds.set(holder, []), [holds, holder]);
+
+  function update() {
+    holds.set(holder, pointerInside.current || focusInside.current ? ids : []);
+  }
+
+  return {
+    // Movement, not entry: an element that appears under a resting cursor
+    // shouldn't hold anything.
+    onPointerMove() {
+      if (!pointerInside.current) {
+        pointerInside.current = true;
+        update();
+      }
+    },
+    onPointerLeave() {
+      pointerInside.current = false;
+      update();
+    },
+    onFocus(event: FocusEvent) {
+      // Keyboard focus only: a mouse click, or focus handed on after one,
+      // shouldn't hold the countdown.
+      if (hasKeyboardFocus(event.target)) {
+        focusInside.current = true;
+        update();
+      }
+    },
+    onBlur(event: FocusEvent) {
+      if (!event.currentTarget.contains(event.relatedTarget)) {
+        focusInside.current = false;
+        update();
+      }
+    },
+  };
+}
+
 function UndoToast({
   action,
-  stack,
-  returnFocus,
+  controls,
 }: {
   action: QueuedAction;
-  stack: RefObject<HTMLElement | null>;
-  returnFocus: RefObject<HTMLElement | null>;
+  controls: StackControls;
 }) {
   const descriptionId = useId();
   const toast = useRef<HTMLDivElement>(null);
-  const pointerInside = useRef(false);
-  const focusInside = useRef(false);
   const seconds = useRemainingSeconds(action);
-
-  // The countdown waits while someone is reading or about to press Undo.
-  function hold() {
-    undoQueue.pause(action.id);
-  }
-
-  function release() {
-    if (!pointerInside.current && !focusInside.current) {
-      undoQueue.resume(action.id);
-    }
-  }
+  const ids = useMemo(() => [action.id], [action.id]);
+  const hold = useHold(controls.holds, ids);
+  useHandOffWhenGone(toast, controls);
 
   return (
-    <div
-      ref={toast}
-      className="status-toast undo-toast"
-      // Movement, not entry: a toast that appears under a resting cursor
-      // shouldn't pause itself.
-      onPointerMove={() => {
-        if (!pointerInside.current) {
-          pointerInside.current = true;
-          hold();
-        }
-      }}
-      onPointerLeave={() => {
-        pointerInside.current = false;
-        release();
-      }}
-      onFocus={(event) => {
-        // Keyboard focus only: a mouse click, or focus handed on after one,
-        // shouldn't hold the countdown.
-        if (hasKeyboardFocus(event.target)) {
-          focusInside.current = true;
-          hold();
-        }
-      }}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) {
-          focusInside.current = false;
-          release();
-        }
-      }}
-    >
+    <div ref={toast} className="status-toast undo-toast" {...hold}>
       <p id={descriptionId}>{action.description}</p>
       <span className="undo-toast__countdown" aria-hidden="true">
         {action.runningSince === null ? "Paused" : `${seconds}s`}
@@ -235,10 +368,7 @@ function UndoToast({
         type="button"
         className="undo-toast__undo"
         aria-describedby={descriptionId}
-        onClick={() => {
-          handOffFocus(toast.current, stack, returnFocus);
-          undoQueue.undo(action.id);
-        }}
+        onClick={() => undoQueue.undo(action.id)}
       >
         Undo
       </button>
@@ -247,10 +377,7 @@ function UndoToast({
         aria-label="Dismiss and save now"
         aria-describedby={descriptionId}
         title="Dismiss and save now"
-        onClick={() => {
-          handOffFocus(toast.current, stack, returnFocus);
-          undoQueue.saveNow(action.id);
-        }}
+        onClick={() => undoQueue.saveNow(action.id)}
       >
         ×
       </button>
@@ -294,15 +421,15 @@ function useRemainingSeconds(action: QueuedAction): number {
 
 function NoticeToast({
   notice,
-  stack,
-  returnFocus,
+  controls,
 }: {
   notice: ToastNotice;
-  stack: RefObject<HTMLElement | null>;
-  returnFocus: RefObject<HTMLElement | null>;
+  controls: StackControls;
 }) {
   const messageId = useId();
   const toast = useRef<HTMLDivElement>(null);
+  useHandOffWhenGone(toast, controls);
+
   return (
     <div
       ref={toast}
@@ -321,20 +448,14 @@ function NoticeToast({
           type="button"
           className="status-toast__retry"
           aria-describedby={messageId}
-          onClick={() => {
-            handOffFocus(toast.current, stack, returnFocus);
-            undoQueue.retry(notice.id);
-          }}
+          onClick={() => undoQueue.retry(notice.id)}
         >
           Try again
         </button>
       ) : null}
       <button
         type="button"
-        onClick={() => {
-          handOffFocus(toast.current, stack, returnFocus);
-          undoQueue.dismissNotice(notice.id);
-        }}
+        onClick={() => undoQueue.dismissNotice(notice.id)}
         aria-label="Dismiss notification"
       >
         ×

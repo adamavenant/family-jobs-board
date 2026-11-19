@@ -960,6 +960,39 @@ body {
   overscroll-behavior: contain;
   transform: translateX(-50%);
 }
+/* Stands in for every queued action but the newest. */
+.toast-stack__more {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 16px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.toast-stack__more:hover {
+  border-color: var(--muted);
+}
+.toast-stack__more:focus-visible {
+  /* Drawn inside, where the scrolling stack can't clip it. */
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}
+.toast-stack__more [aria-hidden="true"] {
+  color: var(--muted);
+}
+.toast-stack__more-toggle {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .status-toast {
   position: relative;
   flex: 0 0 auto;
@@ -1062,6 +1095,9 @@ body {
   }
   .undo-toast p {
     grid-column: 1 / -1;
+  }
+  .toast-stack__more {
+    padding: 8px 12px;
   }
 }
 .job-card--queued,
