@@ -64,6 +64,7 @@ import {
   undoQueue,
 } from "./undoQueue";
 import { UndoToasts } from "./UndoToasts";
+import { useAfterPendingTransitions } from "./pendingTransitions";
 import {
   formText,
   pointsText,
@@ -1410,10 +1411,25 @@ export const routes: RouteObject[] = [
  */
 function AppShell() {
   const { revalidate } = useRevalidator();
+  const afterPendingTransitions = useAfterPendingTransitions();
 
   useEffect(
-    () => undoQueue.connect({ revalidate, keepAlive: keepSessionActiveFor }),
-    [revalidate],
+    () =>
+      undoQueue.connect({
+        // The router renders reloaded data a moment after revalidate() resolves. The saved
+        // action leaves the page as that render happens, so it never shows undone or twice.
+        revalidate: async (shown) => {
+          await revalidate();
+          await new Promise<void>((resolve) =>
+            afterPendingTransitions(() => {
+              shown();
+              resolve();
+            }),
+          );
+        },
+        keepAlive: keepSessionActiveFor,
+      }),
+    [revalidate, afterPendingTransitions],
   );
 
   useEffect(() => {

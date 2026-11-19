@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { acceptSession, clearIdentity } from "../../api/auth";
 import { routes } from "../../app/routes";
-import { saveQueuedAction } from "../../test/undo";
+import { recordChanges, saveQueuedAction } from "../../test/undo";
 import { expectAnnounced } from "../../test/undo";
 
 const addie = member("22eb0cc1-058e-4b2e-bb18-d7aaad564a6c", "Addie", true);
@@ -203,6 +203,30 @@ describe("undoable actions", () => {
     expect(screen.getByText("Approved — 5 points awarded")).toBeInTheDocument();
     await act(() => vi.advanceTimersByTimeAsync(60_000));
     expect(api.sent).toHaveLength(1);
+  });
+
+  it("goes straight from a queued approval to the saved one", async () => {
+    fakeApi();
+    const user = renderApp();
+    await approve(user);
+
+    // Showing the job undone, even for one render, is a flicker.
+    const stopRecording = recordChanges(() => [
+      ...screen
+        .queryAllByLabelText(/jobs awaiting review/)
+        .map((count) => count.getAttribute("aria-label") ?? ""),
+      ...(screen.queryByRole("button", { name: "Approve +5 points" })
+        ? ["Approve +5 points"]
+        : []),
+    ]);
+
+    await saveQueuedAction(user);
+    // Reversing is offered only once the approval is saved and no longer queued.
+    expect(
+      await screen.findByRole("button", { name: "Reverse approval" }),
+    ).toBeInTheDocument();
+
+    expect(stopRecording()).toEqual(["0 jobs awaiting review"]);
   });
 
   it("puts the job back and sends nothing when Undo is pressed", async () => {

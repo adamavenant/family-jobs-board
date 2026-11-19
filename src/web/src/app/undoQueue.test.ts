@@ -4,12 +4,14 @@ import { createUndoQueue } from "./undoQueue";
 import type { UndoQueue } from "./undoQueue";
 
 let queue: UndoQueue;
-let revalidate: ReturnType<typeof vi.fn<() => Promise<void>>>;
+let revalidate: ReturnType<typeof vi.fn<(shown: () => void) => Promise<void>>>;
 
 beforeEach(() => {
   vi.useFakeTimers();
   queue = createUndoQueue();
-  revalidate = vi.fn<() => Promise<void>>(async () => undefined);
+  revalidate = vi.fn<(shown: () => void) => Promise<void>>(
+    async () => undefined,
+  );
   queue.connect({ revalidate });
 });
 
@@ -65,6 +67,17 @@ describe("undo queue", () => {
 
     finishRevalidation();
     await vi.waitFor(() => expect(queue.getSnapshot().actions).toHaveLength(0));
+  });
+
+  it("removes a saved action as soon as the page shows the reloaded data", async () => {
+    revalidate.mockImplementation((shown) => {
+      shown();
+      return new Promise<void>(() => undefined);
+    });
+    enqueue();
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(queue.getSnapshot().actions).toHaveLength(0);
   });
 
   it("drops an undone action without sending or revalidating", async () => {
