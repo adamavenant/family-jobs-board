@@ -128,20 +128,20 @@ scrape_configs:
     metrics_path: /probe
     params:
       module:
-        - http_2xx
+        - https_2xx_internal_ca
     static_configs:
       - targets:
-          - http://dashboard.home.arpa/health
+          - https://dashboard.home.arpa/health
         labels:
           service: web
           check: public
       - targets:
-          - http://dashboard.home.arpa/api/health/live
+          - https://dashboard.home.arpa/api/health/live
         labels:
           service: api-live
           check: live
       - targets:
-          - http://dashboard.home.arpa/api/health/ready
+          - https://dashboard.home.arpa/api/health/ready
         labels:
           service: api-ready
           check: readiness

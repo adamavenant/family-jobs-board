@@ -1,0 +1,27 @@
+# Canonical's confined Docker Snap rejects the no-new-privileges transition
+# before a container's first exec. Use this overlay only on a host where the
+# documented minimal probe reproduces that Docker-Snap limitation. This file
+# also resets storage-preflight, which is defined by compose.storage-bounds.yaml,
+# so it must always be applied after that production storage overlay. All other
+# service hardening remains inherited from compose.yaml.
+services:
+  storage-preflight:
+    security_opt: !reset []
+  storage-init:
+    security_opt: !reset []
+  loki:
+    security_opt: !reset []
+  alloy:
+    security_opt: !reset []
+  blackbox:
+    security_opt: !reset []
+  node-exporter:
+    security_opt: !reset []
+  container-exporter:
+    security_opt: !reset []
+  prometheus:
+    security_opt: !reset []
+  query-gateway:
+    security_opt: !reset []
+  grafana:
+    security_opt: !reset []

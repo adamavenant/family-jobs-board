@@ -40,7 +40,7 @@ esac
 
 # These fresh values exist only for this Compose model check. They are never
 # printed, persisted, or used by a running application.
-auth_environment="AUTHENTICATION_PIN_PEPPER=$validation_pin_pepper AUTHENTICATION_JWT_SIGNING_KEY=$validation_jwt_signing_key APPLICATION_ORIGIN=http://dashboard.home.arpa"
+auth_environment="AUTHENTICATION_PIN_PEPPER=$validation_pin_pepper AUTHENTICATION_JWT_SIGNING_KEY=$validation_jwt_signing_key APPLICATION_ORIGIN=https://dashboard.home.arpa"
 
 if env $auth_environment DATABASE_PASSWORD= IMAGE_TAG=deployment-image-tag docker compose -f compose.yaml -f compose.production.yaml config >/dev/null 2>&1; then
   fail "production configuration accepted an empty database password"
@@ -73,8 +73,10 @@ printf '%s\n' "$production_web" | grep -q '^    ports:' && fail "production web 
 printf '%s\n' "$production_proxy" | grep -q 'image: caddy:2.11.4-alpine' || fail "production proxy does not use the expected Caddy image"
 printf '%s\n' "$production_proxy" | grep -q 'APP_HOSTNAME: dashboard.home.arpa' || fail "production proxy does not default to dashboard.home.arpa"
 printf '%s\n' "$production_proxy" | grep -q 'published: "80"' || fail "production proxy does not publish the website on port 80"
+printf '%s\n' "$production_proxy" | grep -q 'published: "443"' || fail "production proxy does not publish HTTPS"
 printf '%s\n' "$production_proxy" | grep -q 'target: /etc/caddy/Caddyfile' || fail "production proxy does not mount its Caddyfile"
-printf '%s\n' "$production_api" | grep -q 'Authentication__AllowedOrigin: http://dashboard.home.arpa' || fail "production API origin is not explicit"
+printf '%s\n' "$production_proxy" | grep -q 'source: caddy-data' || fail "production proxy does not persist its internal CA data"
+printf '%s\n' "$production_api" | grep -q 'Authentication__AllowedOrigin: https://dashboard.home.arpa' || fail "production API HTTPS origin is not explicit"
 
 telemetry_config=$(docker compose -f compose.yaml -f compose.telemetry.yaml config)
 printf '%s\n' "$telemetry_config" | grep -q 'name: family-jobs-board-telemetry' \
@@ -83,5 +85,76 @@ custom_telemetry_config=$(TELEMETRY_NETWORK_NAME=custom-telemetry-network \
   docker compose -f compose.yaml -f compose.telemetry.yaml config)
 printf '%s\n' "$custom_telemetry_config" | grep -q 'name: custom-telemetry-network' \
   || fail "telemetry adapter ignores TELEMETRY_NETWORK_NAME"
+
+monitor_config=$(env $auth_environment DATABASE_PASSWORD=deployment-config-check IMAGE_TAG=deployment-image-tag \
+  docker compose \
+    -f compose.yaml \
+    -f compose.production.yaml \
+    -f compose.monitor.yaml \
+    config)
+monitor_proxy=$(printf '%s\n' "$monitor_config" | service_block proxy)
+printf '%s\n' "$monitor_proxy" | grep -q 'MONITOR_HOSTNAME: monitor.home.arpa' \
+  || fail "monitor ingress does not default to monitor.home.arpa"
+printf '%s\n' "$monitor_config" | grep -q 'name: family-jobs-board-monitor-ingress' \
+  || fail "monitor ingress does not use the dedicated external network"
+printf '%s\n' "$monitor_proxy" | grep -q 'monitor-ingress: null' \
+  || fail "production proxy does not join the dedicated monitor ingress network"
+printf '%s\n' "$monitor_proxy" | grep -q 'target: /etc/caddy/sites/monitor.caddy' \
+  || fail "monitor overlay does not install the monitor Caddy site"
+for service_name in api app-links db migrate web; do
+  monitor_service=$(printf '%s\n' "$monitor_config" | service_block "$service_name")
+  if printf '%s\n' "$monitor_service" | grep -q 'monitor-ingress'; then
+    fail "$service_name unexpectedly joins the monitor ingress network"
+  fi
+done
+
+custom_monitor_config=$(env $auth_environment DATABASE_PASSWORD=deployment-config-check IMAGE_TAG=deployment-image-tag \
+  MONITOR_INGRESS_NETWORK_NAME=custom-monitor-network \
+  docker compose \
+    -f compose.yaml \
+    -f compose.production.yaml \
+    -f compose.monitor.yaml \
+    config)
+printf '%s\n' "$custom_monitor_config" | grep -q 'name: custom-monitor-network' \
+  || fail "monitor ingress ignores MONITOR_INGRESS_NETWORK_NAME"
+
+if grep -Fq 'MONITOR_HOSTNAME' deploy/Caddyfile; then
+  fail "base Caddy configuration activates the monitor site without its overlay"
+fi
+grep -Fq '{$MONITOR_HOSTNAME:monitor.home.arpa}' deploy/monitor.caddy \
+  || fail "monitor Caddy site does not route the monitor hostname"
+grep -Fq 'reverse_proxy observability-grafana:3000' deploy/monitor.caddy \
+  || fail "Caddy does not route monitor traffic to the isolated Grafana alias"
+grep -Fq 'redir https://{$APP_HOSTNAME:dashboard.home.arpa}{uri} 302' deploy/Caddyfile \
+  || fail "application HTTP redirect is not rollback-safe"
+grep -Fq 'redir https://{$MONITOR_HOSTNAME:monitor.home.arpa}{uri} 302' deploy/monitor.caddy \
+  || fail "monitor HTTP redirect is not rollback-safe"
+grep -Fq 'import /etc/caddy/sites/*.caddy' deploy/Caddyfile \
+  || fail "base Caddy configuration does not import optional overlay sites"
+grep -Fq 'location /api/health/' src/web/nginx.conf \
+  || fail "web proxy does not expose API health on the public route"
+forwarded_https_count=$(grep -Fc 'proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;' src/web/nginx.conf || true)
+[ "$forwarded_https_count" = "2" ] \
+  || fail "web proxy does not preserve the trusted HTTPS forwarding scheme"
+grep -Fq "sudo sed -i 's|^APPLICATION_ORIGIN=.*|APPLICATION_ORIGIN=https://dashboard.home.arpa|'" \
+  docs/operations/lan-deployment.md \
+  || fail "LAN upgrade does not replace a legacy origin and port with the exact HTTPS origin"
+grep -Fq 'clear cookies and site data' docs/operations/lan-deployment.md \
+  || fail "LAN upgrade does not prevent legacy non-Secure refresh-cookie transmission"
+
+docker run --rm --network none \
+  -v "$repository_root/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+  caddy:2.11.4-alpine \
+  caddy validate --config /etc/caddy/Caddyfile
+docker run --rm --network none \
+  -v "$repository_root/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+  -v "$repository_root/deploy/monitor.caddy:/etc/caddy/sites/monitor.caddy:ro" \
+  caddy:2.11.4-alpine \
+  caddy validate --config /etc/caddy/Caddyfile
+docker run --rm --network none --add-host api:127.0.0.1 \
+  --entrypoint /usr/sbin/nginx \
+  -v "$repository_root/src/web/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+  nginxinc/nginx-unprivileged:1.28-alpine \
+  -t
 
 echo "Compose configuration checks passed."

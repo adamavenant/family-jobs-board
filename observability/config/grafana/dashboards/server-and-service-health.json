@@ -202,7 +202,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Actual bytes used by the allowlisted Prometheus Docker volume. Production places this volume on a dedicated filesystem capped at 2048 MiB.",
+      "description": "Filesystem blocks used on the dedicated Prometheus filesystem, including filesystem metadata and all telemetry files. Production caps it at 2048 MiB.",
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1610612736 }, { "color": "red", "value": 1932735283 }] }, "unit": "bytes" }, "overrides": [] },
       "gridPos": { "h": 7, "w": 8, "x": 8, "y": 33 },
       "id": 17,
@@ -213,7 +213,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Actual bytes used by the allowlisted Loki Docker volume, including chunks, WAL, index, and Compactor state. Production caps its dedicated filesystem at 4096 MiB.",
+      "description": "Filesystem blocks used on the dedicated Loki filesystem, including metadata, chunks, WAL, index, and Compactor state. Production caps it at 4096 MiB.",
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "noValue": "NO DATA", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 3221225472 }, { "color": "red", "value": 3865470566 }] }, "unit": "bytes" }, "overrides": [] },
       "gridPos": { "h": 7, "w": 8, "x": 16, "y": 33 },
       "id": 18,

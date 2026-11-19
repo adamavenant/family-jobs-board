@@ -160,6 +160,8 @@ describe("Good behaviours", () => {
     await user.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(api.logRequests).toHaveLength(2));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    // The form stays locked until the first log's own submission settles.
+    await waitFor(() => expect(submit).toBeEnabled());
     await user.click(submit);
     await saveQueuedAction(user);
     await waitFor(() => expect(api.logRequests).toHaveLength(3));
@@ -229,6 +231,10 @@ describe("Good behaviours", () => {
     expect(
       screen.getByText(/Points already awarded stay exactly as they are/),
     ).toBeInTheDocument();
+    // Saving the edit unlocks Delete, but its confirmation waits for the edit's own submission.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Yes, delete" })).toBeEnabled(),
+    );
     await user.click(screen.getByRole("button", { name: "Yes, delete" }));
     expect(
       await screen.findByText(
